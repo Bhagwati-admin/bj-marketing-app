@@ -17,7 +17,7 @@ const S = {
   sub: [],                // subview stack: {title, render}
   formState: {},          // segmented control values for open form
   fu: [],                 // follow-up builder rows
-  pendingPhoto: null,     // {blob, base64, mime} for new client
+  photos: { front: null, back: null },   // pending card photos {blob, base64, mime}
   editingClient: null,    // client row when editing
   interactionClient: null,
   currentClientId: null,
@@ -304,18 +304,19 @@ async function onDelegatedClick(e) {
     const same = S.formState[group] === el.dataset.val;
     S.formState[group] = same ? null : el.dataset.val;   // tap again to clear
     el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', !same && b === el));
+    if (group === 'desig') { const w = $('#desig-other-wrap'); if (w) w.style.display = S.formState.desig === 'Other' ? 'block' : 'none'; }
   }
   else if (a === 'open-client') openClient(el.dataset.id);
   else if (a === 'scan-start') startScan();
-  else if (a === 'manual-start') { S.pendingPhoto = null; showSub('New Client', () => renderClientForm(null, {}, 'manual')); }
-  else if (a === 'attach-photo') attachPhotoOnly();
-  else if (a === 'remove-photo') { S.pendingPhoto = null; const w = $('#photo-wrap'); if (w) w.innerHTML = photoAttachHTML(); }
+  else if (a === 'manual-start') { S.photos = { front: null, back: null }; showSub('New Client', () => renderClientForm(null, {}, 'manual')); }
+  else if (a === 'attach-photo') attachPhoto(el.dataset.side || 'front');
+  else if (a === 'remove-photo') { S.photos[el.dataset.side || 'front'] = null; redrawPhotos(); }
   else if (a === 'save-client') saveClient(el.dataset.editId || null);
   else if (a === 'fu-add') { S.fu.push({ type: el.dataset.type, content: '', due_date: el.dataset.type === 'reminder' ? todayStr(1) : '' }); redrawFuRows(); }
   else if (a === 'fu-del') { S.fu.splice(+el.dataset.idx, 1); redrawFuRows(); }
   else if (a === 'save-interaction') saveInteraction();
   else if (a === 'new-interaction') { const c = await fetchClient(el.dataset.id); if (c) openInteractionForm(c); }
-  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); }
+  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) { S.photos = { front: null, back: null }; showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); } }
   else if (a === 'fu-done') {
     const { error } = await db.from('followups').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', el.dataset.id);
     if (error) toast('Could not update — try again.', 'err');
@@ -449,7 +450,7 @@ function startScan() {
     let photo;
     try { photo = await downscale(file, 1600); }
     catch (e) { toast('Could not read that image — try again.', 'err'); return; }
-    S.pendingPhoto = photo;
+    S.photos = { front: photo, back: null };
 
     const ov = document.createElement('div');
     ov.className = 'scan-overlay';
@@ -465,6 +466,7 @@ function startScan() {
         trade_name: f.trade_name || '', company_name: f.company_name || '',
         contact_person: f.contact_person || '', designation: f.designation || '',
         mobile: normMobile(f.mobile || ''), city: f.city || '', area: f.area || '',
+        address: f.address || '',
       };
       toast('Card read ✓ — please check the details', 'ok');
       showSub('New Client', () => renderClientForm(null, pre, 'scan'));
@@ -477,26 +479,38 @@ function startScan() {
   });
 }
 
-function attachPhotoOnly() {
+function attachPhoto(side) {
   pickImage(async (file) => {
-    try { S.pendingPhoto = await downscale(file, 1600); }
+    try { S.photos[side] = await downscale(file, 1600); }
     catch (e) { toast('Could not read that image — try again.', 'err'); return; }
-    const w = $('#photo-wrap');
-    if (w) w.innerHTML = photoPreviewHTML();
+    redrawPhotos();
   });
 }
 
-function photoPreviewHTML() {
-  if (!S.pendingPhoto) return photoAttachHTML();
-  const url = URL.createObjectURL(S.pendingPhoto.blob);
-  return '<img class="cardphoto" src="' + url + '" alt="Visiting card">' +
-    '<div class="photo-row">' +
-    '<button type="button" class="btn btn-small btn-secondary" data-action="attach-photo">Retake</button>' +
-    '<button type="button" class="btn btn-small btn-ghost" data-action="remove-photo">Remove</button>' +
+function photoSlotHTML(side, savedPath) {
+  const p = S.photos[side];
+  const label = side === 'front' ? 'Front side' : 'Back side';
+  if (p) {
+    const url = URL.createObjectURL(p.blob);
+    return '<div class="photo-slot"><div class="ps-label">' + label + '</div>' +
+      '<img class="cardphoto" src="' + url + '" alt="' + label + '">' +
+      '<div class="photo-row">' +
+      '<button type="button" class="btn btn-small btn-secondary" data-action="attach-photo" data-side="' + side + '">Retake</button>' +
+      '<button type="button" class="btn btn-small btn-ghost" data-action="remove-photo" data-side="' + side + '">Remove</button>' +
+      '</div></div>';
+  }
+  return '<div class="photo-slot"><div class="ps-label">' + label + (savedPath ? ' <span class="ps-saved">saved ✓</span>' : '') + '</div>' +
+    '<button type="button" class="btn btn-secondary" data-action="attach-photo" data-side="' + side + '">＋ ' + (savedPath ? 'Replace' : 'Add photo') + '</button></div>';
+}
+function photosSectionHTML(existing) {
+  return '<div class="photo-grid">' +
+    photoSlotHTML('front', existing && existing.card_image_path) +
+    photoSlotHTML('back', existing && existing.card_image_back_path) +
     '</div>';
 }
-function photoAttachHTML() {
-  return '<button type="button" class="btn btn-secondary" data-action="attach-photo">📎 Add card photo (optional)</button>';
+function redrawPhotos() {
+  const w = $('#photo-wrap');
+  if (w) w.innerHTML = photosSectionHTML(S.editingClient);
 }
 
 function segHTML(group, options, selected, extraCls) {
@@ -510,27 +524,31 @@ function renderClientForm(existing, pre, source) {
   const c = $('#content');
   const e = existing || {};
   const v = (k) => esc(pre[k] != null ? pre[k] : (e[k] != null ? e[k] : ''));
+  const desigRaw = String((pre.designation != null ? pre.designation : e.designation) || '').trim();
+  const DESIG_KNOWN = ['Partner', 'Owner', 'Founder', 'Staff'];
+  const desigMatch = DESIG_KNOWN.find((k) => k.toLowerCase() === desigRaw.toLowerCase());
   S.formState = {
-    bulky: e.is_bulky_buyer === true ? 'Yes' : e.is_bulky_buyer === false ? 'No' : null,
+    polki: e.is_polki_buyer === true ? 'Yes' : e.is_polki_buyer === false ? 'No' : null,
     category: e.category || 'Undefined',
     order_type: e.order_type || null,
     interest: e.interest || null,
     entry_source: source || e.entry_source || 'manual',
+    desig: desigRaw ? (desigMatch || 'Other') : null,
+    desig_other: desigRaw && !desigMatch ? desigRaw : '',
   };
   S.editingClient = existing || null;
 
   c.innerHTML =
     '<div class="section-label">Visiting card</div>' +
-    '<div class="card" id="photo-wrap">' + (existing && existing.card_image_path && !S.pendingPhoto
-      ? '<div class="hint" style="font-size:13px;color:var(--muted)">A card photo is already saved for this client.</div>' + photoAttachHTML()
-      : photoPreviewHTML()) + '</div>' +
+    '<div class="card" id="photo-wrap">' + photosSectionHTML(existing) + '</div>' +
 
     '<div class="section-label">Basic details</div>' +
     '<div class="card">' +
     '<div class="field"><label>Trade name <span class="req">*</span></label><input type="text" id="f-trade" value="' + v('trade_name') + '" placeholder="Shop / brand name"></div>' +
     '<div class="field"><label>Company name</label><input type="text" id="f-company" value="' + v('company_name') + '" placeholder="Registered company (if different)"></div>' +
     '<div class="field"><label>Contact person</label><input type="text" id="f-person" value="' + v('contact_person') + '"></div>' +
-    '<div class="field"><label>Designation</label><input type="text" id="f-desig" value="' + v('designation') + '" placeholder="e.g. Purchase Manager"></div>' +
+    '<div class="field"><label>Designation</label>' + segHTML('desig', ['Partner', 'Owner', 'Founder', 'Staff', 'Other'], S.formState.desig) +
+    '<div id="desig-other-wrap" style="display:' + (S.formState.desig === 'Other' ? 'block' : 'none') + ';margin-top:8px"><input type="text" id="f-desig-other" value="' + esc(S.formState.desig_other) + '" placeholder="Type the designation"></div></div>' +
     '<div class="field"><label>Mobile number</label><input type="tel" id="f-mobile" inputmode="numeric" value="' + v('mobile') + '" placeholder="10-digit mobile">' +
     '<div id="mobile-note"></div></div>' +
     '<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="' + v('owner_name') + '"></div>' +
@@ -538,7 +556,7 @@ function renderClientForm(existing, pre, source) {
 
     '<div class="section-label">Business profile</div>' +
     '<div class="card">' +
-    '<div class="field"><label>Buys bulky jewellery?</label>' + segHTML('bulky', ['Yes', 'No'], S.formState.bulky) + '</div>' +
+    '<div class="field"><label>Buys Polki jewellery?</label>' + segHTML('polki', ['Yes', 'No'], S.formState.polki) + '</div>' +
     '<div class="field"><label>Customer category (volume of work)</label>' + segHTML('category', ['A', 'B', 'C', 'Undefined'], S.formState.category) +
     '<div class="hint">A = highest volume · C = lowest</div></div>' +
     '<div class="field"><label>Order type</label>' + segHTML('order_type', ['Job work', 'Outright', 'Both'], S.formState.order_type) + '</div>' +
@@ -550,6 +568,7 @@ function renderClientForm(existing, pre, source) {
     '<div class="card">' +
     '<div class="field"><label>City</label><input type="text" id="f-city" value="' + v('city') + '"></div>' +
     '<div class="field"><label>Area / locality</label><input type="text" id="f-area" value="' + v('area') + '" placeholder="Market / locality"></div>' +
+    '<div class="field"><label>Full address</label><textarea id="f-address" style="min-height:70px" placeholder="Shop no., street, market, city, PIN">' + v('address') + '</textarea></div>' +
     '</div>' +
 
     '<button class="btn btn-primary" data-action="save-client"' + (existing ? ' data-edit-id="' + existing.id + '"' : '') + ' id="save-client-btn">' +
@@ -582,14 +601,18 @@ async function saveClient(editId) {
   if (!trade) { toast('Trade name is required.', 'err'); $('#f-trade').focus(); return; }
   const mobile = normMobile($('#f-mobile').value);
 
+  const desigVal = S.formState.desig === 'Other'
+    ? ($('#f-desig-other') ? $('#f-desig-other').value.trim() : '')
+    : (S.formState.desig || '');
   const row = {
     trade_name: trade,
     company_name: $('#f-company').value.trim() || null,
     contact_person: $('#f-person').value.trim() || null,
-    designation: $('#f-desig').value.trim() || null,
+    designation: desigVal || null,
     mobile: mobile || null,
     owner_name: $('#f-owner').value.trim() || null,
-    is_bulky_buyer: S.formState.bulky === 'Yes' ? true : S.formState.bulky === 'No' ? false : null,
+    address: $('#f-address').value.trim() || null,
+    is_polki_buyer: S.formState.polki === 'Yes' ? true : S.formState.polki === 'No' ? false : null,
     category: S.formState.category || 'Undefined',
     order_type: S.formState.order_type || null,
     interest: S.formState.interest || null,
@@ -611,12 +634,20 @@ async function saveClient(editId) {
       clientId = data.id;
     }
 
-    if (S.pendingPhoto) {
-      const path = clientId + '/' + Date.now() + '.jpg';
-      const { error: upErr } = await db.storage.from('cards').upload(path, S.pendingPhoto.blob, { contentType: 'image/jpeg' });
-      if (!upErr) await db.from('clients').update({ card_image_path: path }).eq('id', clientId);
-      else toast('Client saved, but the card photo could not be uploaded.', 'err');
-      S.pendingPhoto = null;
+    for (const pair of [['front', 'card_image_path'], ['back', 'card_image_back_path']]) {
+      const side = pair[0], col = pair[1];
+      const p = S.photos[side];
+      if (!p) continue;
+      const path = clientId + '/' + side + '-' + Date.now() + '.jpg';
+      const { error: upErr } = await db.storage.from('cards').upload(path, p.blob, { contentType: 'image/jpeg' });
+      if (!upErr) {
+        const patch = {};
+        patch[col] = path;
+        await db.from('clients').update(patch).eq('id', clientId);
+      } else {
+        toast('Client saved, but the ' + side + ' card photo could not be uploaded.', 'err');
+      }
+      S.photos[side] = null;
     }
 
     toast(editId ? 'Client updated ✓' : 'Client saved ✓', 'ok');
@@ -706,7 +737,8 @@ function renderClientPage(cl) {
   if (cl.mobile) add('Mobile', '<a href="tel:' + esc(cl.mobile) + '" data-action="call">' + esc(cl.mobile) + '</a>');
   add('Owner', esc(cl.owner_name));
   add('Location', esc([cl.area, cl.city].filter(Boolean).join(', ')));
-  add('Bulky jewellery', cl.is_bulky_buyer === true ? 'Yes' : cl.is_bulky_buyer === false ? 'No' : '');
+  add('Address', esc(cl.address));
+  add('Polki jewellery', cl.is_polki_buyer === true ? 'Yes' : cl.is_polki_buyer === false ? 'No' : '');
   add('Order type', esc(cl.order_type));
   add('Added by', esc(nameOf(cl.created_by)) + ' · ' + fmtD(cl.created_at));
 
@@ -726,12 +758,16 @@ function renderClientPage(cl) {
     '<div id="client-followups"></div>' +
     '<div id="client-history"><div class="empty">Loading history…</div></div>';
 
-  if (cl.card_image_path) {
-    db.storage.from('cards').createSignedUrl(cl.card_image_path, 3600).then(({ data }) => {
+  const sides = [['Front', cl.card_image_path], ['Back', cl.card_image_back_path]].filter((s) => s[1]);
+  if (sides.length) {
+    Promise.all(sides.map((s) =>
+      db.storage.from('cards').createSignedUrl(s[1], 3600).then(({ data }) => [s[0], data && data.signedUrl])
+    )).then((list) => {
       const el = $('#client-card-photo');
-      if (data && data.signedUrl && el) {
-        el.innerHTML = '<div class="section-label">Visiting card</div><div class="card"><img class="cardphoto" src="' + data.signedUrl + '" alt="Visiting card"></div>';
-      }
+      if (!el) return;
+      const imgs = list.filter((x) => x[1]).map((x) =>
+        '<div class="photo-slot"><div class="ps-label">' + x[0] + '</div><img class="cardphoto" src="' + x[1] + '" alt="Visiting card ' + x[0] + '"></div>').join('');
+      if (imgs) el.innerHTML = '<div class="section-label">Visiting card</div><div class="card"><div class="photo-grid">' + imgs + '</div></div>';
     });
   }
 }

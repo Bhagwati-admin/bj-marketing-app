@@ -1,6 +1,6 @@
 /* BJ Marketing service worker — network-first, cache as offline fallback for the app shell */
 const CACHE = 'bj-shell-v1';
-const SHELL = ['index.html', 'styles.css', 'app.js', 'config.js', 'manifest.json', 'icon-192.png', 'icon.svg'];
+const SHELL = ['index.html', 'styles.css', 'app.js', 'config.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));

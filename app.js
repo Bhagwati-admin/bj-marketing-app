@@ -333,6 +333,7 @@ async function onDelegatedClick(e) {
   else if (a === 'member-toggle') toggleMember(el.dataset.id, el.dataset.active === 'true');
   else if (a === 'member-resetpw') renderResetPwModal(el.dataset.id);
   else if (a === 'save-gemini') saveGeminiKey();
+  else if (a === 'export-data') exportAllData();
   else if (a === 'call') { /* href handles it */ }
 }
 
@@ -897,6 +898,89 @@ async function saveInteraction() {
 }
 
 /* ============================================================
+   EXPORT (owner backup — 3 Excel-ready CSV files)
+   ============================================================ */
+async function fetchAll(table, orderCol) {
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from(table).select('*').order(orderCol, { ascending: true }).range(from, from + 999);
+    if (error) throw new Error(table + ': ' + error.message);
+    for (const row of data || []) all.push(row);
+    if (!data || data.length < 1000) break;
+  }
+  return all;
+}
+
+function csvVal(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v).replace(/"/g, '""');
+  return /[",\n\r]/.test(s) ? '"' + s + '"' : s;
+}
+function buildCsv(headers, rows) {
+  return '﻿' + headers.map(csvVal).join(',') + '\r\n' +
+    rows.map((r) => r.map(csvVal).join(',')).join('\r\n');
+}
+function downloadFile(name, text) {
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+function fmtExp(iso) { return iso ? fmtDT(iso) : ''; }
+function ynExp(b) { return b === true ? 'Yes' : b === false ? 'No' : ''; }
+
+async function exportAllData() {
+  const btn = $('#export-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const results = await Promise.all([
+      fetchAll('clients', 'created_at'),
+      fetchAll('interactions', 'happened_at'),
+      fetchAll('followups', 'created_at'),
+      fetchAll('profiles', 'created_at'),
+    ]);
+    const clients = results[0], interactions = results[1], followups = results[2], profiles = results[3];
+    const pName = new Map(profiles.map((p) => [p.id, p.full_name || p.email || '']));
+    const cName = new Map(clients.map((c) => [c.id, c.trade_name]));
+
+    // 7-day photo links
+    const paths = [];
+    clients.forEach((c) => {
+      if (c.card_image_path) paths.push(c.card_image_path);
+      if (c.card_image_back_path) paths.push(c.card_image_back_path);
+    });
+    const urlMap = new Map();
+    for (let i = 0; i < paths.length; i += 100) {
+      const { data } = await db.storage.from('cards').createSignedUrls(paths.slice(i, i + 100), 604800);
+      (data || []).forEach((d) => { if (d.signedUrl) urlMap.set(d.path, d.signedUrl); });
+    }
+
+    const today = todayStr();
+    downloadFile('bj-clients-' + today + '.csv', buildCsv(
+      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', "Owner's name", 'Address', 'Area', 'City', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
+      clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.owner_name, c.address, c.area, c.city, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
+
+    await new Promise((r) => setTimeout(r, 450));
+    downloadFile('bj-meetings-' + today + '.csv', buildCsv(
+      ['Date', 'Client', 'Executive', 'What happened', 'Interest after'],
+      interactions.map((it) => [fmtExp(it.happened_at), cName.get(it.client_id) || '', pName.get(it.exec_id) || '', it.notes, it.interest_after])));
+
+    await new Promise((r) => setTimeout(r, 450));
+    downloadFile('bj-followups-' + today + '.csv', buildCsv(
+      ['Client', 'Type', 'Details', 'Due date', 'Status', 'Assigned to', 'Created by', 'Created on', 'Done on'],
+      followups.map((f) => [cName.get(f.client_id) || '', f.type, f.content, f.due_date || '', f.status, pName.get(f.assigned_to) || '', pName.get(f.created_by) || '', fmtExp(f.created_at), fmtExp(f.done_at)])));
+
+    toast('3 files downloaded — clients, meetings, follow-ups ✓', 'ok');
+  } catch (e) {
+    toast('Export failed — please try again.', 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '⬇ Export all data'; }
+}
+
+/* ============================================================
    MORE (profile / team / settings)
    ============================================================ */
 async function renderMore() {
@@ -919,6 +1003,12 @@ async function renderMore() {
       '<input type="password" id="gemini-key" placeholder="AIza…">' +
       '<div class="hint">Free key from <b>aistudio.google.com/apikey</b> — sign in with Google → Create API key → paste here. Takes 2 minutes, no card required.</div></div>' +
       '<button class="btn btn-primary" data-action="save-gemini" id="gemini-btn">Save key</button>' +
+      '</div>' +
+
+      '<div class="section-label">Data backup</div>' +
+      '<div class="card">' +
+      '<p style="margin:0 0 10px;font-size:14px;color:var(--muted)">Every entry is saved instantly to the secure database, and an automatic snapshot of everything is kept daily for 30 days. Download your complete data (3 Excel-ready files) any time:</p>' +
+      '<button class="btn btn-primary" data-action="export-data" id="export-btn">⬇ Export all data</button>' +
       '</div>';
   }
   html += '<div class="empty" style="padding-top:6px;font-size:12.5px">Bhagwati Jewels · Marketing app · Phase 1</div>';

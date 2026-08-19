@@ -1,0 +1,1022 @@
+/* ============================================================
+   Bhagwati Jewels — Marketing Lead Capture
+   Phase 1 · vanilla JS + Supabase
+   ============================================================ */
+'use strict';
+
+const CFG = window.BJ_CONFIG;
+const db = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
+
+/* ---------------- state ---------------- */
+const S = {
+  session: null,
+  me: null,               // my profile row
+  team: new Map(),        // id -> profile
+  tab: 'today',
+  todayScope: 'mine',     // 'mine' | 'all' (owner)
+  sub: [],                // subview stack: {title, render}
+  formState: {},          // segmented control values for open form
+  fu: [],                 // follow-up builder rows
+  pendingPhoto: null,     // {blob, base64, mime} for new client
+  editingClient: null,    // client row when editing
+  interactionClient: null,
+  currentClientId: null,
+  searchTimer: null,
+  geminiConfigured: false,
+  suppressPop: false,
+};
+
+/* ---------------- tiny utils ---------------- */
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => (s == null ? '' : String(s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
+
+let toastTimer = null;
+function toast(msg, kind) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'show' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3400);
+}
+
+function fmtDT(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
+    ', ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+}
+function fmtD(iso) {
+  const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+function todayStr(offsetDays) {
+  const d = new Date();
+  if (offsetDays) d.setDate(d.getDate() + offsetDays);
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function dueLabel(due) {
+  const t = todayStr();
+  if (due < t) {
+    const days = Math.round((new Date(t) - new Date(due)) / 86400000);
+    return 'Overdue ' + days + (days === 1 ? ' day' : ' days');
+  }
+  if (due === t) return 'Today';
+  if (due === todayStr(1)) return 'Tomorrow';
+  return fmtD(due);
+}
+
+function normMobile(v) {
+  let d = String(v || '').replace(/\D/g, '');
+  if (d.length > 10 && d.startsWith('91')) d = d.slice(-10);
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+const isIndianMobile = (m) => /^[6-9]\d{9}$/.test(m);
+
+function nameOf(id) {
+  const p = S.team.get(id);
+  return p ? (p.full_name || 'Team member') : '—';
+}
+
+function chipCat(c) {
+  if (!c) c = 'Undefined';
+  const label = c === 'Undefined' ? 'Cat: —' : 'Cat ' + c;
+  return '<span class="chip chip-cat ' + esc(c) + '">' + esc(label) + '</span>';
+}
+function chipInterest(i) {
+  if (!i) return '';
+  const cls = i === 'Hot' ? 'chip-hot' : i === 'Warm' ? 'chip-warm' : 'chip-cold';
+  return '<span class="chip ' + cls + '">' + esc(i) + '</span>';
+}
+function chipType(t) {
+  return '<span class="chip chip-type">' + esc(t) + '</span>';
+}
+
+/* ---------------- icons (inline svg) ---------------- */
+const IC = {
+  today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8.5 15.5l2.5 2.5 4.5-4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.2"/><path d="M12 8v8M8 12h8" stroke-linecap="round"/></svg>',
+  find: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2" stroke-linecap="round"/></svg>',
+  more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none"/><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="4"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8.5A2.5 2.5 0 016.5 6h1.2l1.1-1.7c.3-.5.8-.8 1.4-.8h3.6c.6 0 1.1.3 1.4.8L16.3 6h1.2A2.5 2.5 0 0120 8.5v8A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-8z"/><circle cx="12" cy="12.5" r="3.4"/></svg>',
+  pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16"/><path d="M6 16.5L15.5 7a2.1 2.1 0 013 3L9 19.5 5 20l1-3.5z" stroke-linejoin="round"/></svg>',
+  back: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9.2" y="3" width="5.6" height="11" rx="2.8"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3" stroke-linecap="round"/></svg>',
+};
+
+/* ---------------- edge functions ---------------- */
+async function callAdmin(action, body) {
+  try {
+    const { data, error } = await db.functions.invoke('admin-users', { body: Object.assign({ action }, body || {}) });
+    if (error) return { error: 'Network problem — please try again.' };
+    return data || { error: 'Empty response' };
+  } catch (e) {
+    return { error: 'Network problem — please try again.' };
+  }
+}
+async function callScan(image_base64, mime_type) {
+  try {
+    const { data, error } = await db.functions.invoke('scan-card', { body: { image_base64, mime_type } });
+    if (error) return { error: 'network' };
+    return data || { error: 'empty' };
+  } catch (e) {
+    return { error: 'network' };
+  }
+}
+
+/* ---------------- modal ---------------- */
+function openModal(html) {
+  closeModal();
+  const ov = document.createElement('div');
+  ov.className = 'modal-overlay';
+  ov.id = 'modal-ov';
+  ov.innerHTML = '<div class="modal">' + html + '</div>';
+  ov.addEventListener('click', (e) => { if (e.target === ov) closeModal(); });
+  document.body.appendChild(ov);
+  return ov;
+}
+function closeModal() {
+  const ov = $('#modal-ov');
+  if (ov) ov.remove();
+}
+function confirmModal(title, text, yesLabel, onYes, danger) {
+  const ov = openModal(
+    '<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p>' +
+    '<div class="modal-actions">' +
+    '<button class="btn btn-secondary" data-m="no">Cancel</button>' +
+    '<button class="btn btn-primary" data-m="yes"' + (danger ? ' style="background:#b3372f"' : '') + '>' + esc(yesLabel) + '</button>' +
+    '</div>');
+  ov.querySelector('[data-m=no]').onclick = closeModal;
+  ov.querySelector('[data-m=yes]').onclick = () => { closeModal(); onYes(); };
+}
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+async function showAuth() {
+  const app = $('#app');
+  app.innerHTML =
+    '<div class="auth-wrap"><div class="auth-head">' +
+    '<div class="logo-badge" style="margin:0 auto">BJ</div>' +
+    '<h1>Bhagwati Jewels</h1><p>Marketing &amp; Lead Capture</p></div>' +
+    '<div class="auth-card" id="auth-card"><p class="sub">Checking…</p></div></div>';
+
+  const st = await callAdmin('status');
+  S.geminiConfigured = !!st.gemini_configured;
+  if (st.error) {
+    $('#auth-card').innerHTML = '<h2>Cannot reach the server</h2><p class="sub">' + esc(st.error) + '</p>' +
+      '<button class="btn btn-primary" onclick="location.reload()">Retry</button>';
+    return;
+  }
+  if (!st.initialized) renderOwnerSetup();
+  else renderLogin();
+}
+
+function renderLogin() {
+  $('#auth-card').innerHTML =
+    '<h2>Sign in</h2><p class="sub">Use the login given to you by the owner.</p>' +
+    '<form id="login-form">' +
+    '<div class="field"><label>Email</label><input type="email" id="li-email" autocomplete="username" required></div>' +
+    '<div class="field"><label>Password</label><input type="password" id="li-pass" autocomplete="current-password" required></div>' +
+    '<button class="btn btn-primary" type="submit" id="li-btn">Sign in</button>' +
+    '</form>';
+  $('#login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#li-btn'); btn.disabled = true; btn.textContent = 'Signing in…';
+    const { error } = await db.auth.signInWithPassword({ email: $('#li-email').value.trim(), password: $('#li-pass').value });
+    if (error) {
+      btn.disabled = false; btn.textContent = 'Sign in';
+      toast(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message, 'err');
+    }
+    // success → onAuthStateChange takes over
+  });
+}
+
+function renderOwnerSetup() {
+  $('#auth-card').innerHTML =
+    '<h2>First-time setup</h2><p class="sub">Create the <b>owner</b> account. This screen appears only once — after this, only the owner can add team logins.</p>' +
+    '<form id="setup-form">' +
+    '<div class="field"><label>Your name</label><input type="text" id="su-name" required placeholder="e.g. Ravi"></div>' +
+    '<div class="field"><label>Email</label><input type="email" id="su-email" required></div>' +
+    '<div class="field"><label>Password <span class="req">(min 8 characters)</span></label><input type="password" id="su-pass" minlength="8" required autocomplete="new-password"></div>' +
+    '<button class="btn btn-primary" type="submit" id="su-btn">Create owner account</button>' +
+    '</form>';
+  $('#setup-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#su-btn'); btn.disabled = true; btn.textContent = 'Creating…';
+    const email = $('#su-email').value.trim(), pass = $('#su-pass').value, name = $('#su-name').value.trim();
+    const r = await callAdmin('bootstrap', { email, password: pass, full_name: name });
+    if (r.error) { btn.disabled = false; btn.textContent = 'Create owner account'; toast(r.error, 'err'); return; }
+    const { error } = await db.auth.signInWithPassword({ email, password: pass });
+    if (error) { toast('Account created — please sign in.', 'ok'); renderLogin(); }
+  });
+}
+
+/* ============================================================
+   SHELL
+   ============================================================ */
+function renderShell() {
+  $('#app').innerHTML =
+    '<header id="appbar">' +
+    '<button class="back-btn" data-action="back">' + IC.back + '</button>' +
+    '<div class="mini-badge">BJ</div>' +
+    '<div class="titles"><div class="app-name">Bhagwati Jewels</div><div class="screen-name" id="screen-name">Today</div></div>' +
+    '</header>' +
+    '<main id="content"></main>' +
+    '<nav id="tabbar">' +
+    '<button data-action="tab" data-tab="today">' + IC.today + '<span>Today</span></button>' +
+    '<button data-action="tab" data-tab="new">' + IC.plus + '<span>New Client</span></button>' +
+    '<button data-action="tab" data-tab="find">' + IC.find + '<span>Find</span></button>' +
+    '<button data-action="tab" data-tab="more">' + IC.more + '<span>More</span></button>' +
+    '</nav>';
+  bindDelegates();
+}
+
+function setHeader(title, hasBack) {
+  $('#screen-name').textContent = title;
+  $('#appbar').classList.toggle('has-back', !!hasBack);
+}
+
+function switchTab(tab) {
+  S.tab = tab;
+  S.sub = [];
+  document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'today') renderToday();
+  else if (tab === 'new') renderNewChoice();
+  else if (tab === 'find') renderFind();
+  else renderMore();
+  window.scrollTo(0, 0);
+}
+
+/* subview navigation (client page, forms) */
+function showSub(title, renderFn, replace) {
+  if (replace && S.sub.length) S.sub[S.sub.length - 1] = { title, renderFn };
+  else {
+    S.sub.push({ title, renderFn });
+    try { history.pushState({ sub: S.sub.length }, ''); } catch (e) {}
+  }
+  setHeader(title, true);
+  renderFn();
+  window.scrollTo(0, 0);
+}
+function goBack() {
+  if (!S.sub.length) return;
+  S.sub.pop();
+  if (S.sub.length) {
+    const top = S.sub[S.sub.length - 1];
+    setHeader(top.title, true);
+    top.renderFn();
+  } else {
+    switchTab(S.tab);
+  }
+  window.scrollTo(0, 0);
+}
+window.addEventListener('popstate', () => {
+  if (S.suppressPop) { S.suppressPop = false; return; }
+  if ($('#modal-ov')) { closeModal(); return; }
+  if (S.sub.length) goBack();
+});
+
+function bindDelegates() {
+  $('#content').addEventListener('click', onDelegatedClick);
+  $('#tabbar').addEventListener('click', onDelegatedClick);
+  $('#appbar').addEventListener('click', onDelegatedClick);
+  $('#content').addEventListener('input', (e) => {
+    const fu = e.target.closest('[data-fuf]');
+    if (fu) {
+      const idx = +fu.dataset.idx;
+      if (S.fu[idx]) S.fu[idx][fu.dataset.fuf] = fu.value;
+    }
+  });
+}
+
+async function onDelegatedClick(e) {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+
+  if (a === 'tab') switchTab(el.dataset.tab);
+  else if (a === 'back') { if (S.sub.length) { S.suppressPop = true; try { history.back(); } catch (_) {} goBack(); } }
+  else if (a === 'seg') {
+    const group = el.dataset.group;
+    const same = S.formState[group] === el.dataset.val;
+    S.formState[group] = same ? null : el.dataset.val;   // tap again to clear
+    el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', !same && b === el));
+  }
+  else if (a === 'open-client') openClient(el.dataset.id);
+  else if (a === 'scan-start') startScan();
+  else if (a === 'manual-start') { S.pendingPhoto = null; showSub('New Client', () => renderClientForm(null, {}, 'manual')); }
+  else if (a === 'attach-photo') attachPhotoOnly();
+  else if (a === 'remove-photo') { S.pendingPhoto = null; const w = $('#photo-wrap'); if (w) w.innerHTML = photoAttachHTML(); }
+  else if (a === 'save-client') saveClient(el.dataset.editId || null);
+  else if (a === 'fu-add') { S.fu.push({ type: el.dataset.type, content: '', due_date: el.dataset.type === 'reminder' ? todayStr(1) : '' }); redrawFuRows(); }
+  else if (a === 'fu-del') { S.fu.splice(+el.dataset.idx, 1); redrawFuRows(); }
+  else if (a === 'save-interaction') saveInteraction();
+  else if (a === 'new-interaction') { const c = await fetchClient(el.dataset.id); if (c) openInteractionForm(c); }
+  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); }
+  else if (a === 'fu-done') {
+    const { error } = await db.from('followups').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', el.dataset.id);
+    if (error) toast('Could not update — try again.', 'err');
+    else { toast('Marked done ✓', 'ok'); if (S.sub.length && S.currentClientId) openClient(S.currentClientId, true); else renderToday(); }
+  }
+  else if (a === 'fu-tomorrow') {
+    const { error } = await db.from('followups').update({ due_date: todayStr(1) }).eq('id', el.dataset.id);
+    if (error) toast('Could not update — try again.', 'err');
+    else { toast('Moved to tomorrow', 'ok'); renderToday(); }
+  }
+  else if (a === 'today-scope') { S.todayScope = el.dataset.scope; renderToday(); }
+  else if (a === 'logout') confirmModal('Sign out?', 'You will need your email and password to sign in again.', 'Sign out', async () => { await db.auth.signOut(); location.reload(); });
+  else if (a === 'team-add') renderTeamAddModal();
+  else if (a === 'member-toggle') toggleMember(el.dataset.id, el.dataset.active === 'true');
+  else if (a === 'member-resetpw') renderResetPwModal(el.dataset.id);
+  else if (a === 'save-gemini') saveGeminiKey();
+  else if (a === 'call') { /* href handles it */ }
+}
+
+/* ============================================================
+   TODAY
+   ============================================================ */
+async function renderToday() {
+  setHeader('Today', false);
+  const c = $('#content');
+  c.innerHTML = '<div class="empty">Loading…</div>';
+
+  let q = db.from('followups')
+    .select('id, content, due_date, client_id, assigned_to, clients(trade_name, city)')
+    .eq('type', 'reminder').eq('status', 'pending')
+    .order('due_date', { ascending: true })
+    .limit(200);
+  if (!(S.me.role === 'owner' && S.todayScope === 'all')) q = q.eq('assigned_to', S.me.id);
+
+  const { data, error } = await q;
+  if (error) { c.innerHTML = '<div class="empty">Could not load reminders.<br>Pull down to retry.</div>'; return; }
+
+  const t = todayStr(), soon = todayStr(7);
+  const overdue = [], today = [], upcoming = [], later = [];
+  (data || []).forEach((r) => {
+    if (!r.due_date || r.due_date < t) overdue.push(r);
+    else if (r.due_date === t) today.push(r);
+    else if (r.due_date <= soon) upcoming.push(r);
+    else later.push(r);
+  });
+
+  let html = '';
+  if (S.me.role === 'owner') {
+    html += '<div class="filter-chips">' +
+      '<button class="' + (S.todayScope === 'mine' ? 'on' : '') + '" data-action="today-scope" data-scope="mine">My reminders</button>' +
+      '<button class="' + (S.todayScope === 'all' ? 'on' : '') + '" data-action="today-scope" data-scope="all">Whole team</button></div>';
+  }
+
+  const item = (r) => {
+    const who = (S.me.role === 'owner' && S.todayScope === 'all' && r.assigned_to !== S.me.id)
+      ? ' · ' + esc(nameOf(r.assigned_to)) : '';
+    return '<div class="rem-item">' +
+      '<div class="rem-content">' + esc(r.content) + '</div>' +
+      '<div class="rem-client" data-action="open-client" data-id="' + r.client_id + '">' + esc(r.clients ? r.clients.trade_name : 'Client') + ' ›</div>' +
+      '<div class="rem-meta">' + esc(dueLabel(r.due_date || t)) + who + '</div>' +
+      '<div class="rem-actions">' +
+      '<button class="btn btn-small btn-secondary" data-action="fu-tomorrow" data-id="' + r.id + '">→ Tomorrow</button>' +
+      '<button class="btn btn-small btn-primary" data-action="fu-done" data-id="' + r.id + '">✓ Done</button>' +
+      '</div></div>';
+  };
+  const group = (label, cls, arr) => arr.length
+    ? '<div class="due-group-label ' + cls + '">' + label + ' (' + arr.length + ')</div>' + arr.map(item).join('') : '';
+
+  html += group('Overdue', 'overdue', overdue);
+  html += group('Today', 'today', today);
+  html += group('Next 7 days', 'soon', upcoming);
+  if (later.length) html += '<div class="due-group-label soon">Later</div><div class="empty" style="padding:10px">+ ' + later.length + ' more further out</div>';
+
+  if (!overdue.length && !today.length && !upcoming.length && !later.length) {
+    html += '<div class="empty"><div class="big">🌤️</div>No pending reminders.<br>Log an interaction and add follow-ups — they will appear here.</div>';
+  }
+  c.innerHTML = html;
+}
+
+/* ============================================================
+   NEW CLIENT
+   ============================================================ */
+function renderNewChoice() {
+  setHeader('New Client', false);
+  $('#content').innerHTML =
+    '<div class="section-label">How do you want to add them?</div>' +
+    '<button class="choice-btn" data-action="scan-start">' +
+    '<span class="ico">' + IC.camera + '</span>' +
+    '<span><span class="ch-title">Scan visiting card</span><br><span class="ch-sub">Photo → details filled automatically' + (S.geminiConfigured ? '' : ' (setup pending — photo still saved)') + '</span></span></button>' +
+    '<button class="choice-btn" data-action="manual-start">' +
+    '<span class="ico">' + IC.pen + '</span>' +
+    '<span><span class="ch-title">Enter manually</span><br><span class="ch-sub">No card? Type the details in a minute</span></span></button>' +
+    '<div class="notice">Tip: after saving the client, you will be asked to record the meeting — reminders you add will show on the Today screen.</div>';
+}
+
+function pickImage(cb) {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.setAttribute('capture', 'environment');
+  inp.onchange = () => { if (inp.files && inp.files[0]) cb(inp.files[0]); };
+  inp.click();
+}
+
+function downscale(file, maxSide) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), hgt = Math.round(img.height * scale);
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = hgt;
+      cv.getContext('2d').drawImage(img, 0, 0, w, hgt);
+      URL.revokeObjectURL(url);
+      cv.toBlob((blob) => {
+        if (!blob) return reject(new Error('image'));
+        const fr = new FileReader();
+        fr.onload = () => resolve({ blob, base64: String(fr.result).split(',')[1], mime: 'image/jpeg' });
+        fr.onerror = () => reject(new Error('image'));
+        fr.readAsDataURL(blob);
+      }, 'image/jpeg', 0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
+    img.src = url;
+  });
+}
+
+function startScan() {
+  pickImage(async (file) => {
+    let photo;
+    try { photo = await downscale(file, 1600); }
+    catch (e) { toast('Could not read that image — try again.', 'err'); return; }
+    S.pendingPhoto = photo;
+
+    const ov = document.createElement('div');
+    ov.className = 'scan-overlay';
+    ov.innerHTML = '<div class="spinner"></div><div>Reading the card…</div>';
+    document.body.appendChild(ov);
+
+    const r = await callScan(photo.base64, photo.mime);
+    ov.remove();
+
+    if (r.ok && r.fields) {
+      const f = r.fields;
+      const pre = {
+        trade_name: f.trade_name || '', company_name: f.company_name || '',
+        contact_person: f.contact_person || '', designation: f.designation || '',
+        mobile: normMobile(f.mobile || ''), city: f.city || '', area: f.area || '',
+      };
+      toast('Card read ✓ — please check the details', 'ok');
+      showSub('New Client', () => renderClientForm(null, pre, 'scan'));
+    } else {
+      if (r.error === 'not_configured') toast('Card scanning is not set up yet — photo will still be saved with the client.');
+      else if (r.error === 'quota') toast('Daily scan limit reached — please type the details; photo will still be saved.');
+      else toast('Could not read the card — please type the details; photo will still be saved.');
+      showSub('New Client', () => renderClientForm(null, {}, 'manual'));
+    }
+  });
+}
+
+function attachPhotoOnly() {
+  pickImage(async (file) => {
+    try { S.pendingPhoto = await downscale(file, 1600); }
+    catch (e) { toast('Could not read that image — try again.', 'err'); return; }
+    const w = $('#photo-wrap');
+    if (w) w.innerHTML = photoPreviewHTML();
+  });
+}
+
+function photoPreviewHTML() {
+  if (!S.pendingPhoto) return photoAttachHTML();
+  const url = URL.createObjectURL(S.pendingPhoto.blob);
+  return '<img class="cardphoto" src="' + url + '" alt="Visiting card">' +
+    '<div class="photo-row">' +
+    '<button type="button" class="btn btn-small btn-secondary" data-action="attach-photo">Retake</button>' +
+    '<button type="button" class="btn btn-small btn-ghost" data-action="remove-photo">Remove</button>' +
+    '</div>';
+}
+function photoAttachHTML() {
+  return '<button type="button" class="btn btn-secondary" data-action="attach-photo">📎 Add card photo (optional)</button>';
+}
+
+function segHTML(group, options, selected, extraCls) {
+  return '<div class="seg">' + options.map((o) => {
+    const cls = (extraCls && extraCls[o] ? extraCls[o] : '') + (selected === o ? ' on' : '');
+    return '<button type="button" class="' + cls.trim() + '" data-action="seg" data-group="' + group + '" data-val="' + esc(o) + '">' + esc(o) + '</button>';
+  }).join('') + '</div>';
+}
+
+function renderClientForm(existing, pre, source) {
+  const c = $('#content');
+  const e = existing || {};
+  const v = (k) => esc(pre[k] != null ? pre[k] : (e[k] != null ? e[k] : ''));
+  S.formState = {
+    bulky: e.is_bulky_buyer === true ? 'Yes' : e.is_bulky_buyer === false ? 'No' : null,
+    category: e.category || 'Undefined',
+    order_type: e.order_type || null,
+    interest: e.interest || null,
+    entry_source: source || e.entry_source || 'manual',
+  };
+  S.editingClient = existing || null;
+
+  c.innerHTML =
+    '<div class="section-label">Visiting card</div>' +
+    '<div class="card" id="photo-wrap">' + (existing && existing.card_image_path && !S.pendingPhoto
+      ? '<div class="hint" style="font-size:13px;color:var(--muted)">A card photo is already saved for this client.</div>' + photoAttachHTML()
+      : photoPreviewHTML()) + '</div>' +
+
+    '<div class="section-label">Basic details</div>' +
+    '<div class="card">' +
+    '<div class="field"><label>Trade name <span class="req">*</span></label><input type="text" id="f-trade" value="' + v('trade_name') + '" placeholder="Shop / brand name"></div>' +
+    '<div class="field"><label>Company name</label><input type="text" id="f-company" value="' + v('company_name') + '" placeholder="Registered company (if different)"></div>' +
+    '<div class="field"><label>Contact person</label><input type="text" id="f-person" value="' + v('contact_person') + '"></div>' +
+    '<div class="field"><label>Designation</label><input type="text" id="f-desig" value="' + v('designation') + '" placeholder="e.g. Purchase Manager"></div>' +
+    '<div class="field"><label>Mobile number</label><input type="tel" id="f-mobile" inputmode="numeric" value="' + v('mobile') + '" placeholder="10-digit mobile">' +
+    '<div id="mobile-note"></div></div>' +
+    '<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="' + v('owner_name') + '"></div>' +
+    '</div>' +
+
+    '<div class="section-label">Business profile</div>' +
+    '<div class="card">' +
+    '<div class="field"><label>Buys bulky jewellery?</label>' + segHTML('bulky', ['Yes', 'No'], S.formState.bulky) + '</div>' +
+    '<div class="field"><label>Customer category (volume of work)</label>' + segHTML('category', ['A', 'B', 'C', 'Undefined'], S.formState.category) +
+    '<div class="hint">A = highest volume · C = lowest</div></div>' +
+    '<div class="field"><label>Order type</label>' + segHTML('order_type', ['Job work', 'Outright', 'Both'], S.formState.order_type) + '</div>' +
+    '<div class="field"><label>Client interest (lead quality)</label>' + segHTML('interest', ['Hot', 'Warm', 'Cold'], S.formState.interest, { Hot: 'hot', Warm: 'warm', Cold: 'cold' }) +
+    '<div class="hint">Hot = high interest · Warm = medium · Cold = low</div></div>' +
+    '</div>' +
+
+    '<div class="section-label">Location</div>' +
+    '<div class="card">' +
+    '<div class="field"><label>City</label><input type="text" id="f-city" value="' + v('city') + '"></div>' +
+    '<div class="field"><label>Area / locality</label><input type="text" id="f-area" value="' + v('area') + '" placeholder="Market / locality"></div>' +
+    '</div>' +
+
+    '<button class="btn btn-primary" data-action="save-client"' + (existing ? ' data-edit-id="' + existing.id + '"' : '') + ' id="save-client-btn">' +
+    (existing ? 'Save changes' : 'Save client') + '</button>' +
+    '<div style="height:10px"></div>';
+
+  const mobileInput = $('#f-mobile');
+  mobileInput.addEventListener('blur', async () => {
+    const note = $('#mobile-note');
+    note.innerHTML = '';
+    const m = normMobile(mobileInput.value);
+    if (!m) return;
+    mobileInput.value = m;
+    if (!isIndianMobile(m)) {
+      note.innerHTML = '<div class="warn">This does not look like a 10-digit mobile number (landline?). You can still save it.</div>';
+    }
+    if (m.length === 10) {
+      const { data } = await db.from('clients').select('id, trade_name, contact_person').eq('mobile', m).neq('id', e.id || '00000000-0000-0000-0000-000000000000').limit(1);
+      if (data && data.length) {
+        note.innerHTML += '<div class="dup">⚠ This number is already saved for <b>' + esc(data[0].trade_name) + '</b>. ' +
+          '<a href="#" data-action="open-client" data-id="' + data[0].id + '">Open that client</a> instead of creating a duplicate.</div>';
+      }
+    }
+  });
+}
+
+async function saveClient(editId) {
+  const btn = $('#save-client-btn');
+  const trade = $('#f-trade').value.trim();
+  if (!trade) { toast('Trade name is required.', 'err'); $('#f-trade').focus(); return; }
+  const mobile = normMobile($('#f-mobile').value);
+
+  const row = {
+    trade_name: trade,
+    company_name: $('#f-company').value.trim() || null,
+    contact_person: $('#f-person').value.trim() || null,
+    designation: $('#f-desig').value.trim() || null,
+    mobile: mobile || null,
+    owner_name: $('#f-owner').value.trim() || null,
+    is_bulky_buyer: S.formState.bulky === 'Yes' ? true : S.formState.bulky === 'No' ? false : null,
+    category: S.formState.category || 'Undefined',
+    order_type: S.formState.order_type || null,
+    interest: S.formState.interest || null,
+    city: $('#f-city').value.trim() || null,
+    area: $('#f-area').value.trim() || null,
+    entry_source: S.formState.entry_source,
+  };
+
+  const doSave = async () => {
+    btn.disabled = true; btn.textContent = 'Saving…';
+    let clientId = editId;
+    if (editId) {
+      const { error } = await db.from('clients').update(row).eq('id', editId);
+      if (error) { btn.disabled = false; btn.textContent = 'Save changes'; toast('Could not save — please try again.', 'err'); return; }
+    } else {
+      row.created_by = S.me.id;
+      const { data, error } = await db.from('clients').insert(row).select('id').single();
+      if (error) { btn.disabled = false; btn.textContent = 'Save client'; toast('Could not save — please try again.', 'err'); return; }
+      clientId = data.id;
+    }
+
+    if (S.pendingPhoto) {
+      const path = clientId + '/' + Date.now() + '.jpg';
+      const { error: upErr } = await db.storage.from('cards').upload(path, S.pendingPhoto.blob, { contentType: 'image/jpeg' });
+      if (!upErr) await db.from('clients').update({ card_image_path: path }).eq('id', clientId);
+      else toast('Client saved, but the card photo could not be uploaded.', 'err');
+      S.pendingPhoto = null;
+    }
+
+    toast(editId ? 'Client updated ✓' : 'Client saved ✓', 'ok');
+    if (editId) { openClient(editId, true); return; }
+
+    const client = await fetchClient(clientId);
+    const ov = openModal(
+      '<h3>Client saved 🎉</h3><p>Record the meeting now? Reminders and instructions you add will appear on the Today screen.</p>' +
+      '<div class="modal-actions">' +
+      '<button class="btn btn-secondary" data-m="later">Later</button>' +
+      '<button class="btn btn-primary" data-m="now">Record meeting</button></div>');
+    ov.querySelector('[data-m=later]').onclick = () => { closeModal(); openClient(clientId, true); };
+    ov.querySelector('[data-m=now]').onclick = () => { closeModal(); if (client) openInteractionForm(client, true); };
+  };
+
+  if (mobile && !isIndianMobile(mobile)) {
+    confirmModal('Not a mobile number?', 'The number "' + mobile + '" does not look like a 10-digit Indian mobile. Save anyway?', 'Save anyway', doSave);
+  } else {
+    doSave();
+  }
+}
+
+/* ============================================================
+   FIND / SEARCH
+   ============================================================ */
+function renderFind() {
+  setHeader('Find Client', false);
+  $('#content').innerHTML =
+    '<div class="search-box"><input type="text" id="search-input" placeholder="Search name, shop, mobile, city…" autocomplete="off"></div>' +
+    '<div id="search-results"><div class="empty">Loading recent clients…</div></div>';
+  const inp = $('#search-input');
+  inp.addEventListener('input', () => {
+    clearTimeout(S.searchTimer);
+    S.searchTimer = setTimeout(() => runSearch(inp.value), 280);
+  });
+  runSearch('');
+}
+
+async function runSearch(qRaw) {
+  const box = $('#search-results');
+  if (!box) return;
+  const q = String(qRaw || '').trim().replace(/[,%()]/g, ' ').trim();
+  let query = db.from('clients').select('id, trade_name, company_name, contact_person, city, area, category, interest, mobile');
+  if (q) {
+    const pat = '%' + q + '%';
+    query = query.or('trade_name.ilike.' + pat + ',company_name.ilike.' + pat + ',contact_person.ilike.' + pat + ',mobile.ilike.' + pat + ',city.ilike.' + pat + ',owner_name.ilike.' + pat).limit(50);
+  } else {
+    query = query.order('created_at', { ascending: false }).limit(25);
+  }
+  const { data, error } = await query;
+  if (error) { box.innerHTML = '<div class="empty">Search failed — try again.</div>'; return; }
+  if (!data || !data.length) {
+    box.innerHTML = '<div class="empty"><div class="big">🔎</div>' + (q ? 'No client matches "' + esc(q) + '".<br>Check the spelling, or add them as a new client.' : 'No clients yet — add your first from the New Client tab.') + '</div>';
+    return;
+  }
+  box.innerHTML = (q ? '' : '<div class="section-label">Recently added</div>') + data.map((cl) =>
+    '<div class="list-item" data-action="open-client" data-id="' + cl.id + '">' +
+    '<div class="li-main">' +
+    '<div class="li-title">' + esc(cl.trade_name) + '</div>' +
+    '<div class="li-sub">' + esc([cl.contact_person, cl.city].filter(Boolean).join(' · ') || cl.company_name || '') + '</div>' +
+    '<div class="li-chips">' + chipCat(cl.category) + chipInterest(cl.interest) + '</div>' +
+    '</div><div style="color:var(--muted)">›</div></div>').join('');
+}
+
+/* ============================================================
+   CLIENT PAGE
+   ============================================================ */
+async function fetchClient(id) {
+  const { data, error } = await db.from('clients').select('*').eq('id', id).maybeSingle();
+  if (error || !data) { toast('Could not open client.', 'err'); return null; }
+  return data;
+}
+
+async function openClient(id, replace) {
+  S.currentClientId = id;
+  const cl = await fetchClient(id);
+  if (!cl) return;
+  showSub(cl.trade_name, () => renderClientPage(cl), replace);
+  loadClientHistory(cl);
+}
+
+function renderClientPage(cl) {
+  const rows = [];
+  const add = (k, vHtml) => { if (vHtml) rows.push('<div class="detail-row"><div class="dk">' + k + '</div><div class="dv">' + vHtml + '</div></div>'); };
+  add('Company', esc(cl.company_name));
+  add('Contact person', esc([cl.contact_person, cl.designation].filter(Boolean).join(' — ')));
+  if (cl.mobile) add('Mobile', '<a href="tel:' + esc(cl.mobile) + '" data-action="call">' + esc(cl.mobile) + '</a>');
+  add('Owner', esc(cl.owner_name));
+  add('Location', esc([cl.area, cl.city].filter(Boolean).join(', ')));
+  add('Bulky jewellery', cl.is_bulky_buyer === true ? 'Yes' : cl.is_bulky_buyer === false ? 'No' : '');
+  add('Order type', esc(cl.order_type));
+  add('Added by', esc(nameOf(cl.created_by)) + ' · ' + fmtD(cl.created_at));
+
+  $('#content').innerHTML =
+    '<div class="client-head"><h2>' + esc(cl.trade_name) + '</h2>' +
+    (cl.company_name ? '<div class="co">' + esc(cl.company_name) + '</div>' : '') +
+    '<div class="chips">' + chipCat(cl.category) + chipInterest(cl.interest) +
+    (cl.order_type ? '<span class="chip">' + esc(cl.order_type) + '</span>' : '') + '</div></div>' +
+
+    '<div class="action-row">' +
+    '<button class="btn btn-primary" data-action="new-interaction" data-id="' + cl.id + '">＋ Record meeting</button>' +
+    '<button class="btn btn-secondary" data-action="edit-client" data-id="' + cl.id + '">Edit</button>' +
+    '</div>' +
+
+    '<div class="card">' + (rows.join('') || '<div class="empty" style="padding:6px">No details yet</div>') + '</div>' +
+    '<div id="client-card-photo"></div>' +
+    '<div id="client-followups"></div>' +
+    '<div id="client-history"><div class="empty">Loading history…</div></div>';
+
+  if (cl.card_image_path) {
+    db.storage.from('cards').createSignedUrl(cl.card_image_path, 3600).then(({ data }) => {
+      const el = $('#client-card-photo');
+      if (data && data.signedUrl && el) {
+        el.innerHTML = '<div class="section-label">Visiting card</div><div class="card"><img class="cardphoto" src="' + data.signedUrl + '" alt="Visiting card"></div>';
+      }
+    });
+  }
+}
+
+async function loadClientHistory(cl) {
+  const [ints, fus] = await Promise.all([
+    db.from('interactions').select('*').eq('client_id', cl.id).order('happened_at', { ascending: false }).limit(100),
+    db.from('followups').select('*').eq('client_id', cl.id).order('created_at', { ascending: true }).limit(300),
+  ]);
+  const fuEl = $('#client-followups'), hiEl = $('#client-history');
+  if (!fuEl || !hiEl) return;
+
+  const followups = fus.data || [];
+  const pending = followups.filter((f) => f.status === 'pending');
+  if (pending.length) {
+    fuEl.innerHTML = '<div class="section-label">Pending follow-ups</div><div class="card">' +
+      pending.map((f) =>
+        '<div class="fu-line">' + chipType(f.type) + '<span style="flex:1">' + esc(f.content) + '</span>' +
+        (f.due_date ? '<span class="fu-due">' + esc(dueLabel(f.due_date)) + '</span>' : '') +
+        '<button class="btn btn-small btn-ghost" data-action="fu-done" data-id="' + f.id + '">✓</button></div>').join('') +
+      '</div>';
+  } else fuEl.innerHTML = '';
+
+  const byInt = {};
+  followups.forEach((f) => { if (f.interaction_id) (byInt[f.interaction_id] = byInt[f.interaction_id] || []).push(f); });
+
+  const items = (ints.data || []).map((it) => {
+    const fuHtml = (byInt[it.id] || []).map((f) =>
+      '<div class="fu-line' + (f.status === 'done' ? ' done' : '') + '">' + chipType(f.type) +
+      '<span style="flex:1">' + esc(f.content) + '</span>' +
+      (f.due_date && f.status === 'pending' ? '<span class="fu-due">' + esc(dueLabel(f.due_date)) + '</span>' : '') + '</div>').join('');
+    return '<div class="timeline-item">' +
+      '<div class="t-meta"><span>' + esc(nameOf(it.exec_id)) + '</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
+      '<div class="t-notes">' + esc(it.notes) + '</div>' +
+      (it.interest_after ? '<div style="margin-top:7px">' + chipInterest(it.interest_after) + ' <span style="font-size:12px;color:var(--muted)">after this meeting</span></div>' : '') +
+      (fuHtml ? '<div class="t-fus">' + fuHtml + '</div>' : '') +
+      '</div>';
+  });
+
+  hiEl.innerHTML = '<div class="section-label">Meeting history</div>' +
+    (items.length ? items.join('') : '<div class="empty">No meetings recorded yet.<br>Tap “Record meeting” after you speak with them.</div>');
+}
+
+/* ============================================================
+   INTERACTION FORM
+   ============================================================ */
+function openInteractionForm(client, replace) {
+  S.interactionClient = client;
+  S.fu = [];
+  S.formState.int_interest = client.interest || null;
+  showSub('Record Meeting', renderInteractionForm, replace);
+}
+
+function renderInteractionForm() {
+  const cl = S.interactionClient;
+  $('#content').innerHTML =
+    '<div class="card" style="padding:13px 15px"><b>' + esc(cl.trade_name) + '</b>' +
+    (cl.city ? ' <span style="color:var(--muted);font-size:13px">· ' + esc(cl.city) + '</span>' : '') + '</div>' +
+
+    '<div class="section-label">What happened in the meeting?</div>' +
+    '<div class="card">' +
+    '<div class="field"><textarea id="int-notes" placeholder="e.g. Showed the new antique collection. Wants a quotation for 200 gm job work…"></textarea>' +
+    '<div class="mic-hint">' + IC.mic + ' Tip: tap the mic on your keyboard and just speak.</div></div>' +
+    '</div>' +
+
+    '<div class="section-label">Follow-ups (optional)</div>' +
+    '<div class="fu-add-row">' +
+    '<button class="btn btn-small btn-secondary" data-action="fu-add" data-type="reminder">＋ Reminder</button>' +
+    '<button class="btn btn-small btn-secondary" data-action="fu-add" data-type="note">＋ Note</button>' +
+    '<button class="btn btn-small btn-secondary" data-action="fu-add" data-type="instruction">＋ Instruction</button>' +
+    '</div><div id="fu-rows"></div>' +
+
+    '<div class="section-label">Client interest after this meeting</div>' +
+    '<div class="card"><div class="field" style="margin-bottom:2px">' +
+    segHTML('int_interest', ['Hot', 'Warm', 'Cold'], S.formState.int_interest, { Hot: 'hot', Warm: 'warm', Cold: 'cold' }) +
+    '</div></div>' +
+
+    '<button class="btn btn-primary" data-action="save-interaction" id="save-int-btn">Save meeting</button>' +
+    '<div style="height:10px"></div>';
+  redrawFuRows();
+}
+
+function redrawFuRows() {
+  const box = $('#fu-rows');
+  if (!box) return;
+  box.innerHTML = S.fu.map((f, i) =>
+    '<div class="fu-row">' +
+    '<div class="fu-top">' + chipType(f.type) + '<button type="button" class="fu-x" data-action="fu-del" data-idx="' + i + '">✕</button></div>' +
+    '<input type="text" data-fuf="content" data-idx="' + i + '" value="' + esc(f.content) + '" placeholder="' +
+    (f.type === 'reminder' ? 'e.g. Call about the quotation' : f.type === 'note' ? 'e.g. Prefers antique finish' : 'e.g. Send catalogue by courier') + '">' +
+    (f.type === 'reminder' ? '<input type="date" data-fuf="due_date" data-idx="' + i + '" value="' + esc(f.due_date || todayStr(1)) + '" min="' + todayStr() + '">' : '') +
+    '</div>').join('');
+}
+
+async function saveInteraction() {
+  const cl = S.interactionClient;
+  const notes = $('#int-notes').value.trim();
+  const fus = S.fu.filter((f) => f.content && f.content.trim());
+  if (!notes && !fus.length) { toast('Write what happened, or add at least one follow-up.', 'err'); return; }
+
+  const btn = $('#save-int-btn'); btn.disabled = true; btn.textContent = 'Saving…';
+  const interestAfter = S.formState.int_interest || null;
+
+  const { data: intRow, error } = await db.from('interactions').insert({
+    client_id: cl.id, exec_id: S.me.id,
+    notes: notes || '(follow-ups only)',
+    interest_after: interestAfter !== cl.interest ? interestAfter : null,
+  }).select('id').single();
+  if (error) { btn.disabled = false; btn.textContent = 'Save meeting'; toast('Could not save — please try again.', 'err'); return; }
+
+  if (fus.length) {
+    const rows = fus.map((f) => ({
+      client_id: cl.id, interaction_id: intRow.id, type: f.type, content: f.content.trim(),
+      due_date: f.type === 'reminder' ? (f.due_date || todayStr(1)) : null,
+      assigned_to: S.me.id, created_by: S.me.id,
+    }));
+    const { error: fuErr } = await db.from('followups').insert(rows);
+    if (fuErr) toast('Meeting saved, but follow-ups failed — add them again from the client page.', 'err');
+  }
+
+  if (interestAfter && interestAfter !== cl.interest) {
+    await db.from('clients').update({ interest: interestAfter }).eq('id', cl.id);
+  }
+
+  toast('Meeting recorded ✓', 'ok');
+  openClient(cl.id, true);
+}
+
+/* ============================================================
+   MORE (profile / team / settings)
+   ============================================================ */
+async function renderMore() {
+  setHeader('More', false);
+  const isOwner = S.me.role === 'owner';
+  let html =
+    '<div class="card"><h3>' + esc(S.me.full_name || 'Me') + '</h3>' +
+    '<span class="chip chip-role">' + (isOwner ? 'Owner' : 'Marketing Executive') + '</span>' +
+    '<div style="margin-top:12px"><button class="btn btn-small btn-danger-ghost" data-action="logout">Sign out</button></div></div>';
+
+  if (isOwner) {
+    html += '<div class="section-label">Team</div><div class="card" id="team-card"><div class="empty" style="padding:8px">Loading…</div></div>' +
+      '<button class="btn btn-secondary" data-action="team-add" style="margin-bottom:14px">＋ Add team member</button>' +
+
+      '<div class="section-label">Card scanning</div>' +
+      '<div class="card" id="gemini-card">' +
+      '<p style="margin:0 0 10px;font-size:14px;color:' + (S.geminiConfigured ? 'var(--green)' : 'var(--muted)') + '">' +
+      (S.geminiConfigured ? '✓ Card scanning is ON.' : 'Not set up yet — executives can still type details and attach card photos.') + '</p>' +
+      '<div class="field"><label>Google AI Studio key ' + (S.geminiConfigured ? '(paste to replace)' : '') + '</label>' +
+      '<input type="password" id="gemini-key" placeholder="AIza…">' +
+      '<div class="hint">Free key from <b>aistudio.google.com/apikey</b> — sign in with Google → Create API key → paste here. Takes 2 minutes, no card required.</div></div>' +
+      '<button class="btn btn-primary" data-action="save-gemini" id="gemini-btn">Save key</button>' +
+      '</div>';
+  }
+  html += '<div class="empty" style="padding-top:6px;font-size:12.5px">Bhagwati Jewels · Marketing app · Phase 1</div>';
+  $('#content').innerHTML = html;
+
+  if (isOwner) renderTeamList();
+}
+
+async function renderTeamList() {
+  const el = $('#team-card');
+  if (!el) return;
+  const { data, error } = await db.from('profiles').select('*').order('created_at', { ascending: true });
+  if (error) { el.innerHTML = '<div class="empty" style="padding:8px">Could not load team.</div>'; return; }
+  S.team = new Map((data || []).map((p) => [p.id, p]));
+  el.innerHTML = (data || []).map((p) => {
+    const me = p.id === S.me.id;
+    return '<div class="member-row">' +
+      '<div class="m-main"><div class="m-name">' + esc(p.full_name || '(no name)') + (me ? ' (you)' : '') + '</div>' +
+      '<div class="m-sub">' + esc(p.email || '') + '</div></div>' +
+      '<span class="chip ' + (p.active ? 'chip-role' : 'chip-off') + '">' + (p.role === 'owner' ? 'Owner' : (p.active ? 'Active' : 'Off')) + '</span>' +
+      (me ? '' :
+        '<div class="m-actions">' +
+        '<button class="btn btn-small btn-ghost" data-action="member-resetpw" data-id="' + p.id + '">Reset PW</button>' +
+        '<button class="btn btn-small ' + (p.active ? 'btn-danger-ghost' : 'btn-ghost') + '" data-action="member-toggle" data-id="' + p.id + '" data-active="' + p.active + '">' + (p.active ? 'Deactivate' : 'Activate') + '</button>' +
+        '</div>') +
+      '</div>';
+  }).join('') || '<div class="empty" style="padding:8px">Only you so far — add your executives.</div>';
+}
+
+function renderTeamAddModal() {
+  const ov = openModal(
+    '<h3>Add team member</h3><p>They sign in with this email &amp; password — share it with them on WhatsApp or in person.</p>' +
+    '<div class="field"><label>Full name</label><input type="text" id="tm-name"></div>' +
+    '<div class="field"><label>Email</label><input type="email" id="tm-email" placeholder="name@gmail.com"></div>' +
+    '<div class="field"><label>Password (min 8 characters)</label><input type="text" id="tm-pass" autocomplete="off"></div>' +
+    '<div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button>' +
+    '<button class="btn btn-primary" data-m="yes">Create login</button></div>');
+  ov.querySelector('[data-m=no]').onclick = closeModal;
+  ov.querySelector('[data-m=yes]').onclick = async (e) => {
+    const name = $('#tm-name').value.trim(), email = $('#tm-email').value.trim(), pass = $('#tm-pass').value;
+    if (!name || !email || pass.length < 8) { toast('Fill name, email, and a password of 8+ characters.', 'err'); return; }
+    e.target.disabled = true; e.target.textContent = 'Creating…';
+    const r = await callAdmin('create_user', { email, password: pass, full_name: name });
+    if (r.error) { e.target.disabled = false; e.target.textContent = 'Create login'; toast(r.error, 'err'); return; }
+    closeModal();
+    toast(name + ' added ✓ — share their email & password with them.', 'ok');
+    renderTeamList();
+  };
+}
+
+function renderResetPwModal(userId) {
+  const ov = openModal(
+    '<h3>Reset password</h3><p>Set a new password for ' + esc(nameOf(userId)) + ' and share it with them.</p>' +
+    '<div class="field"><label>New password (min 8 characters)</label><input type="text" id="rp-pass" autocomplete="off"></div>' +
+    '<div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button>' +
+    '<button class="btn btn-primary" data-m="yes">Set password</button></div>');
+  ov.querySelector('[data-m=no]').onclick = closeModal;
+  ov.querySelector('[data-m=yes]').onclick = async (e) => {
+    const pass = $('#rp-pass').value;
+    if (pass.length < 8) { toast('Password must be at least 8 characters.', 'err'); return; }
+    e.target.disabled = true;
+    const r = await callAdmin('reset_password', { user_id: userId, password: pass });
+    if (r.error) { e.target.disabled = false; toast(r.error, 'err'); return; }
+    closeModal(); toast('Password updated ✓', 'ok');
+  };
+}
+
+function toggleMember(userId, currentlyActive) {
+  confirmModal(
+    currentlyActive ? 'Deactivate this member?' : 'Reactivate this member?',
+    currentlyActive ? 'They will not be able to sign in until you reactivate them. Their records stay safe.' : 'They will be able to sign in again.',
+    currentlyActive ? 'Deactivate' : 'Activate',
+    async () => {
+      const r = await callAdmin('set_active', { user_id: userId, active: !currentlyActive });
+      if (r.error) { toast(r.error, 'err'); return; }
+      toast('Done ✓', 'ok');
+      renderTeamList();
+    }, currentlyActive);
+}
+
+async function saveGeminiKey() {
+  const key = $('#gemini-key').value.trim();
+  if (!key) { toast('Paste the key first.', 'err'); return; }
+  const btn = $('#gemini-btn'); btn.disabled = true; btn.textContent = 'Saving…';
+  const r = await callAdmin('set_secret', { key: 'gemini_key', value: key });
+  btn.disabled = false; btn.textContent = 'Save key';
+  if (r.error) { toast(r.error, 'err'); return; }
+  S.geminiConfigured = true;
+  toast('Card scanning is now ON ✓', 'ok');
+  renderMore();
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+async function enterApp() {
+  // profile may take a moment to exist right after account creation
+  let profile = null;
+  for (let i = 0; i < 3 && !profile; i++) {
+    const { data } = await db.from('profiles').select('*').eq('id', S.session.user.id).maybeSingle();
+    profile = data;
+    if (!profile) await new Promise((r) => setTimeout(r, 700));
+  }
+  if (!profile) { toast('Could not load your profile — please try again.', 'err'); await db.auth.signOut(); showAuth(); return; }
+  if (!profile.active) { toast('Your account is deactivated. Please contact the owner.', 'err'); await db.auth.signOut(); showAuth(); return; }
+  S.me = profile;
+
+  const [teamRes, statusRes] = await Promise.all([
+    db.from('profiles').select('*'),
+    callAdmin('status'),
+  ]);
+  S.team = new Map((teamRes.data || []).map((p) => [p.id, p]));
+  S.geminiConfigured = !!statusRes.gemini_configured;
+
+  renderShell();
+  switchTab('today');
+}
+
+async function boot() {
+  if ('serviceWorker' in navigator) {
+    try { navigator.serviceWorker.register('sw.js'); } catch (e) {}
+  }
+  const { data: { session } } = await db.auth.getSession();
+  S.session = session;
+
+  db.auth.onAuthStateChange((event, sess) => {
+    const had = !!S.session;
+    S.session = sess;
+    if (event === 'SIGNED_IN' && !had) enterApp();
+    if (event === 'SIGNED_OUT') { S.me = null; showAuth(); }
+  });
+
+  if (session) enterApp();
+  else showAuth();
+}
+
+boot();

@@ -14,6 +14,7 @@ const S = {
   team: new Map(),        // id -> profile
   tab: 'today',
   todayScope: 'mine',     // 'mine' | 'all' (owner)
+  report: { period: '7d' },
   sub: [],                // subview stack: {title, render}
   formState: {},          // segmented control values for open form
   fu: [],                 // follow-up builder rows
@@ -104,6 +105,7 @@ const IC = {
   pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16"/><path d="M6 16.5L15.5 7a2.1 2.1 0 013 3L9 19.5 5 20l1-3.5z" stroke-linejoin="round"/></svg>',
   back: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   mic: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9.2" y="3" width="5.6" height="11" rx="2.8"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3" stroke-linecap="round"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 20v-7M12 20V5M19 20v-11" stroke-linecap="round"/><path d="M3 20.5h18" stroke-linecap="round"/></svg>',
 };
 
 /* ---------------- edge functions ---------------- */
@@ -227,8 +229,9 @@ function renderShell() {
     '<main id="content"></main>' +
     '<nav id="tabbar">' +
     '<button data-action="tab" data-tab="today">' + IC.today + '<span>Today</span></button>' +
-    '<button data-action="tab" data-tab="new">' + IC.plus + '<span>New Client</span></button>' +
+    '<button data-action="tab" data-tab="new">' + IC.plus + '<span>New</span></button>' +
     '<button data-action="tab" data-tab="find">' + IC.find + '<span>Find</span></button>' +
+    (S.me && S.me.role === 'owner' ? '<button data-action="tab" data-tab="report">' + IC.chart + '<span>Report</span></button>' : '') +
     '<button data-action="tab" data-tab="more">' + IC.more + '<span>More</span></button>' +
     '</nav>';
   bindDelegates();
@@ -246,6 +249,7 @@ function switchTab(tab) {
   if (tab === 'today') renderToday();
   else if (tab === 'new') renderNewChoice();
   else if (tab === 'find') renderFind();
+  else if (tab === 'report') renderReport();
   else renderMore();
   window.scrollTo(0, 0);
 }
@@ -334,6 +338,15 @@ async function onDelegatedClick(e) {
   else if (a === 'member-resetpw') renderResetPwModal(el.dataset.id);
   else if (a === 'save-gemini') saveGeminiKey();
   else if (a === 'export-data') exportAllData();
+  else if (a === 'report-period') { S.report.period = el.dataset.p; renderReport(); }
+  else if (a === 'report-exec') {
+    const xid = el.dataset.id, xnm = el.dataset.name;
+    showSub(xnm, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportExecView(xid, xnm); });
+  }
+  else if (a === 'report-clients') {
+    const rk = el.dataset.k, rv = el.dataset.v;
+    showSub('Clients — ' + rv, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportClientsView(rk, rv); });
+  }
   else if (a === 'call') { /* href handles it */ }
 }
 
@@ -898,6 +911,148 @@ async function saveInteraction() {
 }
 
 /* ============================================================
+   REPORT (owner dashboard)
+   ============================================================ */
+function periodStartISO(p) {
+  if (p === 'all') return null;
+  const d = new Date();
+  if (p === 'today') { d.setHours(0, 0, 0, 0); return d.toISOString(); }
+  const days = p === '7d' ? 7 : 30;
+  d.setDate(d.getDate() - days);
+  return d.toISOString();
+}
+function periodLabel(p) {
+  return p === 'today' ? 'today' : p === '7d' ? 'in the last 7 days' : p === '30d' ? 'in the last 30 days' : 'overall';
+}
+function aggReport(clients, meets, team) {
+  const perExec = new Map();
+  team.forEach(function (p) { if (p.active) perExec.set(p.id, { name: p.full_name || p.email || '—', meetings: 0, clients: 0 }); });
+  const bump = function (id, k) {
+    if (!id) return;
+    if (!perExec.has(id)) perExec.set(id, { name: '—', meetings: 0, clients: 0 });
+    perExec.get(id)[k] += 1;
+  };
+  meets.forEach(function (m) { bump(m.exec_id, 'meetings'); });
+  clients.forEach(function (c) { bump(c.created_by, 'clients'); });
+  const cat = { A: 0, B: 0, C: 0, 'Undefined': 0 };
+  const intr = { Hot: 0, Warm: 0, Cold: 0 };
+  const city = new Map();
+  clients.forEach(function (c) {
+    const ck = c.category || 'Undefined';
+    cat[ck] = (cat[ck] || 0) + 1;
+    if (c.interest) intr[c.interest] = (intr[c.interest] || 0) + 1;
+    if (c.city && c.city.trim()) { const k = c.city.trim(); city.set(k, (city.get(k) || 0) + 1); }
+  });
+  const execRows = Array.from(perExec.entries())
+    .map(function (e) { return { id: e[0], name: e[1].name, meetings: e[1].meetings, clients: e[1].clients }; })
+    .sort(function (a, b) { return b.meetings - a.meetings || b.clients - a.clients || (a.name < b.name ? -1 : 1); });
+  const topCities = Array.from(city.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5);
+  return { execRows: execRows, cat: cat, intr: intr, topCities: topCities };
+}
+
+async function renderReport() {
+  if (!S.me || S.me.role !== 'owner') { switchTab('today'); return; }
+  setHeader('Report', false);
+  const c = $('#content');
+  c.innerHTML = '<div class="empty">Loading…</div>';
+
+  const startISO = periodStartISO(S.report.period);
+  let cq = db.from('clients').select('id, trade_name, city, category, interest, created_by, created_at').order('created_at', { ascending: false }).limit(1000);
+  let iq = db.from('interactions').select('id, exec_id, client_id, happened_at').order('happened_at', { ascending: false }).limit(1000);
+  if (startISO) { cq = cq.gte('created_at', startISO); iq = iq.gte('happened_at', startISO); }
+  const results = await Promise.all([
+    cq, iq,
+    db.from('followups').select('id', { count: 'exact', head: true }).eq('type', 'reminder').eq('status', 'pending'),
+  ]);
+  if (results[0].error || results[1].error) { c.innerHTML = '<div class="empty">Could not load the report — try again.</div>'; return; }
+  const clients = results[0].data || [], meets = results[1].data || [];
+  const remCount = results[2].count || 0;
+  const agg = aggReport(clients, meets, Array.from(S.team.values()));
+
+  const chip = function (p, label) {
+    return '<button class="' + (S.report.period === p ? 'on' : '') + '" data-action="report-period" data-p="' + p + '">' + label + '</button>';
+  };
+  const brk = function (kind, key, label, n) {
+    return '<button class="brk-chip"' + (n ? ' data-action="report-clients" data-k="' + kind + '" data-v="' + esc(key) + '"' : ' style="opacity:.45"') + '>' + esc(label) + ' <b>' + n + '</b></button>';
+  };
+
+  c.innerHTML =
+    '<div class="filter-chips">' + chip('today', 'Today') + chip('7d', '7 days') + chip('30d', '30 days') + chip('all', 'All') + '</div>' +
+
+    '<div class="stat-row">' +
+    '<div class="stat"><div class="st-num">' + clients.length + '</div><div class="st-label">New clients</div></div>' +
+    '<div class="stat"><div class="st-num">' + meets.length + '</div><div class="st-label">Meetings</div></div>' +
+    '<div class="stat"><div class="st-num">' + remCount + '</div><div class="st-label">Reminders open</div></div>' +
+    '</div>' +
+
+    '<div class="section-label">Team activity ' + esc(periodLabel(S.report.period)) + '</div>' +
+    '<div class="card">' +
+    (agg.execRows.length ? agg.execRows.map(function (r) {
+      return '<div class="exec-row" data-action="report-exec" data-id="' + r.id + '" data-name="' + esc(r.name) + '">' +
+        '<div class="ex-name">' + esc(r.name) + '</div>' +
+        '<div class="ex-nums">' + r.meetings + ' meeting' + (r.meetings === 1 ? '' : 's') + ' · ' + r.clients + ' new</div>' +
+        '<div style="color:var(--muted)">›</div></div>';
+    }).join('') : '<div class="empty" style="padding:8px">No team members yet.</div>') +
+    '</div>' +
+
+    '<div class="section-label">New clients — by category</div>' +
+    '<div class="brk-row">' + brk('category', 'A', 'Cat A', agg.cat.A) + brk('category', 'B', 'Cat B', agg.cat.B) + brk('category', 'C', 'Cat C', agg.cat.C) + brk('category', 'Undefined', 'Undecided', agg.cat['Undefined']) + '</div>' +
+
+    '<div class="section-label">New clients — by interest</div>' +
+    '<div class="brk-row">' + brk('interest', 'Hot', 'Hot', agg.intr.Hot) + brk('interest', 'Warm', 'Warm', agg.intr.Warm) + brk('interest', 'Cold', 'Cold', agg.intr.Cold) + '</div>' +
+
+    (agg.topCities.length ?
+      '<div class="section-label">Top cities</div><div class="card">' +
+      agg.topCities.map(function (x) {
+        return '<div class="exec-row" data-action="report-clients" data-k="city" data-v="' + esc(x[0]) + '">' +
+          '<div class="ex-name">' + esc(x[0]) + '</div><div class="ex-nums">' + x[1] + ' client' + (x[1] === 1 ? '' : 's') + '</div><div style="color:var(--muted)">›</div></div>';
+      }).join('') + '</div>' : '') +
+
+    ((clients.length >= 1000 || meets.length >= 1000) ? '<div class="notice">Showing the most recent 1000 records of this period.</div>' : '') +
+    '<div style="height:6px"></div>';
+}
+
+async function reportExecView(execId, execName) {
+  const startISO = periodStartISO(S.report.period);
+  let q = db.from('interactions').select('id, client_id, happened_at, notes, clients(trade_name, city)').eq('exec_id', execId).order('happened_at', { ascending: false }).limit(200);
+  if (startISO) q = q.gte('happened_at', startISO);
+  const { data, error } = await q;
+  const c = $('#content');
+  if (!c) return;
+  if (error) { c.innerHTML = '<div class="empty">Could not load.</div>'; return; }
+  const rows = data || [];
+  c.innerHTML =
+    '<div class="card" style="padding:13px 15px"><b>' + esc(execName) + '</b> <span style="color:var(--muted);font-size:13px">· ' + rows.length + ' meeting' + (rows.length === 1 ? '' : 's') + ' ' + esc(periodLabel(S.report.period)) + '</span></div>' +
+    (rows.length ? rows.map(function (it) {
+      const cl = it.clients || {};
+      const note = String(it.notes || '');
+      return '<div class="timeline-item">' +
+        '<div class="t-meta"><span class="rem-client" data-action="open-client" data-id="' + it.client_id + '">' + esc(cl.trade_name || 'Client') + ' ›</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
+        '<div class="t-notes">' + esc(note.slice(0, 160)) + (note.length > 160 ? '…' : '') + '</div>' +
+        '</div>';
+    }).join('') : '<div class="empty">No meetings recorded ' + esc(periodLabel(S.report.period)) + '.</div>');
+}
+
+async function reportClientsView(k, v) {
+  const startISO = periodStartISO(S.report.period);
+  let q = db.from('clients').select('id, trade_name, company_name, contact_person, city, category, interest').eq(k, v).order('created_at', { ascending: false }).limit(300);
+  if (startISO) q = q.gte('created_at', startISO);
+  const { data, error } = await q;
+  const c = $('#content');
+  if (!c) return;
+  if (error) { c.innerHTML = '<div class="empty">Could not load.</div>'; return; }
+  const rows = data || [];
+  c.innerHTML = rows.length ? rows.map(function (cl) {
+    return '<div class="list-item" data-action="open-client" data-id="' + cl.id + '">' +
+      '<div class="li-main">' +
+      '<div class="li-title">' + esc(cl.trade_name) + '</div>' +
+      '<div class="li-sub">' + esc([cl.contact_person, cl.city].filter(Boolean).join(' · ') || cl.company_name || '') + '</div>' +
+      '<div class="li-chips">' + chipCat(cl.category) + chipInterest(cl.interest) + '</div>' +
+      '</div><div style="color:var(--muted)">›</div></div>';
+  }).join('') : '<div class="empty">No matching clients ' + esc(periodLabel(S.report.period)) + '.</div>';
+}
+
+/* ============================================================
    EXPORT (owner backup — 3 Excel-ready CSV files)
    ============================================================ */
 async function fetchAll(table, orderCol) {
@@ -1011,7 +1166,7 @@ async function renderMore() {
       '<button class="btn btn-primary" data-action="export-data" id="export-btn">⬇ Export all data</button>' +
       '</div>';
   }
-  html += '<div class="empty" style="padding-top:6px;font-size:12.5px">Bhagwati Jewels · Marketing app · Phase 1</div>';
+  html += '<div class="empty" style="padding-top:6px;font-size:12.5px">Bhagwati Jewels · Marketing app · Phase 2</div>';
   $('#content').innerHTML = html;
 
   if (isOwner) renderTeamList();

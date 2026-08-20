@@ -629,7 +629,7 @@ function missingFields(v, fs) {
   if (!v.company) m.push(['Company name', '#f-company']);
   if (!v.person) m.push(['Contact person', '#f-person']);
   if (!v.mobile) m.push(['Mobile number', '#f-mobile']);
-  if (!fs.polki) m.push(['Buys Polki? Yes/No', null]);
+  if (!fs.polki) m.push(['Buys Polki?', null]);
   if (!fs.order_type) m.push(['Order type', null]);
   if (!fs.interest) m.push(['Client interest', null]);
   if (!v.city) m.push(['City', '#f-city']);
@@ -646,7 +646,7 @@ function renderClientForm(existing, pre, source) {
   const DESIG_KNOWN = ['Partner', 'Owner', 'Founder', 'Staff'];
   const desigMatch = DESIG_KNOWN.find((k) => k.toLowerCase() === desigRaw.toLowerCase());
   S.formState = {
-    polki: e.is_polki_buyer === true ? 'Yes' : e.is_polki_buyer === false ? 'No' : null,
+    polki: e.is_polki_buyer === true ? 'Yes' : e.is_polki_buyer === false ? 'No' : (existing ? 'Undefined' : null),
     category: e.category || 'Undefined',
     order_type: e.order_type || null,
     interest: e.interest || null,
@@ -674,7 +674,7 @@ function renderClientForm(existing, pre, source) {
 
     '<div class="section-label">Business profile</div>' +
     '<div class="card">' +
-    '<div class="field"><label>Buys Polki jewellery? <span class="req">*</span></label>' + segHTML('polki', ['Yes', 'No'], S.formState.polki) + '</div>' +
+    '<div class="field"><label>Buys Polki jewellery? <span class="req">*</span></label>' + segHTML('polki', ['Yes', 'No', 'Undefined'], S.formState.polki) + '</div>' +
     '<div class="field"><label>Customer category (volume of work)</label>' + segHTML('category', ['A', 'B', 'C', 'Undefined'], S.formState.category) +
     '<div class="hint">A = highest volume · C = lowest</div></div>' +
     '<div class="field"><label>Order type <span class="req">*</span></label>' + segHTML('order_type', ['Job work', 'Outright', 'Both'], S.formState.order_type) + '</div>' +
@@ -750,7 +750,7 @@ async function saveClient(editId) {
     email: $('#f-email').value.trim() || null,
     owner_name: $('#f-owner').value.trim() || null,
     address: vals.address,
-    is_polki_buyer: S.formState.polki === 'Yes',
+    is_polki_buyer: S.formState.polki === 'Yes' ? true : S.formState.polki === 'No' ? false : null,
     category: S.formState.category || 'Undefined',
     order_type: S.formState.order_type,
     interest: S.formState.interest,

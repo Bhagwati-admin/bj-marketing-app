@@ -118,9 +118,11 @@ async function callAdmin(action, body) {
     return { error: 'Network problem — please try again.' };
   }
 }
-async function callScan(image_base64, mime_type) {
+async function callScan(front, back) {
   try {
-    const { data, error } = await db.functions.invoke('scan-card', { body: { image_base64, mime_type } });
+    const body = { image_base64: front.base64, mime_type: front.mime };
+    if (back) { body.image_back_base64 = back.base64; body.back_mime_type = back.mime; }
+    const { data, error } = await db.functions.invoke('scan-card', { body });
     if (error) return { error: 'network' };
     return data || { error: 'empty' };
   } catch (e) {
@@ -312,7 +314,9 @@ async function onDelegatedClick(e) {
     if (group === 'int_outcome') { const w = $('#outcome-other-wrap'); if (w) w.style.display = S.formState.int_outcome === 'Other' ? 'block' : 'none'; }
   }
   else if (a === 'open-client') openClient(el.dataset.id);
-  else if (a === 'scan-start') startScan();
+  else if (a === 'scan-start') { S.photos = { front: null, back: null }; S.editingClient = null; showSub('Scan Card', renderScanCapture); }
+  else if (a === 'scan-run') runScan();
+  else if (a === 'scan-type-instead') showSub('New Client', () => renderClientForm(null, {}, 'manual'), true);
   else if (a === 'manual-start') { S.photos = { front: null, back: null }; showSub('New Client', () => renderClientForm(null, {}, 'manual')); }
   else if (a === 'attach-photo') attachPhoto(el.dataset.side || 'front');
   else if (a === 'remove-photo') { S.photos[el.dataset.side || 'front'] = null; redrawPhotos(); }
@@ -321,7 +325,7 @@ async function onDelegatedClick(e) {
   else if (a === 'fu-del') { S.fu.splice(+el.dataset.idx, 1); redrawFuRows(); }
   else if (a === 'save-interaction') saveInteraction();
   else if (a === 'new-interaction') { const c = await fetchClient(el.dataset.id); if (c) openInteractionForm(c); }
-  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); }
+  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) { S.photos = { front: null, back: null }; showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); } }
   else if (a === 'fu-done') {
     const { error } = await db.from('followups').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', el.dataset.id);
     if (error) toast('Could not update — try again.', 'err');
@@ -424,7 +428,7 @@ function renderNewChoice() {
     '<div class="section-label">How do you want to add them?</div>' +
     '<button class="choice-btn" data-action="scan-start">' +
     '<span class="ico">' + IC.camera + '</span>' +
-    '<span><span class="ch-title">Scan visiting card</span><br><span class="ch-sub">Photo → details filled automatically' + (S.geminiConfigured ? '' : ' (setup pending — photo still saved)') + '</span></span></button>' +
+    '<span><span class="ch-title">Scan visiting card</span><br><span class="ch-sub">Front &amp; back photos → details filled in for you' + (S.geminiConfigured ? '' : ' (setup pending — photos still saved)') + '</span></span></button>' +
     '<button class="choice-btn" data-action="manual-start">' +
     '<span class="ico">' + IC.pen + '</span>' +
     '<span><span class="ch-title">Enter manually</span><br><span class="ch-sub">No card? Type the details in a minute</span></span></button>' +
@@ -464,38 +468,43 @@ function downscale(file, maxSide) {
   });
 }
 
-function startScan() {
-  pickImage(async (file) => {
-    let photo;
-    try { photo = await downscale(file, 1600); }
-    catch (e) { toast('Could not read that image — try again.', 'err'); return; }
-    S.photos = { front: photo, back: null };
+function renderScanCapture() {
+  $('#content').innerHTML =
+    '<div class="section-label">Card photos</div>' +
+    '<div class="card" id="photo-wrap">' + photosSectionHTML(null) + '</div>' +
+    '<div class="notice">Add the <b>front</b> photo, and the <b>back</b> too if the card has details there — the scanner reads both sides together.</div>' +
+    '<button class="btn btn-primary" data-action="scan-run" id="scan-run-btn">Scan & fill details</button>' +
+    '<div style="height:8px"></div>' +
+    '<button class="btn btn-secondary" data-action="scan-type-instead">Type the details instead</button>' +
+    '<div style="height:10px"></div>';
+}
 
-    const ov = document.createElement('div');
-    ov.className = 'scan-overlay';
-    ov.innerHTML = '<div class="spinner"></div><div>Reading the card…</div>';
-    document.body.appendChild(ov);
+async function runScan() {
+  if (!S.photos.front) { toast('Add the front photo first.', 'err'); return; }
+  const ov = document.createElement('div');
+  ov.className = 'scan-overlay';
+  ov.innerHTML = '<div class="spinner"></div><div>Reading the card…</div>';
+  document.body.appendChild(ov);
 
-    const r = await callScan(photo.base64, photo.mime);
-    ov.remove();
+  const r = await callScan(S.photos.front, S.photos.back);
+  ov.remove();
 
-    if (r.ok && r.fields) {
-      const f = r.fields;
-      const pre = {
-        trade_name: f.trade_name || '', company_name: f.company_name || '',
-        contact_person: f.contact_person || '', designation: f.designation || '',
-        mobile: normMobile(f.mobile || ''), city: f.city || '', area: f.area || '',
-        address: f.address || '',
-      };
-      toast('Card read ✓ — please check the details', 'ok');
-      showSub('New Client', () => renderClientForm(null, pre, 'scan'));
-    } else {
-      if (r.error === 'not_configured') toast('Card scanning is not set up yet — photo will still be saved with the client.');
-      else if (r.error === 'quota') toast('Daily scan limit reached — please type the details; photo will still be saved.');
-      else toast('Could not read the card — please type the details; photo will still be saved.');
-      showSub('New Client', () => renderClientForm(null, {}, 'manual'));
-    }
-  });
+  if (r.ok && r.fields) {
+    const f = r.fields;
+    const pre = {
+      trade_name: f.trade_name || '', company_name: f.company_name || f.trade_name || '',
+      contact_person: f.contact_person || '', designation: f.designation || '',
+      mobile: normMobile(f.mobile || ''), city: f.city || '', area: f.area || '',
+      address: f.address || '', state: f.state || '',
+    };
+    toast('Card read ✓ — please check the details', 'ok');
+    showSub('New Client', () => renderClientForm(null, pre, 'scan'), true);
+  } else {
+    if (r.error === 'not_configured') toast('Card scanning is not set up yet — the photos will still be saved with the client.');
+    else if (r.error === 'quota') toast('Daily scan limit reached — please type the details; the photos will still be saved.');
+    else toast('Could not read the card — please type the details; the photos will still be saved.');
+    showSub('New Client', () => renderClientForm(null, {}, 'manual'), true);
+  }
 }
 
 function attachPhoto(side) {
@@ -544,10 +553,67 @@ function outcomeChip(v) {
   return v ? '<span class="chip" style="background:#f3ead9;color:#7a5a15">' + esc(v) + '</span>' : '';
 }
 
+/* ---------------- Indian regions (suggestions — free typing always allowed) ---------------- */
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
+  'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+  'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana',
+  'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+];
+const INDIAN_CITIES = [
+  'Agartala', 'Agra', 'Ahmedabad', 'Aizawl', 'Ajmer', 'Akola', 'Aligarh', 'Alwar', 'Ambala', 'Amravati',
+  'Amritsar', 'Anand', 'Anantapur', 'Asansol', 'Aurangabad', 'Ballari', 'Bareilly', 'Bathinda', 'Belagavi',
+  'Bengaluru', 'Bhagalpur', 'Bharuch', 'Bhavnagar', 'Bhilai', 'Bhilwara', 'Bhopal', 'Bhubaneswar', 'Bikaner',
+  'Bilaspur', 'Bokaro', 'Chandigarh', 'Chennai', 'Coimbatore', 'Cuttack', 'Davangere', 'Dehradun', 'Delhi',
+  'Dewas', 'Dhanbad', 'Dhule', 'Dimapur', 'Durg', 'Durgapur', 'Erode', 'Faridabad', 'Gandhinagar', 'Gangtok',
+  'Gaya', 'Ghaziabad', 'Gorakhpur', 'Guntur', 'Gurugram', 'Guwahati', 'Gwalior', 'Haldwani', 'Haridwar',
+  'Himmatnagar', 'Hisar', 'Hosur', 'Howrah', 'Hubballi', 'Hyderabad', 'Ichalkaranji', 'Imphal', 'Indore',
+  'Itanagar', 'Jabalpur', 'Jaipur', 'Jalandhar', 'Jalgaon', 'Jammu', 'Jamnagar', 'Jamshedpur', 'Jhansi',
+  'Jodhpur', 'Junagadh', 'Kakinada', 'Kalaburagi', 'Kanpur', 'Karimnagar', 'Karnal', 'Kharagpur', 'Khammam',
+  'Kochi', 'Kolhapur', 'Kolkata', 'Kota', 'Kozhikode', 'Kurnool', 'Latur', 'Lucknow', 'Ludhiana', 'Madurai',
+  'Mangaluru', 'Margao', 'Meerut', 'Mehsana', 'Moradabad', 'Mumbai', 'Muzaffarpur', 'Mysuru', 'Nagpur',
+  'Nanded', 'Nashik', 'Navsari', 'Nellore', 'Nizamabad', 'Noida', 'Palanpur', 'Pali', 'Panaji', 'Panipat',
+  'Patan', 'Patiala', 'Patna', 'Prayagraj', 'Puducherry', 'Pune', 'Raipur', 'Rajahmundry', 'Rajkot', 'Ranchi',
+  'Ratlam', 'Rohtak', 'Sagar', 'Saharanpur', 'Salem', 'Sangli', 'Satara', 'Secunderabad', 'Shillong', 'Shimla',
+  'Sikar', 'Siliguri', 'Solapur', 'Srinagar', 'Surat', 'Thane', 'Thiruvananthapuram', 'Thrissur',
+  'Tiruchirappalli', 'Tirunelveli', 'Tirupati', 'Tumakuru', 'Udaipur', 'Ujjain', 'Vadodara', 'Valsad', 'Vapi',
+  'Varanasi', 'Vellore', 'Vijayawada', 'Visakhapatnam', 'Warangal',
+];
+
+function ensureDatalists() {
+  if ($('#dl-city')) return;
+  const make = function (id, arr) {
+    const dl = document.createElement('datalist');
+    dl.id = id;
+    dl.innerHTML = arr.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('');
+    document.body.appendChild(dl);
+  };
+  make('dl-city', INDIAN_CITIES);
+  make('dl-state', INDIAN_STATES);
+}
+
+/* Which compulsory fields are still empty? Returns [label, selector|null] pairs. */
+function missingFields(v, fs) {
+  const m = [];
+  if (!v.company) m.push(['Company name', '#f-company']);
+  if (!v.person) m.push(['Contact person', '#f-person']);
+  if (!v.mobile) m.push(['Mobile number', '#f-mobile']);
+  if (!fs.polki) m.push(['Buys Polki? Yes/No', null]);
+  if (!fs.order_type) m.push(['Order type', null]);
+  if (!fs.interest) m.push(['Client interest', null]);
+  if (!v.city) m.push(['City', '#f-city']);
+  if (!v.address) m.push(['Full address', '#f-address']);
+  return m;
+}
+
 function renderClientForm(existing, pre, source) {
+  ensureDatalists();
   const c = $('#content');
   const e = existing || {};
   const v = (k) => esc(pre[k] != null ? pre[k] : (e[k] != null ? e[k] : ''));
+  const compVal = esc(String(pre.company_name || pre.trade_name || e.company_name || e.trade_name || '').trim());
   const desigRaw = String((pre.designation != null ? pre.designation : e.designation) || '').trim();
   const DESIG_KNOWN = ['Partner', 'Owner', 'Founder', 'Staff'];
   const desigMatch = DESIG_KNOWN.find((k) => k.toLowerCase() === desigRaw.toLowerCase());
@@ -568,31 +634,31 @@ function renderClientForm(existing, pre, source) {
 
     '<div class="section-label">Basic details</div>' +
     '<div class="card">' +
-    '<div class="field"><label>Trade name <span class="req">*</span></label><input type="text" id="f-trade" value="' + v('trade_name') + '" placeholder="Shop / brand name"></div>' +
-    '<div class="field"><label>Company name</label><input type="text" id="f-company" value="' + v('company_name') + '" placeholder="Registered company (if different)"></div>' +
-    '<div class="field"><label>Contact person</label><input type="text" id="f-person" value="' + v('contact_person') + '"></div>' +
+    '<div class="field"><label>Company / firm name <span class="req">*</span></label><input type="text" id="f-company" value="' + compVal + '" placeholder="Shop / company name"></div>' +
+    '<div class="field"><label>Contact person <span class="req">*</span></label><input type="text" id="f-person" value="' + v('contact_person') + '"></div>' +
     '<div class="field"><label>Designation</label>' + segHTML('desig', ['Partner', 'Owner', 'Founder', 'Staff', 'Other'], S.formState.desig) +
     '<div id="desig-other-wrap" style="display:' + (S.formState.desig === 'Other' ? 'block' : 'none') + ';margin-top:8px"><input type="text" id="f-desig-other" value="' + esc(S.formState.desig_other) + '" placeholder="Type the designation"></div></div>' +
-    '<div class="field"><label>Mobile number</label><input type="tel" id="f-mobile" inputmode="numeric" value="' + v('mobile') + '" placeholder="10-digit mobile">' +
+    '<div class="field"><label>Mobile number <span class="req">*</span></label><input type="tel" id="f-mobile" inputmode="numeric" value="' + v('mobile') + '" placeholder="10-digit mobile">' +
     '<div id="mobile-note"></div></div>' +
     '<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="' + v('owner_name') + '"></div>' +
     '</div>' +
 
     '<div class="section-label">Business profile</div>' +
     '<div class="card">' +
-    '<div class="field"><label>Buys Polki jewellery?</label>' + segHTML('polki', ['Yes', 'No'], S.formState.polki) + '</div>' +
+    '<div class="field"><label>Buys Polki jewellery? <span class="req">*</span></label>' + segHTML('polki', ['Yes', 'No'], S.formState.polki) + '</div>' +
     '<div class="field"><label>Customer category (volume of work)</label>' + segHTML('category', ['A', 'B', 'C', 'Undefined'], S.formState.category) +
     '<div class="hint">A = highest volume · C = lowest</div></div>' +
-    '<div class="field"><label>Order type</label>' + segHTML('order_type', ['Job work', 'Outright', 'Both'], S.formState.order_type) + '</div>' +
-    '<div class="field"><label>Client interest (lead quality)</label>' + segHTML('interest', ['Hot', 'Warm', 'Cold'], S.formState.interest, { Hot: 'hot', Warm: 'warm', Cold: 'cold' }) +
+    '<div class="field"><label>Order type <span class="req">*</span></label>' + segHTML('order_type', ['Job work', 'Outright', 'Both'], S.formState.order_type) + '</div>' +
+    '<div class="field"><label>Client interest (lead quality) <span class="req">*</span></label>' + segHTML('interest', ['Hot', 'Warm', 'Cold'], S.formState.interest, { Hot: 'hot', Warm: 'warm', Cold: 'cold' }) +
     '<div class="hint">Hot = high interest · Warm = medium · Cold = low</div></div>' +
     '</div>' +
 
     '<div class="section-label">Location</div>' +
     '<div class="card">' +
-    '<div class="field"><label>City</label><input type="text" id="f-city" value="' + v('city') + '"></div>' +
+    '<div class="field"><label>City <span class="req">*</span></label><input type="text" id="f-city" list="dl-city" value="' + v('city') + '" placeholder="Start typing — pick from the list or write any city"></div>' +
+    '<div class="field"><label>State</label><input type="text" id="f-state" list="dl-state" value="' + v('state') + '" placeholder="Start typing — pick the state"></div>' +
     '<div class="field"><label>Area / locality</label><input type="text" id="f-area" value="' + v('area') + '" placeholder="Market / locality"></div>' +
-    '<div class="field"><label>Full address</label><textarea id="f-address" style="min-height:70px" placeholder="Shop no., street, market, city, PIN">' + v('address') + '</textarea></div>' +
+    '<div class="field"><label>Full address <span class="req">*</span></label><textarea id="f-address" style="min-height:70px" placeholder="Shop no., street, market, city, PIN">' + v('address') + '</textarea></div>' +
     '</div>' +
 
     '<button class="btn btn-primary" data-action="save-client"' + (existing ? ' data-edit-id="' + existing.id + '"' : '') + ' id="save-client-btn">' +
@@ -621,26 +687,42 @@ function renderClientForm(existing, pre, source) {
 
 async function saveClient(editId) {
   const btn = $('#save-client-btn');
-  const trade = $('#f-trade').value.trim();
-  if (!trade) { toast('Trade name is required.', 'err'); $('#f-trade').focus(); return; }
   const mobile = normMobile($('#f-mobile').value);
+  const vals = {
+    company: $('#f-company').value.trim(),
+    person: $('#f-person').value.trim(),
+    mobile: mobile,
+    city: $('#f-city').value.trim(),
+    address: $('#f-address').value.trim(),
+  };
+  const miss = missingFields(vals, S.formState);
+  if (miss.length) {
+    toast('Please fill: ' + miss.map((m) => m[0]).join(', '), 'err');
+    const first = miss.find((m) => m[1]);
+    if (first) {
+      const fe = $(first[1]);
+      if (fe) { fe.focus(); try { fe.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} }
+    }
+    return;
+  }
 
   const desigVal = S.formState.desig === 'Other'
     ? ($('#f-desig-other') ? $('#f-desig-other').value.trim() : '')
     : (S.formState.desig || '');
   const row = {
-    trade_name: trade,
-    company_name: $('#f-company').value.trim() || null,
-    contact_person: $('#f-person').value.trim() || null,
+    trade_name: vals.company,
+    company_name: vals.company,
+    contact_person: vals.person,
     designation: desigVal || null,
-    mobile: mobile || null,
+    mobile: mobile,
     owner_name: $('#f-owner').value.trim() || null,
-    address: $('#f-address').value.trim() || null,
-    is_polki_buyer: S.formState.polki === 'Yes' ? true : S.formState.polki === 'No' ? false : null,
+    address: vals.address,
+    is_polki_buyer: S.formState.polki === 'Yes',
     category: S.formState.category || 'Undefined',
-    order_type: S.formState.order_type || null,
-    interest: S.formState.interest || null,
-    city: $('#f-city').value.trim() || null,
+    order_type: S.formState.order_type,
+    interest: S.formState.interest,
+    city: vals.city,
+    state: $('#f-state').value.trim() || null,
     area: $('#f-area').value.trim() || null,
     entry_source: S.formState.entry_source,
   };
@@ -756,11 +838,11 @@ async function openClient(id, replace) {
 function renderClientPage(cl) {
   const rows = [];
   const add = (k, vHtml) => { if (vHtml) rows.push('<div class="detail-row"><div class="dk">' + k + '</div><div class="dv">' + vHtml + '</div></div>'); };
-  add('Company', esc(cl.company_name));
+  if (cl.company_name && cl.company_name !== cl.trade_name) add('Company', esc(cl.company_name));
   add('Contact person', esc([cl.contact_person, cl.designation].filter(Boolean).join(' — ')));
   if (cl.mobile) add('Mobile', '<a href="tel:' + esc(cl.mobile) + '" data-action="call">' + esc(cl.mobile) + '</a>');
   add('Owner', esc(cl.owner_name));
-  add('Location', esc([cl.area, cl.city].filter(Boolean).join(', ')));
+  add('Location', esc([cl.area, cl.city, cl.state].filter(Boolean).join(', ')));
   add('Address', esc(cl.address));
   add('Polki jewellery', cl.is_polki_buyer === true ? 'Yes' : cl.is_polki_buyer === false ? 'No' : '');
   add('Order type', esc(cl.order_type));
@@ -768,7 +850,7 @@ function renderClientPage(cl) {
 
   $('#content').innerHTML =
     '<div class="client-head"><h2>' + esc(cl.trade_name) + '</h2>' +
-    (cl.company_name ? '<div class="co">' + esc(cl.company_name) + '</div>' : '') +
+    (cl.company_name && cl.company_name !== cl.trade_name ? '<div class="co">' + esc(cl.company_name) + '</div>' : '') +
     '<div class="chips">' + chipCat(cl.category) + chipInterest(cl.interest) +
     (cl.order_type ? '<span class="chip">' + esc(cl.order_type) + '</span>' : '') + '</div></div>' +
 
@@ -1172,8 +1254,8 @@ async function exportAllData() {
 
     const today = todayStr();
     downloadFile('bj-clients-' + today + '.csv', buildCsv(
-      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', "Owner's name", 'Address', 'Area', 'City', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
-      clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.owner_name, c.address, c.area, c.city, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
+      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', "Owner's name", 'Address', 'Area', 'City', 'State', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
+      clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.owner_name, c.address, c.area, c.city, c.state, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
 
     await new Promise((r) => setTimeout(r, 450));
     downloadFile('bj-meetings-' + today + '.csv', buildCsv(

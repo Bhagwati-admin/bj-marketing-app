@@ -582,16 +582,45 @@ const INDIAN_CITIES = [
   'Varanasi', 'Vellore', 'Vijayawada', 'Visakhapatnam', 'Warangal',
 ];
 
-function ensureDatalists() {
-  if ($('#dl-city')) return;
-  const make = function (id, arr) {
-    const dl = document.createElement('datalist');
-    dl.id = id;
-    dl.innerHTML = arr.map(function (x) { return '<option value="' + esc(x) + '">'; }).join('');
-    document.body.appendChild(dl);
+function comboFilter(arr, q) {
+  q = String(q || '').trim().toLowerCase();
+  if (!q) return arr;
+  const starts = arr.filter(function (x) { return x.toLowerCase().indexOf(q) === 0; });
+  const contains = arr.filter(function (x) { return x.toLowerCase().indexOf(q) > 0; });
+  return starts.concat(contains);
+}
+
+/* Visible dropdown + free typing for a text input (native datalist is hidden by Chrome's address autofill). */
+function attachCombo(inputSel, listSel, arr) {
+  const inp = $(inputSel), list = $(listSel);
+  if (!inp || !list) return;
+  const arrBtn = inp.parentElement.querySelector('.combo-arr');
+  let showAll = false;
+  const close = function () { list.classList.remove('open'); };
+  const render = function () {
+    const items = comboFilter(arr, inp.value).slice(0, showAll ? 400 : 8);
+    list.innerHTML = items.length
+      ? items.map(function (x) { return '<button type="button" data-v="' + esc(x) + '">' + esc(x) + '</button>'; }).join('')
+      : '<div class="combo-none">Not in the list — what you typed will be saved as is.</div>';
+    list.classList.add('open');
   };
-  make('dl-city', INDIAN_CITIES);
-  make('dl-state', INDIAN_STATES);
+  inp.addEventListener('input', function () { showAll = false; render(); });
+  inp.addEventListener('focus', function () { showAll = false; render(); });
+  inp.addEventListener('blur', function () { setTimeout(close, 200); });
+  if (arrBtn) {
+    arrBtn.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+    arrBtn.addEventListener('click', function () {
+      if (list.classList.contains('open') && showAll) { close(); return; }
+      showAll = true; render();
+    });
+  }
+  list.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+  list.addEventListener('click', function (ev) {
+    const b = ev.target.closest('button[data-v]');
+    if (!b) return;
+    inp.value = b.dataset.v;
+    close();
+  });
 }
 
 /* Which compulsory fields are still empty? Returns [label, selector|null] pairs. */
@@ -609,7 +638,6 @@ function missingFields(v, fs) {
 }
 
 function renderClientForm(existing, pre, source) {
-  ensureDatalists();
   const c = $('#content');
   const e = existing || {};
   const v = (k) => esc(pre[k] != null ? pre[k] : (e[k] != null ? e[k] : ''));
@@ -655,8 +683,8 @@ function renderClientForm(existing, pre, source) {
 
     '<div class="section-label">Location</div>' +
     '<div class="card">' +
-    '<div class="field"><label>City <span class="req">*</span></label><input type="text" id="f-city" list="dl-city" value="' + v('city') + '" placeholder="Start typing — pick from the list or write any city"></div>' +
-    '<div class="field"><label>State</label><input type="text" id="f-state" list="dl-state" value="' + v('state') + '" placeholder="Start typing — pick the state"></div>' +
+    '<div class="field"><label>City <span class="req">*</span></label><div class="combo"><input type="text" id="f-city" autocomplete="off" value="' + v('city') + '" placeholder="Type or pick a city"><button type="button" class="combo-arr" tabindex="-1" aria-label="Show cities">▾</button><div class="combo-list" id="cl-city"></div></div></div>' +
+    '<div class="field"><label>State</label><div class="combo"><input type="text" id="f-state" autocomplete="off" value="' + v('state') + '" placeholder="Type or pick a state"><button type="button" class="combo-arr" tabindex="-1" aria-label="Show states">▾</button><div class="combo-list" id="cl-state"></div></div></div>' +
     '<div class="field"><label>Area / locality</label><input type="text" id="f-area" value="' + v('area') + '" placeholder="Market / locality"></div>' +
     '<div class="field"><label>Full address <span class="req">*</span></label><textarea id="f-address" style="min-height:70px" placeholder="Shop no., street, market, city, PIN">' + v('address') + '</textarea></div>' +
     '</div>' +
@@ -683,6 +711,9 @@ function renderClientForm(existing, pre, source) {
       }
     }
   });
+
+  attachCombo('#f-city', '#cl-city', INDIAN_CITIES);
+  attachCombo('#f-state', '#cl-state', INDIAN_STATES);
 }
 
 async function saveClient(editId) {

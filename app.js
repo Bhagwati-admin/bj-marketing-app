@@ -309,6 +309,7 @@ async function onDelegatedClick(e) {
     S.formState[group] = same ? null : el.dataset.val;   // tap again to clear
     el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', !same && b === el));
     if (group === 'desig') { const w = $('#desig-other-wrap'); if (w) w.style.display = S.formState.desig === 'Other' ? 'block' : 'none'; }
+    if (group === 'int_outcome') { const w = $('#outcome-other-wrap'); if (w) w.style.display = S.formState.int_outcome === 'Other' ? 'block' : 'none'; }
   }
   else if (a === 'open-client') openClient(el.dataset.id);
   else if (a === 'scan-start') startScan();
@@ -320,7 +321,7 @@ async function onDelegatedClick(e) {
   else if (a === 'fu-del') { S.fu.splice(+el.dataset.idx, 1); redrawFuRows(); }
   else if (a === 'save-interaction') saveInteraction();
   else if (a === 'new-interaction') { const c = await fetchClient(el.dataset.id); if (c) openInteractionForm(c); }
-  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) { S.photos = { front: null, back: null }; showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); } }
+  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); }
   else if (a === 'fu-done') {
     const { error } = await db.from('followups').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', el.dataset.id);
     if (error) toast('Could not update — try again.', 'err');
@@ -346,6 +347,10 @@ async function onDelegatedClick(e) {
   else if (a === 'report-clients') {
     const rk = el.dataset.k, rv = el.dataset.v;
     showSub('Clients — ' + rv, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportClientsView(rk, rv); });
+  }
+  else if (a === 'report-outcome') {
+    const ov = el.dataset.v;
+    showSub(ov, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportMeetsView(ov); });
   }
   else if (a === 'call') { /* href handles it */ }
 }
@@ -532,6 +537,11 @@ function segHTML(group, options, selected, extraCls) {
     const cls = (extraCls && extraCls[o] ? extraCls[o] : '') + (selected === o ? ' on' : '');
     return '<button type="button" class="' + cls.trim() + '" data-action="seg" data-group="' + group + '" data-val="' + esc(o) + '">' + esc(o) + '</button>';
   }).join('') + '</div>';
+}
+
+const OUTCOMES = ['Meeting', 'Job work order', 'Outright order', 'Person not available', 'Other'];
+function outcomeChip(v) {
+  return v ? '<span class="chip" style="background:#f3ead9;color:#7a5a15">' + esc(v) + '</span>' : '';
 }
 
 function renderClientForm(existing, pre, source) {
@@ -815,6 +825,7 @@ async function loadClientHistory(cl) {
       (f.due_date && f.status === 'pending' ? '<span class="fu-due">' + esc(dueLabel(f.due_date)) + '</span>' : '') + '</div>').join('');
     return '<div class="timeline-item">' +
       '<div class="t-meta"><span>' + esc(nameOf(it.exec_id)) + '</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
+      (it.outcome ? '<div style="margin:2px 0 5px">' + outcomeChip(it.outcome) + '</div>' : '') +
       '<div class="t-notes">' + esc(it.notes) + '</div>' +
       (it.interest_after ? '<div style="margin-top:7px">' + chipInterest(it.interest_after) + ' <span style="font-size:12px;color:var(--muted)">after this meeting</span></div>' : '') +
       (fuHtml ? '<div class="t-fus">' + fuHtml + '</div>' : '') +
@@ -832,6 +843,7 @@ function openInteractionForm(client, replace) {
   S.interactionClient = client;
   S.fu = [];
   S.formState.int_interest = client.interest || null;
+  S.formState.int_outcome = null;
   showSub('Record Meeting', renderInteractionForm, replace);
 }
 
@@ -840,6 +852,12 @@ function renderInteractionForm() {
   $('#content').innerHTML =
     '<div class="card" style="padding:13px 15px"><b>' + esc(cl.trade_name) + '</b>' +
     (cl.city ? ' <span style="color:var(--muted);font-size:13px">· ' + esc(cl.city) + '</span>' : '') + '</div>' +
+
+    '<div class="section-label">Meeting outcome</div>' +
+    '<div class="card"><div class="field" style="margin-bottom:2px">' +
+    segHTML('int_outcome', OUTCOMES, S.formState.int_outcome) +
+    '<div id="outcome-other-wrap" style="display:' + (S.formState.int_outcome === 'Other' ? 'block' : 'none') + ';margin-top:8px"><input type="text" id="f-outcome-other" placeholder="What was the outcome?"></div>' +
+    '</div></div>' +
 
     '<div class="section-label">What happened in the meeting?</div>' +
     '<div class="card">' +
@@ -880,14 +898,18 @@ async function saveInteraction() {
   const cl = S.interactionClient;
   const notes = $('#int-notes').value.trim();
   const fus = S.fu.filter((f) => f.content && f.content.trim());
-  if (!notes && !fus.length) { toast('Write what happened, or add at least one follow-up.', 'err'); return; }
+  const outcomeVal = S.formState.int_outcome === 'Other'
+    ? ($('#f-outcome-other') ? $('#f-outcome-other').value.trim() : '')
+    : (S.formState.int_outcome || '');
+  if (!notes && !fus.length && !outcomeVal) { toast('Choose an outcome, write what happened, or add a follow-up.', 'err'); return; }
 
   const btn = $('#save-int-btn'); btn.disabled = true; btn.textContent = 'Saving…';
   const interestAfter = S.formState.int_interest || null;
 
   const { data: intRow, error } = await db.from('interactions').insert({
     client_id: cl.id, exec_id: S.me.id,
-    notes: notes || '(follow-ups only)',
+    notes: notes || (outcomeVal ? '(' + outcomeVal + ')' : '(follow-ups only)'),
+    outcome: outcomeVal || null,
     interest_after: interestAfter !== cl.interest ? interestAfter : null,
   }).select('id').single();
   if (error) { btn.disabled = false; btn.textContent = 'Save meeting'; toast('Could not save — please try again.', 'err'); return; }
@@ -947,7 +969,15 @@ function aggReport(clients, meets, team) {
     .map(function (e) { return { id: e[0], name: e[1].name, meetings: e[1].meetings, clients: e[1].clients }; })
     .sort(function (a, b) { return b.meetings - a.meetings || b.clients - a.clients || (a.name < b.name ? -1 : 1); });
   const topCities = Array.from(city.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5);
-  return { execRows: execRows, cat: cat, intr: intr, topCities: topCities };
+  const outMap = new Map();
+  meets.forEach(function (m) { const o = String(m.outcome || '').trim(); if (o) outMap.set(o, (outMap.get(o) || 0) + 1); });
+  const known = OUTCOMES.slice(0, OUTCOMES.length - 1);
+  const out = known.map(function (k) { return [k, outMap.get(k) || 0]; })
+    .concat(Array.from(outMap.entries())
+      .filter(function (e) { return known.indexOf(e[0]) === -1; })
+      .sort(function (a, b) { return b[1] - a[1]; })
+      .slice(0, 6));
+  return { execRows: execRows, cat: cat, intr: intr, topCities: topCities, out: out };
 }
 
 async function renderReport() {
@@ -958,7 +988,7 @@ async function renderReport() {
 
   const startISO = periodStartISO(S.report.period);
   let cq = db.from('clients').select('id, trade_name, city, category, interest, created_by, created_at').order('created_at', { ascending: false }).limit(1000);
-  let iq = db.from('interactions').select('id, exec_id, client_id, happened_at').order('happened_at', { ascending: false }).limit(1000);
+  let iq = db.from('interactions').select('id, exec_id, client_id, happened_at, outcome').order('happened_at', { ascending: false }).limit(1000);
   if (startISO) { cq = cq.gte('created_at', startISO); iq = iq.gte('happened_at', startISO); }
   const results = await Promise.all([
     cq, iq,
@@ -995,6 +1025,11 @@ async function renderReport() {
     }).join('') : '<div class="empty" style="padding:8px">No team members yet.</div>') +
     '</div>' +
 
+    '<div class="section-label">Meetings — by outcome</div>' +
+    '<div class="brk-row">' + agg.out.map(function (x) {
+      return '<button class="brk-chip"' + (x[1] ? ' data-action="report-outcome" data-v="' + esc(x[0]) + '"' : ' style="opacity:.45"') + '>' + esc(x[0]) + ' <b>' + x[1] + '</b></button>';
+    }).join('') + '</div>' +
+
     '<div class="section-label">New clients — by category</div>' +
     '<div class="brk-row">' + brk('category', 'A', 'Cat A', agg.cat.A) + brk('category', 'B', 'Cat B', agg.cat.B) + brk('category', 'C', 'Cat C', agg.cat.C) + brk('category', 'Undefined', 'Undecided', agg.cat['Undefined']) + '</div>' +
 
@@ -1014,7 +1049,7 @@ async function renderReport() {
 
 async function reportExecView(execId, execName) {
   const startISO = periodStartISO(S.report.period);
-  let q = db.from('interactions').select('id, client_id, happened_at, notes, clients(trade_name, city)').eq('exec_id', execId).order('happened_at', { ascending: false }).limit(200);
+  let q = db.from('interactions').select('id, client_id, happened_at, notes, outcome, clients(trade_name, city)').eq('exec_id', execId).order('happened_at', { ascending: false }).limit(200);
   if (startISO) q = q.gte('happened_at', startISO);
   const { data, error } = await q;
   const c = $('#content');
@@ -1028,9 +1063,31 @@ async function reportExecView(execId, execName) {
       const note = String(it.notes || '');
       return '<div class="timeline-item">' +
         '<div class="t-meta"><span class="rem-client" data-action="open-client" data-id="' + it.client_id + '">' + esc(cl.trade_name || 'Client') + ' ›</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
+        (it.outcome ? '<div style="margin:2px 0 5px">' + outcomeChip(it.outcome) + '</div>' : '') +
         '<div class="t-notes">' + esc(note.slice(0, 160)) + (note.length > 160 ? '…' : '') + '</div>' +
         '</div>';
     }).join('') : '<div class="empty">No meetings recorded ' + esc(periodLabel(S.report.period)) + '.</div>');
+}
+
+async function reportMeetsView(v) {
+  const startISO = periodStartISO(S.report.period);
+  let q = db.from('interactions').select('id, client_id, exec_id, happened_at, notes, clients(trade_name, city)').eq('outcome', v).order('happened_at', { ascending: false }).limit(200);
+  if (startISO) q = q.gte('happened_at', startISO);
+  const { data, error } = await q;
+  const c = $('#content');
+  if (!c) return;
+  if (error) { c.innerHTML = '<div class="empty">Could not load.</div>'; return; }
+  const rows = data || [];
+  c.innerHTML =
+    '<div class="card" style="padding:13px 15px">' + outcomeChip(v) + ' <span style="color:var(--muted);font-size:13px">' + rows.length + ' meeting' + (rows.length === 1 ? '' : 's') + ' ' + esc(periodLabel(S.report.period)) + '</span></div>' +
+    (rows.length ? rows.map(function (it) {
+      const cl = it.clients || {};
+      const note = String(it.notes || '');
+      return '<div class="timeline-item">' +
+        '<div class="t-meta"><span class="rem-client" data-action="open-client" data-id="' + it.client_id + '">' + esc(cl.trade_name || 'Client') + ' ›</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
+        '<div class="t-notes">' + esc(nameOf(it.exec_id)) + (note ? ' — ' + esc(note.slice(0, 140)) + (note.length > 140 ? '…' : '') : '') + '</div>' +
+        '</div>';
+    }).join('') : '<div class="empty">No meetings with this outcome ' + esc(periodLabel(S.report.period)) + '.</div>');
 }
 
 async function reportClientsView(k, v) {
@@ -1120,8 +1177,8 @@ async function exportAllData() {
 
     await new Promise((r) => setTimeout(r, 450));
     downloadFile('bj-meetings-' + today + '.csv', buildCsv(
-      ['Date', 'Client', 'Executive', 'What happened', 'Interest after'],
-      interactions.map((it) => [fmtExp(it.happened_at), cName.get(it.client_id) || '', pName.get(it.exec_id) || '', it.notes, it.interest_after])));
+      ['Date', 'Client', 'Executive', 'Outcome', 'What happened', 'Interest after'],
+      interactions.map((it) => [fmtExp(it.happened_at), cName.get(it.client_id) || '', pName.get(it.exec_id) || '', it.outcome, it.notes, it.interest_after])));
 
     await new Promise((r) => setTimeout(r, 450));
     downloadFile('bj-followups-' + today + '.csv', buildCsv(

@@ -129,7 +129,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rem-actions { display: flex; gap: 8px; margin-top: 10px; }
 .rem-actions .btn { flex: 1; }
 
-.filter-chips { display: flex; gap: 8px; margin-bottom: 14px; }
+.filter-chips { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .filter-chips button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 15px; font-size: 13.5px; font-weight: 650; color: #5d5765; }
 .filter-chips button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
 
@@ -220,3 +220,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .notice { background: var(--gold-soft); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; color: #6d5115; margin-bottom: 14px; }
 .mic-hint { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+/* report dashboard */
+.stat-row { display: flex; gap: 10px; margin-bottom: 6px; }
+.stat { flex: 1; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 8px; text-align: center; }
+.stat .st-num { font-size: 25px; font-weight: 800; color: var(--maroon); line-height: 1.1; }
+.stat .st-label { font-size: 11.5px; color: var(--muted); margin-top: 3px; letter-spacing: .2px; }
+.brk-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
+.brk-chip { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; font-size: 13.5px; font-weight: 600; color: #5d5765; cursor: pointer; }
+.brk-chip b { color: var(--maroon); font-weight: 800; }
+.exec-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.exec-row:last-child { border-bottom: 0; }
+.exec-row .ex-name { flex: 1; font-weight: 650; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exec-row .ex-nums { font-size: 13px; color: var(--muted); white-space: nowrap; }

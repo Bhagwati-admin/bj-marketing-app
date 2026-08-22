@@ -491,10 +491,14 @@ async function runScan() {
 
   if (r.ok && r.fields) {
     const f = r.fields;
+    const extraMobiles = String(f.phone_other || '').split(',')
+      .map(function (x) { return normMobile(x); })
+      .filter(function (x) { return isIndianMobile(x); })
+      .join(', ');
     const pre = {
       trade_name: f.trade_name || '', company_name: f.company_name || f.trade_name || '',
       contact_person: f.contact_person || '', designation: f.designation || '',
-      mobile: normMobile(f.mobile || ''), phone_other: f.phone_other || '', email: f.email || '',
+      mobile: normMobile(f.mobile || ''), phone_other: extraMobiles, email: f.email || '',
       city: f.city || '', area: f.area || '',
       address: f.address || '', state: f.state || '',
     };
@@ -669,7 +673,7 @@ function renderClientForm(existing, pre, source) {
     '<div id="desig-other-wrap" style="display:' + (S.formState.desig === 'Other' ? 'block' : 'none') + ';margin-top:8px"><input type="text" id="f-desig-other" value="' + esc(S.formState.desig_other) + '" placeholder="Type the designation"></div></div>' +
     '<div class="field"><label>Mobile number <span class="req">*</span></label><input type="tel" id="f-mobile" inputmode="numeric" value="' + v('mobile') + '" placeholder="10-digit mobile">' +
     '<div id="mobile-note"></div></div>' +
-    '<div class="field"><label>Other phone numbers</label><input type="text" id="f-phone2" autocomplete="off" inputmode="tel" value="' + v('phone_other') + '" placeholder="Landline / extra numbers from the card"></div>' +
+    '<div class="field"><label>Other mobile numbers</label><input type="text" id="f-phone2" autocomplete="off" inputmode="tel" value="' + v('phone_other') + '" placeholder="Extra mobile numbers, if any"></div>' +
     '<div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="off" inputmode="email" value="' + v('email') + '" placeholder="name@gmail.com"></div>' +
     '<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="' + v('owner_name') + '"></div>' +
     '</div>' +
@@ -877,7 +881,7 @@ function renderClientPage(cl) {
   if (cl.company_name && cl.company_name !== cl.trade_name) add('Company', esc(cl.company_name));
   add('Contact person', esc([cl.contact_person, cl.designation].filter(Boolean).join(' — ')));
   if (cl.mobile) add('Mobile', '<a href="tel:' + esc(cl.mobile) + '" data-action="call">' + esc(cl.mobile) + '</a>');
-  if (cl.phone_other) add('Other phones', esc(cl.phone_other));
+  if (cl.phone_other) add('Other mobiles', esc(cl.phone_other));
   if (cl.email) add('Email', '<a href="mailto:' + esc(cl.email) + '">' + esc(cl.email) + '</a>');
   add('Owner', esc(cl.owner_name));
   add('Location', esc([cl.area, cl.city, cl.state].filter(Boolean).join(', ')));
@@ -1292,7 +1296,7 @@ async function exportAllData() {
 
     const today = todayStr();
     downloadFile('bj-clients-' + today + '.csv', buildCsv(
-      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', 'Other phones', 'Email', "Owner's name", 'Address', 'Area', 'City', 'State', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
+      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', 'Other mobiles', 'Email', "Owner's name", 'Address', 'Area', 'City', 'State', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
       clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.phone_other, c.email, c.owner_name, c.address, c.area, c.city, c.state, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
 
     await new Promise((r) => setTimeout(r, 450));

@@ -435,11 +435,11 @@ function renderNewChoice() {
     '<div class="notice">Tip: after saving the client, you will be asked to record the meeting — reminders you add will show on the Today screen.</div>';
 }
 
-function pickImage(cb) {
+function pickImage(cb, fromGallery) {
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
-  inp.setAttribute('capture', 'environment');
+  if (!fromGallery) inp.setAttribute('capture', 'environment');
   inp.onchange = () => { if (inp.files && inp.files[0]) cb(inp.files[0]); };
   inp.click();
 }
@@ -513,11 +513,23 @@ async function runScan() {
 }
 
 function attachPhoto(side) {
-  pickImage(async (file) => {
-    try { S.photos[side] = await downscale(file, 1600); }
-    catch (e) { toast('Could not read that image — try again.', 'err'); return; }
-    redrawPhotos();
-  });
+  const ov = openModal(
+    '<h3>' + (side === 'back' ? 'Back side' : 'Front side') + ' photo</h3>' +
+    '<p>Take a fresh photo, or pick one already saved on this phone.</p>' +
+    '<div style="display:flex;flex-direction:column;gap:10px">' +
+    '<button class="btn btn-primary" data-m="cam">📷 Take photo</button>' +
+    '<button class="btn btn-secondary" data-m="gal">🖼️ Choose from gallery</button>' +
+    '</div>');
+  const go = function (fromGallery) {
+    closeModal();
+    pickImage(async (file) => {
+      try { S.photos[side] = await downscale(file, 1600); }
+      catch (e) { toast('Could not read that image — try again.', 'err'); return; }
+      redrawPhotos();
+    }, fromGallery);
+  };
+  ov.querySelector('[data-m=cam]').onclick = function () { go(false); };
+  ov.querySelector('[data-m=gal]').onclick = function () { go(true); };
 }
 
 function photoSlotHTML(side, savedPath) {

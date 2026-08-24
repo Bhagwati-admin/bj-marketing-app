@@ -226,6 +226,7 @@
         const dLon = bufKm / (111 * Math.max(0.3, Math.cos(midLat * Math.PI / 180)));
         s -= dLat; n += dLat; w -= dLon; e += dLon;
         let qy = sb.from('lf_places').select('*')
+          .eq('hidden', false)
           .gte('latitude', s).lte('latitude', n)
           .gte('longitude', w).lte('longitude', e)
           .order('name').limit(1000);
@@ -239,6 +240,7 @@
     if (rows === null || rows.length === 0) {
       const qq = q.replace(/[,()%.]/g, ' ').replace(/\s+/g, ' ').trim();
       let qy = sb.from('lf_places').select('*')
+        .eq('hidden', false)
         .or(`city.ilike.%${qq}%,name.ilike.%${qq}%,address.ilike.%${qq}%`)
         .order('name').limit(1000);
       if (state) qy = qy.eq('region', state);
@@ -246,7 +248,8 @@
       if (error) { toast(error.message, 'err'); return; }
       if (rows === null || (data && data.length > rows.length)) rows = data || [];
     }
-    S.results = rows; S.areaLabel = label; S.filter = 'all'; S.view = 'list';
+    S.results = rows; S.areaLabel = label; S.view = 'list';
+    S.filter = rows.some(r => r.approved == null) ? 'pending' : 'all';
     renderResults();
   }
 
@@ -268,6 +271,7 @@
       '<span class="chip chip-rejected">Rejected</span>'
     ];
     if (p.verdict_reasons && p.verdict_reasons.length) chips.push(`<span class="chip chip-src">${esc(p.verdict_reasons[0].signal || '')}</span>`);
+    if (p.locations_count && p.locations_count > 1) chips.push(`<span class="chip chip-src">🏢 ${p.locations_count} locations — main branch</span>`);
     if (p.source && p.source !== 'osm') chips.push(`<span class="chip chip-src">${esc(p.source)}</span>`);
     const addr = [p.address, p.city, p.postcode].filter(Boolean).join(', ');
     const c = contactBtns(p);
@@ -311,6 +315,7 @@
     addRow('Website', p.website ? esc(p.website) : null);
     addRow('Hours', p.opening_hours ? esc(p.opening_hours) : null);
     addRow('Segment', p.segment ? esc(p.segment) : null);
+    addRow('Locations', p.locations_count && p.locations_count > 1 ? esc(p.locations_count + ' in this state — buying usually happens at the head office') : null);
     addRow('Source', p.source === 'osm' ? 'OpenStreetMap seed list' : esc(p.source));
     const summary = p.summary ? `<p style="margin:10px 0 0;font-size:14.5px">${esc(p.summary)}</p>` : '';
     const notes = p.notes ? `<p style="margin:8px 0 0;font-size:13.5px;color:var(--muted)">${esc(p.notes)}</p>` : '';

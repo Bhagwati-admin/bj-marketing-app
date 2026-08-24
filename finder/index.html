@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#7b1e3c">
   <title>Bhagwati Jewels — Lead Finder</title>
-  <link rel="icon" type="image/svg+xml" href="../icon.svg">
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://njikksnabvdmzynepdgw.supabase.co/storage/v1/object/public/web/finder-icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lead Finder">
   <link rel="stylesheet" href="../styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <style>
@@ -17,7 +22,8 @@
     .lf-controls select { border: 1.5px solid var(--line); border-radius: 11px; padding: 9px 10px; background: #fff; font-size: 14px; }
     .lf-controls .btn { flex: 0 0 auto; }
     .lf-count { font-size: 13.5px; color: var(--muted); margin: 2px 2px 10px; }
-    .lf-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 15px; margin-bottom: 11px; }
+    .lf-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 15px; margin-bottom: 11px; cursor: pointer; }
+    .lf-card:active { background: #fdfaf6; }
     .lf-name { font-weight: 700; font-size: 16px; }
     .lf-addr { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
     .lf-chiprow { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
@@ -264,21 +270,14 @@
     if (p.verdict_reasons && p.verdict_reasons.length) chips.push(`<span class="chip chip-src">${esc(p.verdict_reasons[0].signal || '')}</span>`);
     if (p.source && p.source !== 'osm') chips.push(`<span class="chip chip-src">${esc(p.source)}</span>`);
     const addr = [p.address, p.city, p.postcode].filter(Boolean).join(', ');
-    const c = [];
-    if (p.phone) c.push(`<a class="lf-cbtn" href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>`);
-    const wa = waLink(p.phone); if (wa) c.push(`<a class="lf-cbtn" target="_blank" rel="noopener" href="${esc(wa)}">💬 WhatsApp</a>`);
-    if (p.email) c.push(`<a class="lf-cbtn" href="mailto:${esc(p.email)}">✉️ Email</a>`);
-    const wl = webLink(p.website); if (wl) c.push(`<a class="lf-cbtn" target="_blank" rel="noopener" href="${esc(wl)}">🌐 Website</a>`);
-    const ig = igLink(p.instagram); if (ig) c.push(`<a class="lf-cbtn" target="_blank" rel="noopener" href="${esc(ig)}">📸 Instagram</a>`);
-    const fb = fbLink(p.facebook); if (fb) c.push(`<a class="lf-cbtn" target="_blank" rel="noopener" href="${esc(fb)}">📘 Facebook</a>`);
-    c.push(`<a class="lf-cbtn" target="_blank" rel="noopener" href="${esc(mapsLink(p))}">🗺️ Map</a>`);
+    const c = contactBtns(p);
     const actions = st === 'pending'
       ? `<div class="lf-actions">
-           <button class="btn btn-small btn-approve" onclick="approve('${p.id}')">✓ Approve</button>
-           <button class="btn btn-small btn-reject" onclick="openReject('${p.id}')">✗ Reject</button>
+           <button class="btn btn-small btn-approve" onclick="event.stopPropagation();approve('${p.id}')">✓ Approve</button>
+           <button class="btn btn-small btn-reject" onclick="event.stopPropagation();openReject('${p.id}')">✗ Reject</button>
          </div>`
-      : `<button class="lf-reset" onclick="resetVerdict('${p.id}')">Undo — back to review</button>`;
-    return `<div class="lf-card" id="card-${p.id}">
+      : `<button class="lf-reset" onclick="event.stopPropagation();resetVerdict('${p.id}')">Undo — back to review</button>`;
+    return `<div class="lf-card" id="card-${p.id}" onclick="openDetail('${p.id}')">
       <div class="lf-name">${esc(p.name)}</div>
       ${addr ? `<div class="lf-addr">${esc(addr)}</div>` : ''}
       <div class="lf-chiprow">${chips.join('')}</div>
@@ -286,6 +285,55 @@
       ${actions}
     </div>`;
   }
+  function contactBtns(p) {
+    const c = [];
+    const sp = 'onclick="event.stopPropagation()"';
+    if (p.phone) c.push(`<a class="lf-cbtn" ${sp} href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>`);
+    const wa = waLink(p.phone); if (wa) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(wa)}">💬 WhatsApp</a>`);
+    if (p.email) c.push(`<a class="lf-cbtn" ${sp} href="mailto:${esc(p.email)}">✉️ Email</a>`);
+    const wl = webLink(p.website); if (wl) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(wl)}">🌐 Website</a>`);
+    const ig = igLink(p.instagram); if (ig) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(ig)}">📸 Instagram</a>`);
+    const fb = fbLink(p.facebook); if (fb) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(fb)}">📘 Facebook</a>`);
+    c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(mapsLink(p))}">🗺️ Map</a>`);
+    return c;
+  }
+  function openDetail(id) {
+    const p = findP(id); if (!p) return;
+    const st = statusOf(p);
+    const chip = st === 'pending' ? '<span class="chip chip-pending">To review</span>'
+      : st === 'approved' ? '<span class="chip chip-approved">Approved ✓</span>'
+      : `<span class="chip chip-rejected">Rejected${p.verdict_reasons && p.verdict_reasons.length ? ' — ' + esc(p.verdict_reasons[0].signal || '') : ''}</span>`;
+    const rows = [];
+    const addRow = (k, v) => { if (v) rows.push(`<div class="detail-row"><div class="dk">${k}</div><div class="dv">${v}</div></div>`); };
+    addRow('Address', esc([p.address, p.city, p.region, p.postcode].filter(Boolean).join(', ')));
+    addRow('Phone', p.phone ? esc(p.phone) : null);
+    addRow('Email', p.email ? esc(p.email) : null);
+    addRow('Website', p.website ? esc(p.website) : null);
+    addRow('Hours', p.opening_hours ? esc(p.opening_hours) : null);
+    addRow('Segment', p.segment ? esc(p.segment) : null);
+    addRow('Source', p.source === 'osm' ? 'OpenStreetMap seed list' : esc(p.source));
+    const summary = p.summary ? `<p style="margin:10px 0 0;font-size:14.5px">${esc(p.summary)}</p>` : '';
+    const notes = p.notes ? `<p style="margin:8px 0 0;font-size:13.5px;color:var(--muted)">${esc(p.notes)}</p>` : '';
+    const actions = st === 'pending'
+      ? `<div class="lf-actions" style="margin-top:14px">
+           <button class="btn btn-approve" onclick="approve('${p.id}')">✓ Approve</button>
+           <button class="btn btn-reject" onclick="closeDetail();openReject('${p.id}')">✗ Reject</button>
+         </div>`
+      : `<button class="lf-reset" onclick="resetVerdict('${p.id}')">Undo — back to review</button>`;
+    document.getElementById('detail-modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeDetail()">
+        <div class="modal" style="max-height:86vh;overflow-y:auto">
+          <h3 style="margin-bottom:2px">${esc(p.name)}</h3>
+          <div class="lf-chiprow" style="margin:6px 0 10px">${chip}</div>
+          ${rows.join('')}
+          ${summary}${notes}
+          <div class="lf-contacts" style="margin-top:14px">${contactBtns(p).join('')}</div>
+          ${actions}
+          <div class="modal-actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="closeDetail()">Close</button></div>
+        </div>
+      </div>`;
+  }
+  function closeDetail() { const el = document.getElementById('detail-modal'); if (el) el.innerHTML = ''; }
   function renderResults() {
     const cc = chipCounts();
     const list = filtered();
@@ -307,11 +355,13 @@
         <button class="${S.view==='map'?'on':''}" onclick="setView('map')">Map</button>
       </div>
       <div class="lf-count">${esc(S.areaLabel)} — ${cc.all} jewellers found</div>
+      <div class="notice">⚠️ Seed list (OpenStreetMap) — this area hasn't been deep-scanned yet, so it's incomplete. Before working an area, ask Claude to <b>deep scan</b> it: missing stores get added, each one screened with evidence and pitch notes. Approve after the scan — except stores you already know.</div>
       <div id="lf-list" style="${S.view==='map'?'display:none':''}">
         ${list.length ? list.map(card).join('') : '<div class="empty"><div class="big">🔍</div>Nothing here for this filter.</div>'}
       </div>
       <div id="lf-map" style="${S.view==='map'?'display:block':''}"></div>
       <div id="reject-modal"></div>
+      <div id="detail-modal"></div>
     `, { sub: S.areaLabel ? S.areaLabel.split(',')[0] : '' });
     if (S.view === 'map') mountMap();
   }
@@ -405,6 +455,7 @@
   window.setFilter = setFilter; window.setView = setView; window.approve = approve;
   window.openReject = openReject; window.closeReject = closeReject; window.doReject = doReject;
   window.resetVerdict = resetVerdict; window.jumpTo = jumpTo;
+  window.openDetail = openDetail; window.closeDetail = closeDetail;
   init();
   </script>
 </body>

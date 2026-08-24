@@ -16,6 +16,7 @@
   <style>
     /* Lead Finder additions (matches main app design language) */
     .lf-searchbar { display: flex; gap: 8px; margin-bottom: 10px; }
+    .lf-add { flex: 0 0 auto; width: 46px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; font-size: 22px; color: var(--maroon); cursor: pointer; box-shadow: var(--shadow); }
     .lf-searchbar input { flex: 1; border: 1.5px solid var(--line); border-radius: 999px; padding: 12px 18px; font-size: 16px; outline: none; background: #fff; box-shadow: var(--shadow); min-width: 0; }
     .lf-searchbar input:focus { border-color: var(--maroon); }
     .lf-controls { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -182,12 +183,14 @@
       <div class="section-label">Search an area</div>
       <div class="lf-searchbar">
         <input id="lf-q" type="text" placeholder="City or area — e.g. Fort Lauderdale" onkeydown="if(event.key==='Enter')doSearch()">
+        <button class="lf-add" title="Add a jeweller" onclick="openAddLead()">＋</button>
       </div>
       <div class="lf-controls">${controlsHtml()}
         <button class="btn btn-primary btn-small" style="width:auto" onclick="doSearch()">Search</button>
       </div>
       <div class="lf-home-stats">${stats || ''}</div>
-      <div class="empty"><div class="big">💎</div>Type a city to see the jewellers there.<br>Approve the good ones — they become your trip list.</div>
+      <div class="empty"><div class="big">💎</div>Type a city to see the jewellers there.<br>Approve the good ones — they become your trip list.<br><br>Spotted a jeweller on Instagram or on the road? Tap ＋ to add it.</div>
+      <div id="addlead-modal"></div>
     `);
   }
 
@@ -359,6 +362,7 @@
     $app.innerHTML = shell(`
       <div class="lf-searchbar">
         <input id="lf-q" type="text" value="${esc(S.areaLabel)}" onkeydown="if(event.key==='Enter')doSearch()">
+        <button class="lf-add" title="Add a jeweller" onclick="openAddLead()">＋</button>
       </div>
       <div class="lf-controls">${controlsHtml()}
         <button class="btn btn-primary btn-small" style="width:auto" onclick="doSearch()">Search</button>
@@ -382,6 +386,7 @@
       <div id="lf-map" style="${S.view==='map'?'display:block':''}"></div>
       <div id="reject-modal"></div>
       <div id="detail-modal"></div>
+      <div id="addlead-modal"></div>
     `, { sub: S.areaLabel ? S.areaLabel.split(',')[0] : '' });
     if (S.view === 'map') mountMap();
   }
@@ -448,6 +453,40 @@
     if (error) { toast(error.message, 'err'); return; }
     Object.assign(p, patch); closeReject(); toast('Rejected', 'ok'); renderResults();
   }
+  function openAddLead() {
+    const el = document.getElementById('addlead-modal'); if (!el) return;
+    el.innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeAddLead()">
+        <div class="modal">
+          <h3>Add a jeweller</h3>
+          <p class="sub" style="margin-bottom:10px">Spotted one on Instagram or on the road? Add it — Claude researches it on the next run.</p>
+          <div class="field"><label>Store name *</label><input id="al-name" type="text"></div>
+          <div class="field"><label>Instagram handle</label><input id="al-ig" type="text" placeholder="e.g. boca_treasures" autocapitalize="none"></div>
+          <div class="field"><label>City</label><input id="al-city" type="text"></div>
+          <div class="field"><label>State</label><select id="al-state">${STATES.map(s=>`<option${(S.state||'FL')===s?' selected':''}>${s}</option>`).join('')}</select></div>
+          <div class="field"><label>Phone (optional)</label><input id="al-phone" type="tel"></div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeAddLead()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveLead()">Add 🔍</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  function closeAddLead() { const el = document.getElementById('addlead-modal'); if (el) el.innerHTML = ''; }
+  async function saveLead() {
+    const name = document.getElementById('al-name').value.trim();
+    if (!name) { toast('Store name is needed', 'err'); return; }
+    const ig = document.getElementById('al-ig').value.trim().replace(/^@/, '');
+    const city = document.getElementById('al-city').value.trim();
+    const region = document.getElementById('al-state').value;
+    const phone = document.getElementById('al-phone').value.trim();
+    const row = { source: 'manual', source_id: 'manual-' + Date.now(), name,
+      instagram: ig || null, city: city || null, region, phone: phone || null, research: true };
+    const { data, error } = await sb.from('lf_places').insert(row).select().single();
+    if (error) { toast(error.message, 'err'); return; }
+    closeAddLead(); toast('Added — flagged for Claude research 🔍', 'ok');
+    if (S.areaLabel && Array.isArray(S.results)) { S.results.unshift(data); renderResults(); }
+  }
   async function markResearch(id) {
     const p = findP(id); if (!p) return;
     const val = !p.research;
@@ -485,6 +524,7 @@
   window.openReject = openReject; window.closeReject = closeReject; window.doReject = doReject;
   window.resetVerdict = resetVerdict; window.jumpTo = jumpTo; window.markResearch = markResearch;
   window.openDetail = openDetail; window.closeDetail = closeDetail;
+  window.openAddLead = openAddLead; window.closeAddLead = closeAddLead; window.saveLead = saveLead;
   init();
   </script>
 </body>

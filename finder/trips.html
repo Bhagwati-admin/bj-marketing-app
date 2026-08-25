@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7b1e3c">
+  <title>Bhagwati Jewels — Trip Planner</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://njikksnabvdmzynepdgw.supabase.co/storage/v1/object/public/web/finder-icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Trips">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    .tp-signout { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 10px; }
+    .tp-back { background: none; border: 0; color: #fff; font-size: 20px; padding: 4px 10px 4px 0; margin-left: -4px; cursor: pointer; }
+    .tp-item { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 15px; margin-bottom: 11px; cursor: pointer; }
+    .tp-item h4 { margin: 0 0 2px; font-size: 16px; }
+    .tp-sub { font-size: 13px; color: var(--muted); }
+    .tp-chiprow { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+    .chip-plan { background: #eee9f2; color: #5b4a6b; }
+    .chip-ok { background: #e3f2e7; color: #16663c; }
+    .chip-out { background: #fcefd2; color: #92600a; }
+    .chip-no { background: #fbe1df; color: #a12b24; }
+    .chip-warn { background: #fbe1df; color: #a12b24; }
+    .tp-row2 { display: flex; gap: 10px; }
+    .tp-row2 .field { flex: 1; }
+    .tp-ends { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 15px; margin-bottom: 13px; }
+    .tp-ends .lbl { font-size: 11.5px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+    .tp-endline { display: flex; align-items: center; gap: 9px; padding: 7px 0; }
+    .tp-endline .pin { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
+    .pin-s { background: var(--green); } .pin-e { background: var(--red); }
+    .tp-endline .val { flex: 1; font-size: 14.5px; min-width: 0; }
+    .tp-endline .val.empty { color: var(--muted); font-style: italic; }
+    .tp-stop { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px; margin-bottom: 9px; display: flex; gap: 12px; }
+    .tp-stop.done { opacity: .68; }
+    .tp-seq { width: 30px; height: 30px; border-radius: 50%; background: var(--maroon); color: #fff; font-weight: 800; font-size: 14px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .tp-stop.met .tp-seq { background: var(--green); }
+    .tp-stop.buyer_out .tp-seq { background: #b47814; }
+    .tp-stop.not_interested .tp-seq, .tp-stop.skipped .tp-seq { background: #9a939f; }
+    .tp-body { flex: 1; min-width: 0; }
+    .tp-body .nm { font-weight: 700; font-size: 15.5px; }
+    .tp-body .ad { font-size: 13px; color: var(--muted); margin-top: 1px; }
+    .tp-leg { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); margin: 0 0 9px 15px; padding-left: 15px; border-left: 2px dashed var(--line); }
+    .tp-mini { display: flex; gap: 7px; margin-top: 9px; flex-wrap: wrap; }
+    .tp-mini a, .tp-mini button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 12px; font-size: 12.5px; font-weight: 650; color: var(--maroon); text-decoration: none; cursor: pointer; }
+    .tp-out { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+    .tp-out button { border: 0; border-radius: 9px; padding: 7px 11px; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+    .ob-met { background: #e3f2e7; color: #16663c; } .ob-out { background: #fcefd2; color: #92600a; }
+    .ob-no { background: #fbe1df; color: #a12b24; } .ob-skip { background: #eee; color: #6b6570; }
+    .ob-undo { background: none; color: var(--muted); text-decoration: underline; padding: 6px 2px; }
+    .tp-sum { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px; margin-bottom: 13px; }
+    .tp-sum .big { font-size: 15px; font-weight: 700; }
+    .tp-sum .det { font-size: 13px; color: var(--muted); margin-top: 3px; }
+    .tp-warn { background: #fbe1df; color: #a12b24; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 9px; font-weight: 600; }
+    .tp-good { background: #e3f2e7; color: #16663c; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 9px; font-weight: 600; }
+    .pick-item { background: var(--card); border: 2px solid transparent; border-radius: 12px; box-shadow: var(--shadow); padding: 11px 13px; margin-bottom: 8px; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+    .pick-item.on { border-color: var(--maroon); background: var(--maroon-soft); }
+    .pick-item.used { opacity: .5; }
+    .pick-item .pk-main { flex: 1; min-width: 0; }
+    .pick-item .pk-nm { font-weight: 650; font-size: 14.5px; }
+    .pick-item .pk-sub { font-size: 12.5px; color: var(--muted); }
+    .pick-item .pk-tick { font-size: 18px; color: var(--maroon); width: 20px; text-align: center; }
+    .tp-sticky { position: sticky; bottom: 0; background: linear-gradient(to top, var(--bg) 72%, rgba(246,244,241,0)); padding: 14px 0 8px; }
+    #tp-map { height: 46vh; border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 12px; }
+    .rep-line { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+    .rep-line:last-child { border-bottom: 0; }
+    .rep-line b { font-weight: 800; }
+    .leaflet-container { font: inherit; }
+  </style>
+</head>
+<body>
+  <div id="app"><div class="splash"><div class="logo-badge">BJ</div><p>Bhagwati Jewels · Trips</p></div></div>
+  <div id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="../config.js"></script>
+  <script>
+  'use strict';
+  const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
+  const $app = document.getElementById('app');
+  const STATES = ['FL', 'NY', 'NJ'];
+  const ROAD_FACTOR = 1.35;      // straight-line km -> road km
+  const SPEED_KMH = 45;          // urban/suburban average
+  const MAX_STOPS = 12, SOFT_STOPS = 8, MAX_HOURS = 9;
+  const S = { user: null, view: 'trips', trips: [], trip: null, days: [], day: null,
+              stops: [], places: {}, pick: null, map: null };
+
+  /* ---------- utils ---------- */
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function toast(msg, cls) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = 'show' + (cls ? ' ' + cls : '');
+    clearTimeout(toast._h); toast._h = setTimeout(() => { t.className = ''; }, 2600);
+  }
+  function digitsOnly(p) { return (p || '').replace(/[^0-9+]/g, ''); }
+  function fmtDate(d) {
+    if (!d) return '';
+    const dt = new Date(d + 'T00:00:00');
+    return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+  function km(a, b) {
+    if (!a || !b || a.lat == null || b.lat == null) return null;
+    const R = 6371, rad = x => x * Math.PI / 180;
+    const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+    const s = Math.sin(dLat/2)**2 + Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+    return 2 * R * Math.asin(Math.sqrt(s));
+  }
+  function driveMin(d) { return d == null ? null : Math.round(d * ROAD_FACTOR / SPEED_KMH * 60); }
+  function fmtLeg(d) {
+    if (d == null) return 'distance unknown';
+    const mi = d * 0.621371, m = driveMin(d);
+    return `${mi < 10 ? mi.toFixed(1) : Math.round(mi)} mi · about ${m} min`;
+  }
+  function hrs(mins) {
+    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+    return h ? `${h}h ${m ? m + 'm' : ''}`.trim() : `${m}m`;
+  }
+
+  /* ---------- geometry: order a day ---------- */
+  function pathCost(start, arr, end) {
+    let c = 0, prev = start;
+    for (const p of arr) { const d = km(prev, p); c += (d == null ? 25 : d); prev = p; }
+    if (end) { const d = km(prev, end); c += (d == null ? 25 : d); }
+    return c;
+  }
+  function orderStops(start, arr, end) {
+    const pts = arr.filter(p => p.lat != null);
+    const noGeo = arr.filter(p => p.lat == null);
+    if (pts.length < 2) return pts.concat(noGeo);
+    // nearest neighbour
+    const left = pts.slice(), out = [];
+    let cur = start || pts[0];
+    while (left.length) {
+      let bi = 0, bd = Infinity;
+      left.forEach((p, i) => { const d = km(cur, p); if (d != null && d < bd) { bd = d; bi = i; } });
+      cur = left[bi]; out.push(cur); left.splice(bi, 1);
+    }
+    // 2-opt
+    let improved = true, guard = 0;
+    while (improved && guard++ < 60) {
+      improved = false;
+      for (let i = 0; i < out.length - 1; i++) {
+        for (let j = i + 1; j < out.length; j++) {
+          const cand = out.slice(0, i).concat(out.slice(i, j + 1).reverse(), out.slice(j + 1));
+          if (pathCost(start, cand, end) + 1e-9 < pathCost(start, out, end)) { out.splice(0, out.length, ...cand); improved = true; }
+        }
+      }
+    }
+    return out.concat(noGeo);
+  }
+  function dayMetrics(day, stops) {
+    const start = day.start_lat != null ? { lat: day.start_lat, lng: day.start_lng } : null;
+    const end = day.end_lat != null ? { lat: day.end_lat, lng: day.end_lng } : null;
+    let drive = 0, dist = 0, unknown = 0, prev = start;
+    for (const s of stops) {
+      const pt = s._pt;
+      const d = (prev && pt) ? km(prev, pt) : null;
+      if (d == null) unknown++; else { dist += d; drive += driveMin(d); }
+      if (pt) prev = pt;
+    }
+    if (end && prev) { const d = km(prev, end); if (d != null) { dist += d; drive += driveMin(d); } }
+    const dwell = stops.length * (day.dwell_min || 45);
+    return { drive, dwell, total: drive + dwell, dist, unknown, count: stops.length };
+  }
+
+  /* ---------- links ---------- */
+  function navToPlace(p) {
+    if (p.latitude != null && p.longitude != null)
+      return `https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}&travelmode=driving`;
+    const q = [p.name, p.address, p.city, p.region, 'USA'].filter(Boolean).join(', ');
+    return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(q);
+  }
+  function navWholeDay(day, stops) {
+    const pts = stops.map(s => s._pt).filter(Boolean);
+    if (!pts.length) return null;
+    const origin = day.start_lat != null ? `${day.start_lat},${day.start_lng}` : `${pts[0].lat},${pts[0].lng}`;
+    const endPt = day.end_lat != null ? `${day.end_lat},${day.end_lng}` : `${pts[pts.length-1].lat},${pts[pts.length-1].lng}`;
+    const mid = (day.start_lat != null ? pts : pts.slice(1));
+    const wp = (day.end_lat != null ? mid : mid.slice(0, -1)).slice(0, 9).map(p => `${p.lat},${p.lng}`).join('|');
+    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${endPt}` +
+           (wp ? '&waypoints=' + encodeURIComponent(wp) : '') + '&travelmode=driving';
+  }
+
+  /* ---------- shell ---------- */
+  function shell(inner, opts) {
+    opts = opts || {};
+    return `
+    <div id="appbar">
+      ${opts.back ? `<button class="tp-back" onclick="${opts.back}">‹</button>` : '<div class="mini-badge">BJ</div>'}
+      <div class="titles">
+        <div class="app-name">Bhagwati Jewels</div>
+        <div class="screen-name">${esc(opts.title || 'Trip Planner')}</div>
+      </div>
+      <div style="margin-left:auto"></div>
+      ${opts.back ? '' : '<a class="tp-signout" href="./" style="text-decoration:none">Find leads →</a>'}
+    </div>
+    <div id="content">${inner}</div>`;
+  }
+
+  /* ---------- trips list ---------- */
+  async function loadTrips() {
+    const { data } = await sb.from('lf_trips').select('*').order('created_at', { ascending: false });
+    S.trips = data || [];
+    const ids = S.trips.map(t => t.id);
+    S.tripCounts = {};
+    if (ids.length) {
+      const { data: ds } = await sb.from('lf_trip_days').select('id, trip_id').in('trip_id', ids);
+      const dayIds = (ds || []).map(d => d.id);
+      const byTrip = {}; (ds || []).forEach(d => { byTrip[d.id] = d.trip_id; });
+      let st = [];
+      if (dayIds.length) { const { data } = await sb.from('lf_stops').select('day_id, status').in('day_id', dayIds); st = data || []; }
+      S.trips.forEach(t => { S.tripCounts[t.id] = { days: 0, stops: 0, met: 0 }; });
+      (ds || []).forEach(d => { if (S.tripCounts[d.trip_id]) S.tripCounts[d.trip_id].days++; });
+      st.forEach(s => { const t = byTrip[s.day_id]; if (S.tripCounts[t]) { S.tripCounts[t].stops++; if (s.status === 'met') S.tripCounts[t].met++; } });
+    }
+  }
+  async function renderTrips() {
+    const { count: approved } = await sb.from('lf_places').select('id', { count: 'exact', head: true })
+      .eq('hidden', false).eq('approved', true);
+    const est = Math.max(1, Math.ceil((approved || 0) / 10));
+    const list = S.trips.map(t => {
+      const c = S.tripCounts[t.id] || { days: 0, stops: 0, met: 0 };
+      return `<div class="tp-item" onclick="openTrip('${t.id}')">
+        <h4>${esc(t.name)}</h4>
+        <div class="tp-sub">${t.start_date ? fmtDate(t.start_date) : 'no dates yet'}${t.end_date && t.end_date !== t.start_date ? ' → ' + fmtDate(t.end_date) : ''}${t.region ? ' · ' + esc(t.region) : ''}</div>
+        <div class="tp-chiprow">
+          <span class="chip chip-plan">${c.days} day${c.days === 1 ? '' : 's'}</span>
+          <span class="chip chip-plan">${c.stops} stop${c.stops === 1 ? '' : 's'}</span>
+          ${c.met ? `<span class="chip chip-ok">${c.met} met</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    $app.innerHTML = shell(`
+      <div class="tp-sum">
+        <div class="big">${approved || 0} approved jewellers ready to visit</div>
+        <div class="det">That's roughly <b>${est} packed day${est === 1 ? '' : 's'}</b> on the road at 8–12 stops a day. Approve more in the Finder to extend a trip.</div>
+      </div>
+      <button class="btn btn-primary" onclick="newTrip()">+ Plan a new trip</button>
+      <div class="section-label">Your trips</div>
+      ${list || '<div class="empty"><div class="big">🗺️</div>No trips yet.<br>Plan one — pick a state and dates, then fill each day from your approved list.</div>'}
+      <div id="modal"></div>
+    `, { title: 'Trip Planner' });
+  }
+  function newTrip() {
+    document.getElementById('modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+          <h3>Plan a trip</h3>
+          <div class="field"><label>Name it</label><input id="t-name" type="text" placeholder="e.g. South Florida — September"></div>
+          <div class="field"><label>State</label><select id="t-region">${STATES.map(s => `<option>${s}</option>`).join('')}</select></div>
+          <div class="tp-row2">
+            <div class="field"><label>First day</label><input id="t-start" type="date"></div>
+            <div class="field"><label>Last day</label><input id="t-end" type="date"></div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveTrip()">Create</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  function closeModal() { const m = document.getElementById('modal'); if (m) m.innerHTML = ''; }
+  async function saveTrip() {
+    const name = document.getElementById('t-name').value.trim();
+    if (!name) { toast('Give the trip a name', 'err'); return; }
+    const row = { name, region: document.getElementById('t-region').value,
+      start_date: document.getElementById('t-start').value || null,
+      end_date: document.getElementById('t-end').value || null };
+    const { data, error } = await sb.from('lf_trips').insert(row).select().single();
+    if (error) { toast(error.message, 'err'); return; }
+    closeModal(); toast('Trip created', 'ok'); openTrip(data.id);
+  }
+
+  /* ---------- one trip ---------- */
+  async function openTrip(id) {
+    const { data: t } = await sb.from('lf_trips').select('*').eq('id', id).single();
+    S.trip = t;
+    const { data: ds } = await sb.from('lf_trip_days').select('*').eq('trip_id', id).order('day_index');
+    S.days = ds || [];
+    const dayIds = S.days.map(d => d.id);
+    S.dayStops = {};
+    if (dayIds.length) {
+      const { data: st } = await sb.from('lf_stops')
+        .select('*, place:lf_places(id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment,pitch_angle)')
+        .in('day_id', dayIds).order('seq');
+      (st || []).forEach(s => { (S.dayStops[s.day_id] = S.dayStops[s.day_id] || []).push(s); });
+    }
+    renderTrip();
+  }
+  function renderTrip() {
+    const t = S.trip;
+    const days = S.days.map(d => {
+      const stops = (S.dayStops[d.id] || []).map(withPt);
+      const m = dayMetrics(d, stops);
+      const over = m.count > MAX_STOPS || m.total > MAX_HOURS * 60;
+      const done = stops.filter(s => s.status !== 'planned').length;
+      return `<div class="tp-item" onclick="openDay('${d.id}')">
+        <h4>Day ${d.day_index}${d.day_date ? ' · ' + fmtDate(d.day_date) : ''}</h4>
+        <div class="tp-sub">${d.start_label ? esc(d.start_label) : 'no start set'} → ${d.end_label ? esc(d.end_label) : 'no end set'}</div>
+        <div class="tp-chiprow">
+          <span class="chip ${over ? 'chip-warn' : 'chip-plan'}">${m.count} stop${m.count === 1 ? '' : 's'}</span>
+          ${m.count ? `<span class="chip chip-plan">≈ ${hrs(m.total)} incl. visits</span>` : ''}
+          ${done ? `<span class="chip chip-ok">${done} logged</span>` : ''}
+          ${over ? '<span class="chip chip-warn">Overloaded</span>' : ''}
+        </div>
+      </div>`;
+    }).join('');
+    $app.innerHTML = shell(`
+      <div class="tp-sum">
+        <div class="big">${esc(t.name)}</div>
+        <div class="det">${t.region || ''}${t.start_date ? ' · ' + fmtDate(t.start_date) : ''}${t.end_date && t.end_date !== t.start_date ? ' → ' + fmtDate(t.end_date) : ''}</div>
+      </div>
+      <div class="section-label">Days</div>
+      ${days || '<div class="empty">No days yet — add the first one.</div>'}
+      <button class="btn btn-primary" onclick="addDay()">+ Add a day</button>
+      <button class="btn btn-secondary" style="margin-top:9px" onclick="openReport()">📋 Trip report</button>
+      <div id="modal"></div>
+    `, { title: t.name, back: "backToTrips()" });
+  }
+  function backToTrips() { loadTrips().then(renderTrips); }
+  async function addDay() {
+    const idx = S.days.length + 1;
+    let date = null;
+    if (S.trip.start_date) {
+      const d = new Date(S.trip.start_date + 'T00:00:00'); d.setDate(d.getDate() + idx - 1);
+      date = d.toISOString().slice(0, 10);
+    }
+    const prev = S.days[S.days.length - 1];
+    const row = { trip_id: S.trip.id, day_index: idx, day_date: date };
+    if (prev && prev.end_label) { row.start_label = prev.end_label; row.start_lat = prev.end_lat; row.start_lng = prev.end_lng; }
+    const { data, error } = await sb.from('lf_trip_days').insert(row).select().single();
+    if (error) { toast(error.message, 'err'); return; }
+    openDay(data.id);
+  }
+
+  /* ---------- a day ---------- */
+  function withPt(s) {
+    const p = s.place || {};
+    s._pt = (p.latitude != null && p.longitude != null) ? { lat: p.latitude, lng: p.longitude } : null;
+    return s;
+  }
+  async function openDay(id) {
+    const { data: d } = await sb.from('lf_trip_days').select('*').eq('id', id).single();
+    S.day = d;
+    const { data: st } = await sb.from('lf_stops')
+      .select('*, place:lf_places(id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment,pitch_angle)')
+      .eq('day_id', id).order('seq');
+    S.stops = (st || []).map(withPt);
+    renderDay();
+  }
+  function renderDay() {
+    const d = S.day, stops = S.stops;
+    const m = dayMetrics(d, stops);
+    const start = d.start_lat != null ? { lat: d.start_lat, lng: d.start_lng } : null;
+    let prev = start;
+    const rows = stops.map((s, i) => {
+      const p = s.place || {};
+      const leg = prev && s._pt ? km(prev, s._pt) : null;
+      const legHtml = `<div class="tp-leg">↓ ${i === 0 && !start ? 'first stop' : fmtLeg(leg)}</div>`;
+      if (s._pt) prev = s._pt;
+      const addr = [p.address, p.city, p.postcode].filter(Boolean).join(', ');
+      const logged = s.status !== 'planned';
+      const outBtns = logged
+        ? `<div class="tp-out"><span class="chip ${s.status === 'met' ? 'chip-ok' : s.status === 'buyer_out' ? 'chip-out' : 'chip-no'}">${
+            s.status === 'met' ? '✓ Met the buyer' : s.status === 'buyer_out' ? '↻ Buyer was out' : s.status === 'not_interested' ? '✗ Not interested' : '– Skipped'}</span>
+            <button class="ob-undo" onclick="setOutcome('${s.id}','planned')">undo</button></div>`
+        : `<div class="tp-out">
+             <button class="ob-met" onclick="setOutcome('${s.id}','met')">✓ Met buyer</button>
+             <button class="ob-out" onclick="setOutcome('${s.id}','buyer_out')">↻ Buyer out</button>
+             <button class="ob-no" onclick="setOutcome('${s.id}','not_interested')">✗ Not interested</button>
+             <button class="ob-skip" onclick="setOutcome('${s.id}','skipped')">– Skip</button>
+           </div>`;
+      return legHtml + `<div class="tp-stop ${logged ? 'done ' + s.status : ''}">
+        <div class="tp-seq">${i + 1}</div>
+        <div class="tp-body">
+          <div class="nm">${esc(p.name || 'Unknown')}${p.priority >= 5 ? ' ⭐' : ''}</div>
+          ${addr ? `<div class="ad">${esc(addr)}</div>` : '<div class="ad">no address on file</div>'}
+          ${p.pitch_angle ? `<div class="ad" style="margin-top:5px;color:var(--maroon)">🎯 ${esc(p.pitch_angle.split('. ')[0])}.</div>` : ''}
+          <div class="tp-mini">
+            ${p.phone ? `<a href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>` : ''}
+            <a target="_blank" rel="noopener" href="${esc(navToPlace(p))}">🧭 Navigate</a>
+            <button onclick="removeStop('${s.id}')">Remove</button>
+          </div>
+          ${outBtns}
+        </div>
+      </div>`;
+    }).join('');
+    const endLeg = (prev && d.end_lat != null) ? km(prev, { lat: d.end_lat, lng: d.end_lng }) : null;
+    const dayNav = navWholeDay(d, stops);
+    const over = m.count > MAX_STOPS || m.total > MAX_HOURS * 60;
+    const light = m.count && m.count < SOFT_STOPS;
+    $app.innerHTML = shell(`
+      <div class="tp-ends">
+        <div class="lbl">Start and end</div>
+        <div class="tp-endline"><div class="pin pin-s">S</div>
+          <div class="val ${d.start_label ? '' : 'empty'}">${esc(d.start_label || 'Where you set off from')}</div>
+          <button class="btn btn-small btn-secondary" style="width:auto" onclick="editEnd('start')">Set</button></div>
+        <div class="tp-endline"><div class="pin pin-e">E</div>
+          <div class="val ${d.end_label ? '' : 'empty'}">${esc(d.end_label || 'Where you finish (can be a different city)')}</div>
+          <button class="btn btn-small btn-secondary" style="width:auto" onclick="editEnd('end')">Set</button></div>
+      </div>
+
+      <div class="tp-sum">
+        <div class="big">${m.count} stop${m.count === 1 ? '' : 's'} · ≈ ${hrs(m.total)} on the clock</div>
+        <div class="det">About ${hrs(m.drive)} driving${m.dist ? ' (' + Math.round(m.dist * 0.621371) + ' mi)' : ''} plus ${hrs(m.dwell)} in the shops at ${d.dwell_min} min each.${m.unknown ? ` ${m.unknown} stop${m.unknown === 1 ? ' has' : 's have'} no map pin — not counted in the drive time.` : ''}</div>
+        ${over ? `<div class="tp-warn">⚠️ This day is overloaded — ${m.count > MAX_STOPS ? `${m.count} stops is past the 12 you can realistically make` : 'over 9 hours'}. Move a couple to another day.</div>` : ''}
+        ${light ? `<div class="tp-good">Room for ${SOFT_STOPS - m.count} more — a packed day is 8–12 stops.</div>` : ''}
+        ${!over && !light && m.count ? '<div class="tp-good">Well packed ✓</div>' : ''}
+      </div>
+
+      <div class="tp-row2">
+        <button class="btn btn-secondary" onclick="optimise()">↕️ Best order</button>
+        ${dayNav ? `<a class="btn btn-secondary" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(dayNav)}">🧭 Whole day</a>` : ''}
+      </div>
+
+      <div class="section-label">The run${stops.length ? '' : ' — nothing added yet'}</div>
+      ${rows || '<div class="empty"><div class="big">📍</div>Add your approved jewellers, then tap Best order.</div>'}
+      ${endLeg != null ? `<div class="tp-leg">↓ ${fmtLeg(endLeg)} to ${esc(d.end_label)}</div>` : ''}
+
+      <div class="tp-sticky"><button class="btn btn-primary" onclick="openPicker()">+ Add stops</button></div>
+      <div id="modal"></div>
+    `, { title: 'Day ' + d.day_index + (d.day_date ? ' · ' + fmtDate(d.day_date) : ''), back: `openTrip('${d.trip_id}')` });
+  }
+
+  function editEnd(which) {
+    const d = S.day, lbl = which === 'start' ? d.start_label : d.end_label;
+    document.getElementById('modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+          <h3>${which === 'start' ? 'Where do you set off from?' : 'Where does the day end?'}</h3>
+          <p>A hotel, an airport, a city — anything Google Maps can find. Start and end can be different places.</p>
+          <div class="field"><input id="e-label" type="text" value="${esc(lbl || '')}" placeholder="e.g. Fort Lauderdale Airport"></div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveEnd('${which}')">Save</button>
+          </div>
+        </div>
+      </div>`;
+    setTimeout(() => { const el = document.getElementById('e-label'); if (el) el.focus(); }, 60);
+  }
+  async function saveEnd(which) {
+    const label = document.getElementById('e-label').value.trim();
+    const patch = {};
+    if (!label) {
+      patch[which + '_label'] = null; patch[which + '_lat'] = null; patch[which + '_lng'] = null;
+    } else {
+      toast('Finding that place…');
+      let lat = null, lng = null;
+      try {
+        const q = label + (S.trip && S.trip.region ? ', ' + S.trip.region : '') + ', USA';
+        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+        const j = await r.json();
+        if (j && j.length) { lat = parseFloat(j[0].lat); lng = parseFloat(j[0].lon); }
+      } catch (e) { /* keep label without pin */ }
+      patch[which + '_label'] = label; patch[which + '_lat'] = lat; patch[which + '_lng'] = lng;
+      if (lat == null) toast("Saved, but couldn't pin it on the map", 'err');
+    }
+    const { error } = await sb.from('lf_trip_days').update(patch).eq('id', S.day.id);
+    if (error) { toast(error.message, 'err'); return; }
+    Object.assign(S.day, patch); closeModal();
+    if (patch[which + '_lat'] != null) toast('Saved ✓', 'ok');
+    renderDay();
+  }
+
+  /* ---------- picker ---------- */
+  async function openPicker() {
+    toast('Loading your approved list…');
+    const region = (S.trip && S.trip.region) || null;
+    let q = sb.from('lf_places').select('id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment')
+      .eq('hidden', false).eq('approved', true).order('priority', { ascending: false, nullsFirst: false }).limit(500);
+    if (region) q = q.eq('region', region);
+    const { data, error } = await q;
+    if (error) { toast(error.message, 'err'); return; }
+    const dayIds = S.days.map(d => d.id);
+    let used = {}, retry = {};
+    if (dayIds.length) {
+      const { data: st } = await sb.from('lf_stops').select('place_id, day_id, status').in('day_id', dayIds);
+      (st || []).forEach(s => {
+        if (s.status === 'buyer_out') retry[s.place_id] = true;
+        else used[s.place_id] = (s.day_id === S.day.id ? 'here' : 'other');
+      });
+    }
+    const anchor = S.day.start_lat != null ? { lat: S.day.start_lat, lng: S.day.start_lng }
+      : (S.stops.length && S.stops[0]._pt) ? S.stops[0]._pt : null;
+    const rows = (data || []).map(p => {
+      const pt = (p.latitude != null) ? { lat: p.latitude, lng: p.longitude } : null;
+      const d = anchor && pt ? km(anchor, pt) : null;
+      return { p, d, used: used[p.id], retry: !!retry[p.id] };
+    });
+    rows.sort((a, b) => (b.retry - a.retry) || ((a.d == null) - (b.d == null)) || ((a.d || 0) - (b.d || 0)) || ((b.p.priority || 0) - (a.p.priority || 0)));
+    S.pick = { rows, sel: {}, q: '' };
+    renderPicker();
+  }
+  function renderPicker() {
+    const term = (S.pick.q || '').toLowerCase();
+    const list = S.pick.rows.filter(r => !term || (r.p.name + ' ' + (r.p.city || '')).toLowerCase().includes(term));
+    const nSel = Object.keys(S.pick.sel).length;
+    const items = list.slice(0, 200).map(r => {
+      const p = r.p, on = !!S.pick.sel[p.id];
+      const dist = r.d != null ? `${(r.d * 0.621371).toFixed(r.d < 16 ? 1 : 0)} mi away` : 'no map pin';
+      return `<div class="pick-item ${on ? 'on' : ''} ${r.used ? 'used' : ''}" onclick="togglePick('${p.id}')">
+        <div class="pk-tick">${on ? '☑' : r.used ? '•' : '☐'}</div>
+        <div class="pk-main">
+          <div class="pk-nm">${esc(p.name)}${p.priority >= 5 ? ' ⭐' : ''}${r.retry ? ' ↻' : ''}</div>
+          <div class="pk-sub">${esc(p.city || p.region || '')} · ${dist}${r.used === 'here' ? ' · already on this day' : r.used === 'other' ? ' · on another day' : ''}${r.retry ? ' · buyer was out — retry' : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal" style="max-height:88vh;overflow-y:auto">
+          <h3>Add stops</h3>
+          <p>Your approved jewellers${S.trip.region ? ' in ' + esc(S.trip.region) : ''}, nearest to the day's start first. ↻ means the buyer was out last time.</p>
+          <div class="field"><input id="pk-q" type="text" placeholder="Search by name or city" value="${esc(S.pick.q)}" oninput="pickSearch(this.value)"></div>
+          ${items || '<div class="empty">Nothing matches.</div>'}
+          <div class="modal-actions" style="position:sticky;bottom:0;background:var(--card);padding-top:10px">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="addPicked()">Add ${nSel || ''}</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  function pickSearch(v) { S.pick.q = v; renderPicker(); const el = document.getElementById('pk-q'); if (el) { el.focus(); el.setSelectionRange(v.length, v.length); } }
+  function togglePick(id) { if (S.pick.sel[id]) delete S.pick.sel[id]; else S.pick.sel[id] = true; renderPicker(); }
+  async function addPicked() {
+    const ids = Object.keys(S.pick.sel);
+    if (!ids.length) { closeModal(); return; }
+    const have = new Set(S.stops.map(s => s.place_id));
+    const fresh = ids.filter(id => !have.has(id));
+    if (!fresh.length) { toast('Those are already on this day'); closeModal(); return; }
+    let seq = S.stops.length;
+    const rows = fresh.map(id => ({ day_id: S.day.id, place_id: id, seq: seq++ }));
+    const { error } = await sb.from('lf_stops').insert(rows);
+    if (error) { toast(error.message, 'err'); return; }
+    closeModal(); toast(`${fresh.length} stop${fresh.length === 1 ? '' : 's'} added`, 'ok');
+    await openDay(S.day.id);
+    if (S.stops.length > 1) optimise(true);
+  }
+  async function removeStop(id) {
+    const { error } = await sb.from('lf_stops').delete().eq('id', id);
+    if (error) { toast(error.message, 'err'); return; }
+    toast('Removed'); openDay(S.day.id);
+  }
+  async function optimise(quiet) {
+    const d = S.day;
+    const start = d.start_lat != null ? { lat: d.start_lat, lng: d.start_lng } : null;
+    const end = d.end_lat != null ? { lat: d.end_lat, lng: d.end_lng } : null;
+    const items = S.stops.map(s => ({ id: s.id, lat: s._pt ? s._pt.lat : null, lng: s._pt ? s._pt.lng : null }));
+    const ordered = orderStops(start, items, end);
+    for (let i = 0; i < ordered.length; i++) await sb.from('lf_stops').update({ seq: i }).eq('id', ordered[i].id);
+    if (!quiet) toast('Ordered for the shortest run ✓', 'ok');
+    openDay(d.id);
+  }
+  async function setOutcome(id, status) {
+    const patch = { status, visited_at: status === 'planned' ? null : new Date().toISOString() };
+    const { error } = await sb.from('lf_stops').update(patch).eq('id', id);
+    if (error) { toast(error.message, 'err'); return; }
+    if (status === 'buyer_out') toast('Noted — they will show as ↻ retry when you plan another day');
+    else if (status === 'met') toast('Logged ✓', 'ok');
+    openDay(S.day.id);
+  }
+
+  /* ---------- trip report ---------- */
+  async function openReport() {
+    const dayIds = S.days.map(d => d.id);
+    let st = [];
+    if (dayIds.length) {
+      const { data } = await sb.from('lf_stops')
+        .select('*, place:lf_places(name,city,phone)').in('day_id', dayIds).order('seq');
+      st = data || [];
+    }
+    const by = s => st.filter(x => x.status === s);
+    const met = by('met'), out = by('buyer_out'), no = by('not_interested'), sk = by('skipped'), pl = by('planned');
+    const nameOf = s => `${(s.place || {}).name || '?'}${(s.place || {}).city ? ' — ' + s.place.city : ''}`;
+    const listOf = arr => arr.length ? '<ul style="margin:6px 0 0;padding-left:18px;font-size:13.5px;line-height:1.6">' + arr.map(s => `<li>${esc(nameOf(s))}</li>`).join('') + '</ul>' : '';
+    S.report = { t: S.trip.name, met: met.map(nameOf), out: out.map(nameOf), no: no.map(nameOf), sk: sk.length, pl: pl.length };
+    $app.innerHTML = shell(`
+      <div class="tp-sum">
+        <div class="big">${esc(S.trip.name)}</div>
+        <div class="det">${S.days.length} day${S.days.length === 1 ? '' : 's'} · ${st.length} stop${st.length === 1 ? '' : 's'} planned</div>
+      </div>
+      <div class="card">
+        <div class="rep-line"><span>✓ Met the buyer</span><b>${met.length}</b></div>
+        <div class="rep-line"><span>↻ Buyer was out</span><b>${out.length}</b></div>
+        <div class="rep-line"><span>✗ Not interested</span><b>${no.length}</b></div>
+        <div class="rep-line"><span>– Skipped</span><b>${sk.length}</b></div>
+        <div class="rep-line"><span>Still to do</span><b>${pl.length}</b></div>
+      </div>
+      ${met.length ? `<div class="card"><h3>Met — follow these up</h3>${listOf(met)}</div>` : ''}
+      ${out.length ? `<div class="card"><h3>Worth another try</h3><p class="tp-sub">The buyer wasn't in. They show with ↻ when you add stops to any day.</p>${listOf(out)}</div>` : ''}
+      ${no.length ? `<div class="card"><h3>Not interested</h3>${listOf(no)}</div>` : ''}
+      <button class="btn btn-secondary" onclick="copyReport()">📋 Copy as text</button>
+      <div id="modal"></div>
+    `, { title: 'Trip report', back: `openTrip('${S.trip.id}')` });
+  }
+  function copyReport() {
+    const r = S.report; if (!r) return;
+    const L = [];
+    L.push(r.t, '');
+    L.push(`Met the buyer: ${r.met.length}`); r.met.forEach(n => L.push('  • ' + n));
+    L.push(`Buyer was out: ${r.out.length}`); r.out.forEach(n => L.push('  • ' + n));
+    L.push(`Not interested: ${r.no.length}`); r.no.forEach(n => L.push('  • ' + n));
+    L.push(`Skipped: ${r.sk}`, `Still to do: ${r.pl}`);
+    const text = L.join('\n');
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Copied ✓', 'ok'), () => toast('Could not copy', 'err'));
+    else toast('Copy not supported here', 'err');
+  }
+
+  /* ---------- auth / boot ---------- */
+  function renderLogin(msg) {
+    $app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-head"><div class="logo-badge" style="margin:0 auto">BJ</div>
+        <h1>Trip Planner</h1><p>Sign in with your marketing app account</p></div>
+      <div class="auth-card">
+        ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
+        <div class="field"><label>Email</label><input type="email" id="li-email" autocomplete="username"></div>
+        <div class="field"><label>Password</label><input type="password" id="li-pass" autocomplete="current-password"></div>
+        <button class="btn btn-primary" onclick="doLogin()">Sign in</button>
+      </div>
+    </div>`;
+  }
+  async function doLogin() {
+    const email = document.getElementById('li-email').value.trim();
+    const pass = document.getElementById('li-pass').value;
+    if (!email || !pass) { toast('Enter email and password', 'err'); return; }
+    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) { toast(error.message, 'err'); return; }
+    init();
+  }
+  async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { renderLogin(); return; }
+    S.user = session.user;
+    const { data: prof, error } = await sb.from('profiles').select('role, active').eq('id', S.user.id).single();
+    if (error || !prof || prof.role !== 'owner' || !prof.active) {
+      $app.innerHTML = `<div class="auth-wrap"><div class="auth-card" style="text-align:center">
+        <h2>Owner only</h2><p class="sub">The Trip Planner is currently available only to the owner account.</p></div></div>`;
+      return;
+    }
+    await loadTrips(); renderTrips();
+  }
+  window.doLogin = doLogin; window.newTrip = newTrip; window.saveTrip = saveTrip; window.closeModal = closeModal;
+  window.openTrip = openTrip; window.backToTrips = backToTrips; window.addDay = addDay; window.openDay = openDay;
+  window.editEnd = editEnd; window.saveEnd = saveEnd; window.openPicker = openPicker; window.pickSearch = pickSearch;
+  window.togglePick = togglePick; window.addPicked = addPicked; window.removeStop = removeStop;
+  window.optimise = optimise; window.setOutcome = setOutcome; window.openReport = openReport; window.copyReport = copyReport;
+  init();
+  </script>
+</body>
+</html>

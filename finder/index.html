@@ -183,6 +183,7 @@
         <div class="screen-name">Lead Finder${opts.sub ? ' · ' + esc(opts.sub) : ''}</div>
       </div>
       <div style="margin-left:auto"></div>
+      <a class="lf-signout" href="trips.html" style="text-decoration:none;font-weight:650">Trips →</a>
       <button class="lf-signout" onclick="doSignOut()">Sign out</button>
     </div>
     <div id="content">${inner}</div>`;
@@ -230,6 +231,8 @@
         base().eq('research', true).not('verdict', 'is', null),
         base().is('verdict', null).is('verdict_source', null).not('website', 'is', null),
       ]);
+      const ap = await base().eq('approved', true);
+      S.approved = ap.count || 0;
       const { data: lastRow } = await sb.from('lf_places').select('updated_at')
         .eq('hidden', false).eq('research', true).not('verdict', 'is', null)
         .order('updated_at', { ascending: false }).limit(1);
@@ -253,6 +256,11 @@
         <div class="hint">${scr}${p.last ? ' · last research ' + relTime(p.last) : ''}<br>A batch is researched automatically every night — or say “research the flagged list” any time.</div>
       </div>`;
     }
+    const days = Math.max(1, Math.ceil((S.approved || 0) / 10));
+    const tripHtml = S.approved ? `<a class="lf-pipe" href="trips.html" style="display:block;text-decoration:none;color:inherit">
+        <h4>🗺️ Trip planner</h4>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5">${S.approved} approved jeweller${S.approved === 1 ? '' : 's'} ready to visit — about ${days} packed day${days === 1 ? '' : 's'} on the road.<br><b style="color:var(--maroon)">Plan a trip →</b></div>
+      </a>` : '';
     $app.innerHTML = shell(`
       <div class="section-label">Search an area</div>
       <div class="lf-searchbar">
@@ -263,6 +271,7 @@
         <button class="btn btn-primary btn-small" style="width:auto" onclick="doSearch()">Search</button>
       </div>
       <div class="lf-home-stats">${stats || ''}</div>
+      ${tripHtml}
       ${pipeHtml}
       <div class="empty"><div class="big">💎</div>Type a city to see the jewellers there.<br>Approve the good ones — they become your trip list.<br><br>Spotted a jeweller on Instagram or on the road? Tap ＋ to add it.</div>
       <div id="addlead-modal"></div>

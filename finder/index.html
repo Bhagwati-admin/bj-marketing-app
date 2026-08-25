@@ -47,6 +47,12 @@
     .lf-viewtabs button { flex: 1; border: 1.5px solid var(--line); background: #fff; border-radius: 11px; padding: 9px; font-size: 14px; font-weight: 650; color: #5d5765; cursor: pointer; }
     .lf-viewtabs button.on { background: var(--maroon); border-color: var(--maroon); color: #fff; }
     .lf-home-stats { display: flex; gap: 10px; margin-bottom: 14px; }
+    .lf-pipe { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px; margin-bottom: 14px; }
+    .lf-pipe h4 { margin: 0 0 9px; font-size: 14px; }
+    .lf-bar { height: 10px; background: #f0e9dc; border-radius: 999px; overflow: hidden; }
+    .lf-bar-fill { height: 100%; background: linear-gradient(90deg, var(--maroon), #c9a14a); border-radius: 999px; transition: width .4s; }
+    .lf-pipe .nums { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+    .lf-pipe .hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.45; }
     .lf-signout { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 10px; }
     .leaflet-container { font: inherit; }
   </style>
@@ -124,6 +130,13 @@
     return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(parts.join(', '));
   }
   function statusOf(p) { return p.approved === true ? 'approved' : p.approved === false ? 'rejected' : 'pending'; }
+  function relTime(ts) {
+    if (!ts) return null;
+    const s = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min ago';
+    if (s < 86400) return Math.round(s / 3600) + ' h ago';
+    return Math.round(s / 86400) + ' days ago';
+  }
 
   /* ---------- shell ---------- */
   function shell(inner, opts) {
@@ -176,10 +189,36 @@
       out.push({ st, count: count || 0 });
     }
     S.homeCounts = out;
+    try {
+      const base = () => sb.from('lf_places').select('id', { count: 'exact', head: true }).eq('hidden', false);
+      const [w, d, u] = await Promise.all([
+        base().eq('research', true).is('verdict', null),
+        base().eq('research', true).not('verdict', 'is', null),
+        base().is('verdict', null).is('verdict_source', null).not('website', 'is', null),
+      ]);
+      const { data: lastRow } = await sb.from('lf_places').select('updated_at')
+        .eq('hidden', false).eq('research', true).not('verdict', 'is', null)
+        .order('updated_at', { ascending: false }).limit(1);
+      S.pipe = { waiting: w.count || 0, done: d.count || 0, unscreened: u.count || 0,
+        last: lastRow && lastRow.length ? lastRow[0].updated_at : null };
+    } catch (e) { S.pipe = null; }
   }
   function renderHome() {
     const stats = (S.homeCounts || []).map(s =>
       `<div class="stat"><div class="st-num">${s.count}</div><div class="st-label">${s.st} jewellers</div></div>`).join('');
+    let pipeHtml = '';
+    const p = S.pipe;
+    if (p && (p.waiting + p.done) > 0) {
+      const total = p.waiting + p.done;
+      const pct = Math.round(100 * p.done / total);
+      const scr = p.unscreened > 0 ? `Auto-screen: ${p.unscreened} website${p.unscreened === 1 ? '' : 's'} in queue` : 'Auto-screen: caught up ✓';
+      pipeHtml = `<div class="lf-pipe">
+        <h4>🔍 Research pipeline</h4>
+        <div class="lf-bar"><div class="lf-bar-fill" style="width:${pct}%"></div></div>
+        <div class="nums"><span>${p.done} of ${total} researched (${pct}%)</span><span>${p.waiting} waiting</span></div>
+        <div class="hint">${scr}${p.last ? ' · last research ' + relTime(p.last) : ''}<br>The queue moves when you tell Claude “research the flagged list”.</div>
+      </div>`;
+    }
     $app.innerHTML = shell(`
       <div class="section-label">Search an area</div>
       <div class="lf-searchbar">
@@ -190,6 +229,7 @@
         <button class="btn btn-primary btn-small" style="width:auto" onclick="doSearch()">Search</button>
       </div>
       <div class="lf-home-stats">${stats || ''}</div>
+      ${pipeHtml}
       <div class="empty"><div class="big">💎</div>Type a city to see the jewellers there.<br>Approve the good ones — they become your trip list.<br><br>Spotted a jeweller on Instagram or on the road? Tap ＋ to add it.</div>
       <div id="addlead-modal"></div>
     `);

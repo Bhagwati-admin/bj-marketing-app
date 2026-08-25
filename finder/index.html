@@ -64,6 +64,16 @@
     .lf-res details { margin-top: 4px; }
     .lf-res summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
     .lf-res .ev { margin: 7px 0 0; padding-left: 17px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+    .lf-draft textarea { width: 100%; min-height: 168px; border: 1.5px solid var(--line); border-radius: 12px;
+      padding: 12px 13px; font-size: 15px; line-height: 1.5; resize: vertical; background: #fff; outline: none; font-family: inherit; }
+    .lf-draft textarea:focus { border-color: var(--maroon); }
+    .lf-draft .why { font-size: 12px; color: var(--muted); margin: 8px 2px 0; line-height: 1.5; }
+    .lf-draft .send { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .lf-draft .send a, .lf-draft .send button { flex: 1; min-width: 104px; text-align: center; border: 1.5px solid var(--line);
+      background: #fff; border-radius: 999px; padding: 11px 12px; font-size: 14px; font-weight: 650; color: var(--maroon);
+      text-decoration: none; cursor: pointer; }
+    .lf-draft .send a:active, .lf-draft .send button:active { background: var(--maroon-soft); }
+    .btn-draft { background: var(--gold-soft); color: #7a5a12; }
     .chip-res { background: #e3f2e7; color: #16663c; }
     .chip-p5 { background: #f6e7c4; color: #7a5410; }
     .lf-pipe .hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.45; }
@@ -170,6 +180,94 @@
       ${sec('pitch', '🎯 How we pitch them', p.pitch_angle)}
       ${ev}
     </div>`;
+  }
+
+  /* ---------- approach drafts (M3) ----------
+     Short opener whose only job is to get 15 minutes. Never auto-sends: Ravi copies it
+     or it opens WhatsApp/SMS pre-filled and he presses send himself. A store-specific
+     message written during research (approach_msg) always beats this template. */
+  const REGION_NAME = { FL: 'Florida', NY: 'New York', NJ: 'New Jersey' };
+  const OUTREACH = {
+    signoff: 'Ravi\nBhagwati Jewels',
+    place(p) { return p.city || REGION_NAME[p.region] || p.region || 'your area'; },
+    hook(p) {
+      const seg = (p.segment || '').toLowerCase();
+      if (p.priority >= 5)
+        return 'I saw you already carry lab-grown — that is exactly what we make, so you would be buying straight from the factory.';
+      if (seg === 'wholesaler')
+        return 'We supply wholesalers direct at manufacturer prices, with credit terms and memo available.';
+      if (seg === 'exchange')
+        return 'We supply the independent dealers in exchanges like yours — certified lab-grown, ready stock or made to order.';
+      return 'We supply independent jewellers with certified lab-grown pieces — ready stock, or made to order in 4 to 10 days.';
+    },
+    compose(p, dateStr) {
+      if (p.approach_msg) return OUTREACH.fill(p.approach_msg, p, dateStr);
+      const where = OUTREACH.place(p);
+      const when = dateStr || '{date}';
+      return OUTREACH.fill(
+        `Hello — Ravi here from Bhagwati Jewels. We manufacture lab-grown diamond jewellery in India and hold stock in our New York office.\n\n` +
+        `{hook}\n\n` +
+        `I am in ${where} on ${when} and would like 15 minutes to show you a few pieces — IGI certified, overnight from New York, memo available.\n\n` +
+        `Would that suit you?\n\n${OUTREACH.signoff}`, p, dateStr);
+    },
+    fill(t, p, dateStr) {
+      return String(t)
+        .replace(/\{hook\}/g, OUTREACH.hook(p))
+        .replace(/\{store\}/g, p.name || '')
+        .replace(/\{city\}/g, OUTREACH.place(p))
+        .replace(/\{date\}/g, dateStr || '{date}');
+    }
+  };
+  function openDraft(id) {
+    const p = findP(id); if (!p) return;
+    const text = OUTREACH.compose(p, null);
+    const why = p.approach_msg
+      ? 'Written for this store during research.'
+      : (p.good_at ? 'Built from the template. What they are good at: ' + esc(p.good_at.split('. ')[0]) + '.'
+                   : 'Built from the template — this store has not been deep-researched yet.');
+    document.getElementById('draft-modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeDraft()">
+        <div class="modal lf-draft" style="max-height:88vh;overflow-y:auto">
+          <h3 style="margin-bottom:2px">Message ${esc(p.name)}</h3>
+          <p style="margin:4px 0 12px">Edit it however you like — nothing sends until you press send yourself.</p>
+          <textarea id="dr-text">${esc(text)}</textarea>
+          <div class="why">${why}${text.indexOf('{date}') > -1 ? '<br><b>Put the date in</b> where it says {date} — or open this store from a trip day and the date fills itself.' : ''}</div>
+          <div class="send">
+            <button onclick="copyDraft()">📋 Copy</button>
+            ${waLink(p.phone) ? `<a href="#" onclick="return openWa('${p.id}')">🟢 WhatsApp</a>` : ''}
+            ${smsLink(p.phone) ? `<a href="#" onclick="return openSms('${p.id}')">💬 SMS</a>` : ''}
+            ${p.email ? `<a href="#" onclick="return openMail('${p.id}')">✉️ Email</a>` : ''}
+          </div>
+          <div class="modal-actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="closeDraft()">Close</button></div>
+        </div>
+      </div>`;
+  }
+  function closeDraft() { const el = document.getElementById('draft-modal'); if (el) el.innerHTML = ''; }
+  function draftText() { const el = document.getElementById('dr-text'); return el ? el.value : ''; }
+  function copyDraft() {
+    const t = draftText();
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => toast('Copied ✓', 'ok'), () => toast('Could not copy', 'err'));
+    else toast('Copy not supported here', 'err');
+  }
+  function openWa(id) {
+    const p = findP(id); if (!p) return false;
+    const w = waLink(p.phone); if (!w) return false;
+    window.open(w + '?text=' + encodeURIComponent(draftText()), '_blank', 'noopener');
+    return false;
+  }
+  function openSms(id) {
+    const p = findP(id); if (!p) return false;
+    const sm = smsLink(p.phone); if (!sm) return false;
+    window.location.href = sm + '?body=' + encodeURIComponent(draftText());
+    return false;
+  }
+  function openMail(id) {
+    const p = findP(id); if (!p) return false;
+    if (!p.email) return false;
+    window.location.href = 'mailto:' + encodeURIComponent(p.email)
+      + '?subject=' + encodeURIComponent('Lab-grown diamond jewellery — Bhagwati Jewels')
+      + '&body=' + encodeURIComponent(draftText());
+    return false;
   }
 
   /* ---------- shell ---------- */
@@ -429,6 +527,7 @@
          </div>
          <button class="btn btn-research" style="width:100%;margin-top:8px" onclick="closeDetail();markResearch('${p.id}')">${p.research ? '🔍 Listed for Claude research ✓ (tap to remove)' : '🔍 List for Claude deep research'}</button>`
       : `<button class="lf-reset" onclick="resetVerdict('${p.id}')">Undo — back to review</button>`;
+    const draftBtn = `<button class="btn btn-draft" style="width:100%;margin-top:8px" onclick="closeDetail();openDraft('${p.id}')">✉️ Draft a message</button>`;
     document.getElementById('detail-modal').innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)closeDetail()">
         <div class="modal" style="max-height:86vh;overflow-y:auto">
@@ -439,6 +538,7 @@
           <div class="lf-contacts" style="margin-top:14px">${contactBtns(p, true).join('')}</div>
           ${p.phone ? '<p style="margin:8px 0 0;font-size:12px;color:var(--muted)">WhatsApp opens only if that number is registered on WhatsApp — SMS always works.</p>' : ''}
           ${actions}
+          ${draftBtn}
           <div class="modal-actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="closeDetail()">Close</button></div>
         </div>
       </div>`;
@@ -474,6 +574,7 @@
       <div id="lf-map" style="${S.view==='map'?'display:block':''}"></div>
       <div id="reject-modal"></div>
       <div id="detail-modal"></div>
+      <div id="draft-modal"></div>
       <div id="addlead-modal"></div>
     `, { sub: S.areaLabel ? S.areaLabel.split(',')[0] : '' });
     if (S.view === 'map') mountMap();
@@ -642,6 +743,8 @@
   window.saveOtherReason = saveOtherReason;
   window.resetVerdict = resetVerdict; window.jumpTo = jumpTo; window.markResearch = markResearch;
   window.openDetail = openDetail; window.closeDetail = closeDetail;
+  window.openDraft = openDraft; window.closeDraft = closeDraft; window.copyDraft = copyDraft;
+  window.openWa = openWa; window.openSms = openSms; window.openMail = openMail;
   window.openAddLead = openAddLead; window.closeAddLead = closeAddLead; window.saveLead = saveLead;
   init();
   </script>

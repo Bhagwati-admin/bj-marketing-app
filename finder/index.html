@@ -535,6 +535,35 @@
   function closeReject() { document.getElementById('reject-modal').innerHTML = ''; S.rejectTarget = null; }
   async function doReject(ri) {
     const reason = REJECT_REASONS[ri] || 'Other';
+    if (reason === 'Other') { openOtherReason(); return; }
+    applyReject(reason);
+  }
+  function openOtherReason() {
+    const p = findP(S.rejectTarget); if (!p) return;
+    document.getElementById('reject-modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeReject()">
+        <div class="modal">
+          <h3>Reject ${esc(p.name)}</h3>
+          <p>In your own words — why is this one not a fit? What you type shows on the card.</p>
+          <div class="field">
+            <input id="rj-other" type="text" maxlength="160" placeholder="e.g. only sells antique estate pieces"
+                   onkeydown="if(event.key==='Enter')saveOtherReason()">
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="openReject('${p.id}')">Back</button>
+            <button class="btn btn-primary" onclick="saveOtherReason()">Reject</button>
+          </div>
+        </div>
+      </div>`;
+    setTimeout(() => { const el = document.getElementById('rj-other'); if (el) el.focus(); }, 60);
+  }
+  function saveOtherReason() {
+    const el = document.getElementById('rj-other');
+    const text = (el ? el.value : '').trim();
+    if (!text) { toast('Type a short reason, or tap Back to pick one', 'err'); return; }
+    applyReject(text.slice(0, 160));
+  }
+  async function applyReject(reason) {
     const id = S.rejectTarget; const p = findP(id); if (!p) return;
     const patch = { approved: false, verdict: 'not_fit', verdict_source: 'manual', verdict_reasons: [{ signal: reason, src: 'manual' }] };
     const { error } = await sb.from('lf_places').update(patch).eq('id', id);
@@ -610,6 +639,7 @@
   window.doLogin = doLogin; window.doSignOut = doSignOut; window.doSearch = doSearch;
   window.setFilter = setFilter; window.setView = setView; window.approve = approve;
   window.openReject = openReject; window.closeReject = closeReject; window.doReject = doReject;
+  window.saveOtherReason = saveOtherReason;
   window.resetVerdict = resetVerdict; window.jumpTo = jumpTo; window.markResearch = markResearch;
   window.openDetail = openDetail; window.closeDetail = closeDetail;
   window.openAddLead = openAddLead; window.closeAddLead = closeAddLead; window.saveLead = saveLead;

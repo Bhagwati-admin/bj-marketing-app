@@ -119,8 +119,9 @@
   }
   function mapsLink(p) {
     if (p.latitude != null && p.longitude != null)
-      return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.name + ', ' + (p.address || '') + ' ' + (p.city || '')) ;
-    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.name + ' ' + (p.city || p.region || ''));
+      return 'https://www.google.com/maps/search/' + encodeURIComponent(p.name) + '/@' + p.latitude + ',' + p.longitude + ',17z';
+    const parts = [p.name, p.address, p.city, p.region, p.postcode, 'USA'].filter(Boolean);
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(parts.join(', '));
   }
   function statusOf(p) { return p.approved === true ? 'approved' : p.approved === false ? 'rejected' : 'pending'; }
 

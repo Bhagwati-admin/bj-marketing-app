@@ -52,6 +52,20 @@
     .lf-bar { height: 10px; background: #f0e9dc; border-radius: 999px; overflow: hidden; }
     .lf-bar-fill { height: 100%; background: linear-gradient(90deg, var(--maroon), #c9a14a); border-radius: 999px; transition: width .4s; }
     .lf-pipe .nums { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+    .lf-res { margin-top: 12px; }
+    .lf-res .res-sum { margin: 0 0 10px; font-size: 14.5px; line-height: 1.5; }
+    .lf-res .res-sec { border-left: 3px solid var(--line); padding: 0 0 0 11px; margin-bottom: 11px; }
+    .lf-res .res-sec.good { border-left-color: #1a7f4e; }
+    .lf-res .res-sec.gap { border-left-color: #c9922a; }
+    .lf-res .res-sec.pitch { border-left-color: var(--maroon); background: var(--maroon-soft); border-radius: 0 10px 10px 0; padding: 9px 12px; }
+    .lf-res h5 { margin: 0 0 3px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .lf-res .res-sec.pitch h5 { color: var(--maroon); }
+    .lf-res .res-sec p { margin: 0; font-size: 13.8px; line-height: 1.5; }
+    .lf-res details { margin-top: 4px; }
+    .lf-res summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
+    .lf-res .ev { margin: 7px 0 0; padding-left: 17px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+    .chip-res { background: #e3f2e7; color: #16663c; }
+    .chip-p5 { background: #f6e7c4; color: #7a5410; }
     .lf-pipe .hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.45; }
     .lf-signout { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 10px; }
     .leaflet-container { font: inherit; }
@@ -138,6 +152,26 @@
     return Math.round(s / 86400) + ' days ago';
   }
 
+  const PRIO_LABEL = { 5: 'Sells lab-grown', 4: 'Bridal / custom focus', 3: 'Solid independent', 2: 'Needs verifying', 1: 'Weak fit' };
+  function researchHtml(p) {
+    if (!p.summary && !p.good_at && !p.struggling_with && !p.pitch_angle) return '';
+    const sec = (cls, label, val) => val
+      ? `<div class="res-sec ${cls}"><h5>${label}</h5><p>${esc(val)}</p></div>` : '';
+    let ev = '';
+    if (Array.isArray(p.verdict_reasons) && p.verdict_reasons.length) {
+      const li = p.verdict_reasons.map(r =>
+        `<li>${esc(r.signal || '')}${r.src ? ' <i>— ' + esc(r.src) + '</i>' : ''}</li>`).join('');
+      ev = `<details><summary>Evidence (${p.verdict_reasons.length})</summary><ul class="ev">${li}</ul></details>`;
+    }
+    return `<div class="lf-res">
+      ${p.summary ? `<p class="res-sum">${esc(p.summary)}</p>` : ''}
+      ${sec('good', '💪 What they’re good at', p.good_at)}
+      ${sec('gap', '⚠️ Where they struggle', p.struggling_with)}
+      ${sec('pitch', '🎯 How we pitch them', p.pitch_angle)}
+      ${ev}
+    </div>`;
+  }
+
   /* ---------- shell ---------- */
   function shell(inner, opts) {
     opts = opts || {};
@@ -216,7 +250,7 @@
         <h4>🔍 Research pipeline</h4>
         <div class="lf-bar"><div class="lf-bar-fill" style="width:${pct}%"></div></div>
         <div class="nums"><span>${p.done} of ${total} researched (${pct}%)</span><span>${p.waiting} waiting</span></div>
-        <div class="hint">${scr}${p.last ? ' · last research ' + relTime(p.last) : ''}<br>The queue moves when you tell Claude “research the flagged list”.</div>
+        <div class="hint">${scr}${p.last ? ' · last research ' + relTime(p.last) : ''}<br>A batch is researched automatically every night — or say “research the flagged list” any time.</div>
       </div>`;
     }
     $app.innerHTML = shell(`
@@ -325,7 +359,9 @@
     if (p.verdict_reasons && p.verdict_reasons.length) chips.push(`<span class="chip chip-src">${esc(p.verdict_reasons[0].signal || '')}</span>`);
     if (p.locations_count && p.locations_count > 1) chips.push(`<span class="chip chip-src">🏢 ${p.locations_count} locations — main branch</span>`);
     if (p.segment === 'exchange') chips.push('<span class="chip chip-src">🏬 Multi-vendor exchange</span>');
-    if (p.research && st === 'pending') chips.push('<span class="chip chip-pending">🔍 Research listed</span>');
+    if (p.pitch_angle) chips.push('<span class="chip chip-res">Researched ✓</span>');
+    else if (p.research && st === 'pending') chips.push('<span class="chip chip-pending">🔍 Research listed</span>');
+    if (p.priority) chips.push(`<span class="chip ${p.priority >= 5 ? 'chip-p5' : 'chip-src'}">${p.priority >= 5 ? '⭐ ' : ''}P${p.priority} · ${esc(PRIO_LABEL[p.priority] || '')}</span>`);
     if (p.source && p.source !== 'osm') chips.push(`<span class="chip chip-src">${esc(p.source)}</span>`);
     const addr = [p.address, p.city, p.postcode].filter(Boolean).join(', ');
     const c = contactBtns(p);
@@ -363,6 +399,8 @@
     const chip = st === 'pending' ? '<span class="chip chip-pending">To review</span>'
       : st === 'approved' ? '<span class="chip chip-approved">Approved ✓</span>'
       : `<span class="chip chip-rejected">Rejected${p.verdict_reasons && p.verdict_reasons.length ? ' — ' + esc(p.verdict_reasons[0].signal || '') : ''}</span>`;
+    const chip2 = (p.pitch_angle ? '<span class="chip chip-res">Researched ✓</span>' : '')
+      + (p.priority ? `<span class="chip ${p.priority >= 5 ? 'chip-p5' : 'chip-src'}">${p.priority >= 5 ? '⭐ ' : ''}P${p.priority} · ${esc(PRIO_LABEL[p.priority] || '')}</span>` : '');
     const rows = [];
     const addRow = (k, v) => { if (v) rows.push(`<div class="detail-row"><div class="dk">${k}</div><div class="dv">${v}</div></div>`); };
     addRow('Address', esc([p.address, p.city, p.region, p.postcode].filter(Boolean).join(', ')));
@@ -373,8 +411,8 @@
     addRow('Segment', p.segment ? esc(p.segment) : null);
     addRow('Locations', p.locations_count && p.locations_count > 1 ? esc(p.locations_count + ' in this state — buying usually happens at the head office') : null);
     addRow('Source', p.source === 'osm' ? 'OpenStreetMap seed list' : esc(p.source));
-    const summary = p.summary ? `<p style="margin:10px 0 0;font-size:14.5px">${esc(p.summary)}</p>` : '';
-    const notes = p.notes ? `<p style="margin:8px 0 0;font-size:13.5px;color:var(--muted)">${esc(p.notes)}</p>` : '';
+    const research = researchHtml(p);
+    const notes = p.notes ? `<p style="margin:10px 0 0;font-size:12.5px;color:var(--muted)">${esc(p.notes)}</p>` : '';
     const actions = st === 'pending'
       ? `<div class="lf-actions" style="margin-top:14px">
            <button class="btn btn-approve" onclick="approve('${p.id}')">✓ Approve</button>
@@ -386,9 +424,9 @@
       <div class="modal-overlay" onclick="if(event.target===this)closeDetail()">
         <div class="modal" style="max-height:86vh;overflow-y:auto">
           <h3 style="margin-bottom:2px">${esc(p.name)}</h3>
-          <div class="lf-chiprow" style="margin:6px 0 10px">${chip}</div>
+          <div class="lf-chiprow" style="margin:6px 0 10px">${chip}${chip2}</div>
           ${rows.join('')}
-          ${summary}${notes}
+          ${research}${notes}
           <div class="lf-contacts" style="margin-top:14px">${contactBtns(p, true).join('')}</div>
           ${p.phone ? '<p style="margin:8px 0 0;font-size:12px;color:var(--muted)">WhatsApp opens only if that number is registered on WhatsApp — SMS always works.</p>' : ''}
           ${actions}

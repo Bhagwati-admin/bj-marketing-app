@@ -73,6 +73,19 @@
       background: #fff; border-radius: 999px; padding: 11px 12px; font-size: 14px; font-weight: 650; color: var(--maroon);
       text-decoration: none; cursor: pointer; }
     .lf-draft .send a:active, .lf-draft .send button:active { background: var(--maroon-soft); }
+    .lf-searchbar .combo { flex: 1; min-width: 0; }
+    .lf-searchbar .combo input { width: 100%; }
+    .lf-combo-count { float: right; color: var(--muted); font-size: 13px; font-weight: 600; }
+    .lf-arearow { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 12px;
+      box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+    .lf-arearow:active { background: #fdfaf6; }
+    .lf-arearow .ar-main { flex: 1; min-width: 0; }
+    .lf-arearow .ar-city { font-weight: 650; font-size: 15px; }
+    .lf-arearow .ar-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    .lf-arearow .ar-num { font-size: 20px; font-weight: 800; color: var(--maroon); line-height: 1; text-align: right; }
+    .lf-arearow .ar-num span { display: block; font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .3px; }
+    .lf-morebtn { background: none; border: 0; color: var(--maroon); font-weight: 650; font-size: 13.5px;
+      padding: 8px 2px; cursor: pointer; text-decoration: underline; }
     .btn-draft { background: var(--gold-soft); color: #7a5a12; }
     .chip-res { background: #e3f2e7; color: #16663c; }
     .chip-p5 { background: #f6e7c4; color: #7a5410; }
@@ -109,6 +122,7 @@
     map: null, markers: [],
     homeCounts: null,
     rejectTarget: null,
+    areas: [], sug: [], areaView: [], areaAll: false, screen: 'home',
   };
   const REJECT_REASONS = ['Natural only', 'Gold with CZ / moissanite only', 'Silver / fashion only', 'Indian vendor / supplier', 'Pawn shop', 'Chain store', 'Repair / watch only', 'Closed', 'Not a jeweller', 'Other'];
   const STATES = ['FL', 'NY', 'NJ'];
@@ -270,6 +284,75 @@
     return false;
   }
 
+  /* ---------- area picker ----------
+     Ravi does not know Florida geography, so the app has to offer the areas rather than
+     expect him to type one. `area` on lf_places is a derived grouping (city when known,
+     otherwise the nearest known city centre within 30 km of the pin) — browsing only,
+     never an address. */
+  async function loadAreas() {
+    try {
+      const { data } = await sb.from('lf_areas').select('*').order('total', { ascending: false }).limit(600);
+      S.areas = data || [];
+    } catch (e) { S.areas = []; }
+  }
+  function areaSub(a) {
+    const bits = [];
+    if (a.to_review) bits.push(a.to_review + ' to review');
+    if (a.approved) bits.push(a.approved + ' approved');
+    if (a.lgd) bits.push('⭐ ' + a.lgd + ' lab-grown');
+    if (!bits.length) bits.push(a.fits ? a.fits + ' worth a look' : 'not screened yet');
+    return bits.join(' · ');
+  }
+  function areaSuggest(v) {
+    const box = document.getElementById('lf-areadrop'); if (!box) return;
+    const t = (v || '').trim().toLowerCase();
+    if (!t) { closeSug(); return; }
+    let list = S.areas.filter(a => !S.state || a.region === S.state);
+    const starts = list.filter(a => a.city.toLowerCase().startsWith(t));
+    const has = list.filter(a => !a.city.toLowerCase().startsWith(t) && a.city.toLowerCase().includes(t));
+    S.sug = starts.concat(has).slice(0, 8);
+    if (!S.sug.length) { closeSug(); return; }
+    box.innerHTML = S.sug.map((a, i) =>
+      `<button type="button" onmousedown="pickSug(${i})">${esc(a.city)} <span class="lf-combo-count">${a.total}</span></button>`
+    ).join('');
+    box.className = 'combo-list open';
+  }
+  function closeSug() { const box = document.getElementById('lf-areadrop'); if (box) { box.className = 'combo-list'; box.innerHTML = ''; } }
+  function pickSug(i) { const a = S.sug[i]; if (a) goArea(a); }
+  function pickAreaRow(i) { const a = S.areaView[i]; if (a) goArea(a); }
+  function goArea(a) {
+    closeSug();
+    S.state = a.region;
+    const q = document.getElementById('lf-q'); if (q) q.value = a.city;
+    const sel = document.getElementById('lf-state'); if (sel) sel.value = a.region;
+    doSearch();
+  }
+  function toggleAllAreas() { S.areaAll = !S.areaAll; renderHome(); }
+  function onStateChange(v) {
+    S.state = v; S.areaAll = false; closeSug();
+    if (S.screen === 'home') renderHome();
+  }
+  function areasHtml() {
+    if (!S.areas.length) return '';
+    S.areaView = S.areas.filter(a => !S.state || a.region === S.state);
+    if (!S.areaView.length) return '';
+    const limit = S.areaAll ? S.areaView.length : 10;
+    const rows = S.areaView.slice(0, limit).map((a, i) =>
+      `<div class="lf-arearow" onclick="pickAreaRow(${i})">
+         <div class="ar-main">
+           <div class="ar-city">${esc(a.city)}${S.state ? '' : ' <span style="color:var(--muted);font-weight:600">· ' + esc(a.region) + '</span>'}</div>
+           <div class="ar-sub">${areaSub(a)}</div>
+         </div>
+         <div class="ar-num">${a.total}<span>JEWELLERS</span></div>
+       </div>`).join('');
+    const more = S.areaView.length > 10
+      ? `<button class="lf-morebtn" onclick="toggleAllAreas()">${S.areaAll ? 'Show fewer' : 'Show all ' + S.areaView.length + ' areas'}</button>`
+      : '';
+    return `<div class="section-label">Areas with the most jewellers${S.state ? ' — ' + esc(S.state) : ''}</div>
+      <p style="font-size:12.5px;color:var(--muted);margin:0 2px 10px">Tap an area to see its jewellers. Grouped by the nearest town, so a tap covers the surrounding shops too.</p>
+      ${rows}${more}`;
+  }
+
   /* ---------- shell ---------- */
   function shell(inner, opts) {
     opts = opts || {};
@@ -339,6 +422,7 @@
     } catch (e) { S.pipe = null; }
   }
   function renderHome() {
+    S.screen = 'home';
     const stats = (S.homeCounts || []).map(s =>
       `<div class="stat"><div class="st-num">${s.count}</div><div class="st-label">${s.st} jewellers</div></div>`).join('');
     let pipeHtml = '';
@@ -362,7 +446,12 @@
     $app.innerHTML = shell(`
       <div class="section-label">Search an area</div>
       <div class="lf-searchbar">
-        <input id="lf-q" type="text" placeholder="City or area — e.g. Fort Lauderdale" onkeydown="if(event.key==='Enter')doSearch()">
+        <div class="combo">
+          <input id="lf-q" type="text" placeholder="Start typing an area — or pick one below" autocomplete="off"
+                 oninput="areaSuggest(this.value)" onblur="setTimeout(closeSug,180)"
+                 onkeydown="if(event.key==='Enter'){closeSug();doSearch();} if(event.key==='Escape')closeSug();">
+          <div id="lf-areadrop" class="combo-list"></div>
+        </div>
         <button class="lf-add" title="Add a jeweller" onclick="openAddLead()">＋</button>
       </div>
       <div class="lf-controls">${controlsHtml()}
@@ -371,14 +460,15 @@
       <div class="lf-home-stats">${stats || ''}</div>
       ${tripHtml}
       ${pipeHtml}
-      <div class="empty"><div class="big">💎</div>Type a city to see the jewellers there.<br>Approve the good ones — they become your trip list.<br><br>Spotted a jeweller on Instagram or on the road? Tap ＋ to add it.</div>
+      ${areasHtml()}
+      <div class="empty" style="padding:22px 18px">Approve the good ones — they become your trip list.<br>Spotted a jeweller on Instagram or on the road? Tap ＋ to add it.</div>
       <div id="addlead-modal"></div>
     `);
   }
 
   function controlsHtml() {
     return `
-        <select id="lf-state">
+        <select id="lf-state" onchange="onStateChange(this.value)">
           <option value=""${S.state===''?' selected':''}>Any state</option>
           ${STATES.map(s=>`<option${S.state===s?' selected':''}>${s}</option>`).join('')}
         </select>
@@ -433,7 +523,7 @@
       const qq = q.replace(/[,()%.]/g, ' ').replace(/\s+/g, ' ').trim();
       let qy = sb.from('lf_places').select('*')
         .eq('hidden', false)
-        .or(`city.ilike.%${qq}%,name.ilike.%${qq}%,address.ilike.%${qq}%`)
+        .or(`city.ilike.%${qq}%,name.ilike.%${qq}%,address.ilike.%${qq}%,area.ilike.%${qq}%`)
         .order('name').limit(1000);
       if (state) qy = qy.eq('region', state);
       const { data, error } = await qy;
@@ -545,11 +635,17 @@
   }
   function closeDetail() { const el = document.getElementById('detail-modal'); if (el) el.innerHTML = ''; }
   function renderResults() {
+    S.screen = 'results';
     const cc = chipCounts();
     const list = filtered();
     $app.innerHTML = shell(`
       <div class="lf-searchbar">
-        <input id="lf-q" type="text" value="${esc(S.areaLabel)}" onkeydown="if(event.key==='Enter')doSearch()">
+        <div class="combo">
+          <input id="lf-q" type="text" value="${esc(S.areaLabel)}" autocomplete="off"
+                 oninput="areaSuggest(this.value)" onblur="setTimeout(closeSug,180)"
+                 onkeydown="if(event.key==='Enter'){closeSug();doSearch();} if(event.key==='Escape')closeSug();">
+          <div id="lf-areadrop" class="combo-list"></div>
+        </div>
         <button class="lf-add" title="Add a jeweller" onclick="openAddLead()">＋</button>
       </div>
       <div class="lf-controls">${controlsHtml()}
@@ -699,7 +795,7 @@
     const region = document.getElementById('al-state').value;
     const phone = document.getElementById('al-phone').value.trim();
     const row = { source: 'manual', source_id: 'manual-' + Date.now(), name,
-      instagram: ig || null, city: city || null, region, phone: phone || null, research: true };
+      instagram: ig || null, city: city || null, area: city || null, region, phone: phone || null, research: true };
     const { data, error } = await sb.from('lf_places').insert(row).select().single();
     if (error) { toast(error.message, 'err'); return; }
     closeAddLead(); toast('Added — flagged for Claude research 🔍', 'ok');
@@ -734,7 +830,7 @@
         <button class="btn btn-secondary" onclick="doSignOut()">Sign out</button></div></div>`;
       return;
     }
-    await loadHomeCounts();
+    await Promise.all([loadHomeCounts(), loadAreas()]);
     renderHome();
   }
   window.doLogin = doLogin; window.doSignOut = doSignOut; window.doSearch = doSearch;
@@ -746,6 +842,8 @@
   window.openDraft = openDraft; window.closeDraft = closeDraft; window.copyDraft = copyDraft;
   window.openWa = openWa; window.openSms = openSms; window.openMail = openMail;
   window.openAddLead = openAddLead; window.closeAddLead = closeAddLead; window.saveLead = saveLead;
+  window.areaSuggest = areaSuggest; window.closeSug = closeSug; window.pickSug = pickSug;
+  window.pickAreaRow = pickAreaRow; window.toggleAllAreas = toggleAllAreas; window.onStateChange = onStateChange;
   init();
   </script>
 </body>

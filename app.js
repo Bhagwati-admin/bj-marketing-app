@@ -468,6 +468,392 @@ function downscale(file, maxSide) {
   });
 }
 
+/* ---------------- QR / barcode reading ---------------- */
+
+const CODE_1D = ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e'];
+const CODE_2D = ['qr_code', 'data_matrix', 'aztec', 'pdf417'];
+
+let jsqrPromise = null;
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve(window.jsQR);
+  if (jsqrPromise) return jsqrPromise;
+  jsqrPromise = new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+    s.async = true;
+    let t = 0;
+    const done = (v) => { clearTimeout(t); resolve(v); };
+    t = setTimeout(() => done(null), 8000);
+    s.onload = () => done(window.jsQR || null);
+    s.onerror = () => done(null);
+    document.head.appendChild(s);
+  });
+  return jsqrPromise;
+}
+
+function imageDataFor(file, maxSide) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      let out = null;
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, w, h);
+        out = ctx.getImageData(0, 0, w, h);
+      } catch (_) { out = null; }
+      URL.revokeObjectURL(url);
+      resolve(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+/* Reads every QR / barcode printed on one card photo.
+   Uses the phone's built-in detector when available (Chrome on Android),
+   and falls back to the jsQR library for QR codes (iPhone / older browsers).
+   Always resolves — a card with no code simply gives an empty list. */
+async function readCodes(file) {
+  const out = [];
+  const seen = Object.create(null);
+  const push = (format, raw) => {
+    const v = String(raw == null ? '' : raw).trim();
+    if (!v || seen[v]) return;
+    seen[v] = 1;
+    out.push({ format: format || 'qr_code', raw: v });
+  };
+
+  try {
+    if (window.BarcodeDetector && window.createImageBitmap) {
+      let formats = CODE_2D.concat(CODE_1D);
+      try {
+        const sup = await window.BarcodeDetector.getSupportedFormats();
+        if (sup && sup.length) formats = formats.filter((f) => sup.indexOf(f) >= 0);
+      } catch (_) { /* older implementations have no getSupportedFormats */ }
+      if (formats.length) {
+        const det = new window.BarcodeDetector({ formats });
+        const bmp = await createImageBitmap(file);
+        const found = await det.detect(bmp);
+        try { bmp.close(); } catch (_) {}
+        (found || []).forEach((f) => push(f.format, f.rawValue));
+      }
+    }
+  } catch (_) { /* fall through to jsQR */ }
+
+  if (!out.length) {
+    try {
+      const q = await loadJsQR();
+      if (q) {
+        const sizes = [1600, 1000];
+        for (let i = 0; i < sizes.length; i++) {
+          const d = await imageDataFor(file, sizes[i]);
+          if (!d) continue;
+          const hit = q(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+          if (hit && hit.data) { push('qr_code', hit.data); break; }
+        }
+      }
+    } catch (_) {}
+  }
+  return out;
+}
+
+function codesFor(side) {
+  const p = S.photos[side];
+  if (!p || !p.codesP) return Promise.resolve([]);
+  return p.codesP.then((c) => c || []).catch(() => []);
+}
+
+/* ---------------- code payload parsing ---------------- */
+
+function qpDecode(s) {
+  try {
+    const bytes = [];
+    for (let i = 0; i < s.length; i++) {
+      if (s.charAt(i) === '=' && /^[0-9A-Fa-f]{2}$/.test(s.substr(i + 1, 2))) { bytes.push(parseInt(s.substr(i + 1, 2), 16)); i += 2; }
+      else bytes.push(s.charCodeAt(i) & 0xff);
+    }
+    return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+  } catch (_) { return s; }
+}
+
+function vcUnesc(s) {
+  let out = '';
+  const t = String(s == null ? '' : s);
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charAt(i);
+    if (c === '\\' && i + 1 < t.length) {
+      const n = t.charAt(i + 1);
+      out += (n === 'n' || n === 'N') ? ' ' : n;
+      i++;
+    } else out += c;
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+function vcLines(raw) {
+  return String(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    .replace(/\n[ \t]/g, '')
+    .split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+function splitEsc(s, ch) {
+  const out = [];
+  let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charAt(i);
+    if (c === '\\' && i + 1 < s.length) { cur += s.charAt(i + 1); i++; }
+    else if (c === ch) { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseVCard(raw) {
+  const o = { tels: [], emails: [], urls: [] };
+  vcLines(raw).forEach((line) => {
+    const i = line.indexOf(':');
+    if (i < 0) return;
+    const head = line.slice(0, i);
+    const params = head.toUpperCase();
+    let val = line.slice(i + 1);
+    if (params.indexOf('QUOTED-PRINTABLE') >= 0) val = qpDecode(val);
+    if (!val.trim()) return;
+    const key = params.split(';')[0].replace(/^ITEM\d+\./, '');
+    // structured values must be split on UNescaped ';' before unescaping each part
+    const parts = () => splitEsc(val, ';').map((x) => vcUnesc(x));
+    const plain = () => vcUnesc(val);
+    if (key === 'FN') { const v = plain(); if (v && !o.name) o.name = v; }
+    else if (key === 'N') {
+      if (!o.name) {
+        const p = parts();
+        const v = [p[3], p[1], p[2], p[0], p[4]].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        if (v) o.name = v;
+      }
+    } else if (key === 'ORG') { const v = parts().filter(Boolean).join(' ').trim(); if (v && !o.org) o.org = v; }
+    else if (key === 'TITLE' || key === 'ROLE') { const v = plain(); if (v && !o.title) o.title = v; }
+    else if (key === 'TEL') {
+      const v = plain();
+      const isCell = /CELL|MOBILE|HANDY/.test(params);
+      // a line the card itself labels WORK / HOME / FAX is a landline — never a mobile
+      const isLine = !isCell && /FAX|WORK|HOME|MAIN|PAGER/.test(params);
+      if (v) o.tels.push({ v: v, cell: isCell, line: isLine });
+    }
+    else if (key === 'EMAIL') { const v = plain(); if (v) o.emails.push(v); }
+    else if (key === 'URL') { const v = plain(); if (v) o.urls.push(v); }
+    else if (key === 'ADR') {
+      const p = parts();
+      const street = [p[1], p[2]].filter(Boolean).join(' ').trim();
+      const adr = { street: street, city: String(p[3] || '').trim(), state: String(p[4] || '').trim(), pin: String(p[5] || '').trim() };
+      const addr = [street, adr.city, adr.state, adr.pin].filter(Boolean).join(', ');
+      if (addr && !o.address) { o.adr = adr; o.address = addr; }
+    }
+  });
+  return o;
+}
+
+function parseMeCard(raw) {
+  const o = { tels: [], emails: [], urls: [] };
+  const body = String(raw).replace(/^MECARD:/i, '').replace(/;;\s*$/, '');
+  splitEsc(body, ';').forEach((part) => {
+    const i = part.indexOf(':');
+    if (i < 0) return;
+    const key = part.slice(0, i).trim().toUpperCase();
+    const val = part.slice(i + 1).trim();
+    if (!val) return;
+    if (key === 'N') { if (!o.name) o.name = splitEsc(val, ',').reverse().filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(); }
+    else if (key === 'ORG') { if (!o.org) o.org = val; }
+    else if (key === 'TEL') o.tels.push({ v: val, cell: true });
+    else if (key === 'EMAIL') o.emails.push(val);
+    else if (key === 'URL') o.urls.push(val);
+    else if (key === 'ADR') { o.address = splitEsc(val, ',').map((x) => x.trim()).filter(Boolean).join(', '); }
+  });
+  return o;
+}
+
+/* ---------------- links ---------------- */
+
+const SOCIAL_SITES = [
+  { host: 'instagram.com', label: 'Instagram' },
+  { host: 'facebook.com', label: 'Facebook' },
+  { host: 'fb.com', label: 'Facebook' },
+  { host: 'fb.me', label: 'Facebook' },
+  { host: 'linkedin.com', label: 'LinkedIn' },
+  { host: 'twitter.com', label: 'X' },
+  { host: 'x.com', label: 'X' },
+  { host: 'youtube.com', label: 'YouTube' },
+  { host: 'youtu.be', label: 'YouTube' },
+  { host: 'pinterest.com', label: 'Pinterest' },
+  { host: 't.me', label: 'Telegram' },
+  { host: 'telegram.me', label: 'Telegram' },
+  { host: 'threads.net', label: 'Threads' },
+  { host: 'threads.com', label: 'Threads' },
+  { host: 'snapchat.com', label: 'Snapchat' },
+  { host: 'tiktok.com', label: 'TikTok' },
+];
+
+const HANDLE_SITES = {
+  instagram: 'instagram.com', insta: 'instagram.com', ig: 'instagram.com',
+  facebook: 'facebook.com', fb: 'facebook.com',
+  linkedin: 'linkedin.com/in', twitter: 'x.com', x: 'x.com',
+  youtube: 'youtube.com', threads: 'threads.net', pinterest: 'pinterest.com',
+  telegram: 't.me', snapchat: 'snapchat.com', tiktok: 'tiktok.com',
+};
+
+function hostOf(u) {
+  try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch (_) { return ''; }
+}
+
+function normUrl(s) {
+  let v = String(s == null ? '' : s).trim().replace(/[),.;:]+$/, '');
+  if (!v) return '';
+  if (/^(mailto:|tel:|upi:)/i.test(v)) return v;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) v = 'https://' + v.replace(/^\/+/, '');
+  if (/\s/.test(v)) return '';
+  let h = '';
+  try { h = new URL(v).hostname; } catch (_) { return ''; }
+  if (!h || h.indexOf('.') < 0) return '';
+  return v;
+}
+
+function socialOf(u) {
+  const h = hostOf(u);
+  if (!h) return null;
+  for (let i = 0; i < SOCIAL_SITES.length; i++) {
+    const s = SOCIAL_SITES[i];
+    if (h === s.host || h.slice(-(s.host.length + 1)) === '.' + s.host) return s.label;
+  }
+  return null;
+}
+
+/* Turns "Instagram: @jdsolitaire", "@jdsolitaire", "instagram.com/jd" into a real link. */
+function normSocial(raw) {
+  let s = String(raw == null ? '' : raw).trim();
+  if (!s) return '';
+  let platform = '';
+  const m = s.match(/^([A-Za-z][A-Za-z ]{1,14}?)\s*[:\-–—]\s*(.+)$/);
+  if (m) {
+    const k = m[1].trim().toLowerCase().replace(/\s+/g, '');
+    if (HANDLE_SITES[k]) { platform = k; s = m[2].trim(); }
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/|$)/i.test(s)) {
+    const u = normUrl(s);
+    if (u) return u;
+  }
+  const handle = s.replace(/^@/, '').replace(/^\/+/, '').trim();
+  if (!handle) return '';
+  if (platform) return 'https://' + HANDLE_SITES[platform] + '/' + handle;
+  return s;
+}
+
+/* Numbers taken from a scanned code are read strictly: "0" + 10 digits is an
+   STD landline (e.g. 0712-2554433 Nagpur), not a mobile, so it is dropped.
+   Ravi's rule: mobiles only. */
+function codeMobile(v) {
+  let d = String(v == null ? '' : v).replace(/\D/g, '');
+  d = d.replace(/^0{2,}/, '');                                   // 0091… → 91…
+  if (d.length === 12 && d.slice(0, 2) === '91') d = d.slice(2); // 91 + 10 digits
+  else if (d.length === 11 && d.charAt(0) === '0') return '';    // 0 + STD code = landline
+  return isIndianMobile(d) ? d : '';
+}
+
+function classifyCode(c) {
+  const raw = String(c.raw || '').trim();
+  if (!raw) return { kind: 'none' };
+  if (CODE_1D.indexOf(c.format) >= 0) return { kind: 'code', text: c.format.replace(/_/g, '-').toUpperCase() + ': ' + raw };
+  const head = raw.slice(0, 12).toUpperCase();
+  if (head.indexOf('BEGIN:VCARD') === 0) return { kind: 'vcard', card: parseVCard(raw) };
+  if (head.indexOf('MECARD:') === 0) return { kind: 'vcard', card: parseMeCard(raw) };
+  if (/^upi:\/\//i.test(raw)) {
+    let pa = '';
+    try { pa = new URL(raw).searchParams.get('pa') || ''; } catch (_) {}
+    return { kind: 'code', text: 'UPI: ' + (pa || raw) };
+  }
+  if (/^mailto:/i.test(raw)) return { kind: 'email', value: raw.slice(7).split('?')[0].trim() };
+  if (/^(tel|sms|smsto):/i.test(raw)) return { kind: 'phone', value: raw.replace(/^[a-z]+:/i, '').split(/[?:,]/)[0].trim() };
+  if (/^(https?:\/\/|www\.)/i.test(raw) || /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/|\?|$)/i.test(raw)) {
+    const u = normUrl(raw);
+    if (!u) return { kind: 'code', text: raw };
+    const h = hostOf(u);
+    if (h === 'wa.me' || h === 'api.whatsapp.com' || h === 'whatsapp.com' || h === 'chat.whatsapp.com') {
+      let n = '';
+      try {
+        const uu = new URL(u);
+        n = (uu.searchParams.get('phone') || uu.pathname).replace(/\D/g, '');
+      } catch (_) {}
+      if (h === 'chat.whatsapp.com') return { kind: 'code', text: u };
+      return n ? { kind: 'phone', value: n } : { kind: 'code', text: u };
+    }
+    if (socialOf(u)) return { kind: 'social', value: u };
+    if (/(^|\.)(goo\.gl|g\.page)$/.test(h) || (/google\./.test(h) && /\/maps/i.test(u))) return { kind: 'code', text: u };
+    return { kind: 'website', value: u };
+  }
+  const digits = raw.replace(/\D/g, '');
+  if (/^\+?[\d\s().-]{8,20}$/.test(raw) && digits.length >= 10 && digits.length <= 13) return { kind: 'phone', value: digits };
+  return { kind: 'code', text: raw };
+}
+
+/* Folds every code found on both photos into one set of suggestions. */
+function mergeCodes(codes) {
+  const r = { website: '', social: [], codes: [], phones: [], emails: [], vcard: null, found: 0 };
+  (codes || []).forEach((c) => {
+    const k = classifyCode(c);
+    if (k.kind === 'none') return;
+    r.found++;
+    if (k.kind === 'vcard') {
+      const card = k.card || {};
+      if (!r.vcard) r.vcard = card;
+      (card.tels || []).forEach((t) => r.phones.push(t));
+      (card.emails || []).forEach((e) => r.emails.push(e));
+      (card.urls || []).forEach((u) => {
+        const nu = normUrl(u);
+        if (!nu) return;
+        if (socialOf(nu)) r.social.push(nu);
+        else if (!r.website) r.website = nu;
+      });
+    } else if (k.kind === 'website') { if (!r.website) r.website = k.value; }
+    else if (k.kind === 'social') r.social.push(k.value);
+    else if (k.kind === 'phone') r.phones.push({ v: k.value, cell: true });
+    else if (k.kind === 'email') r.emails.push(k.value);
+    else if (k.kind === 'code') r.codes.push(k.text);
+  });
+  return r;
+}
+
+/* ---------------- link display ---------------- */
+
+function linkHTML(u) {
+  const url = normUrl(u);
+  const shown = String(u).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  if (!url) return esc(u);
+  return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(shown) + '</a>';
+}
+
+function socialHTML(s) {
+  return String(s).split(',').map((x) => {
+    const t = x.trim();
+    if (!t) return '';
+    const u = normUrl(t);
+    if (!u) return esc(t);
+    const lab = socialOf(u);
+    return '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(lab || u.replace(/^https?:\/\//i, '').replace(/\/+$/, '')) + '</a>';
+  }).filter(Boolean).join(' · ');
+}
+
+function codeHTML(s) {
+  return String(s).split(' | ').map((x) => {
+    const t = x.trim();
+    if (!t) return '';
+    return /^https?:\/\//i.test(t) ? linkHTML(t) : esc(t);
+  }).filter(Boolean).join('<br>');
+}
+
 function renderScanCapture() {
   $('#content').innerHTML =
     '<div class="section-label">Card photos</div>' +
@@ -486,30 +872,76 @@ async function runScan() {
   ov.innerHTML = '<div class="spinner"></div><div>Reading the card…</div>';
   document.body.appendChild(ov);
 
+  const codesP = Promise.all([codesFor('front'), codesFor('back')])
+    .then((a) => a[0].concat(a[1])).catch(() => []);
   const r = await callScan(S.photos.front, S.photos.back);
+  let codes = [];
+  try { codes = await codesP; } catch (_) { codes = []; }
   ov.remove();
 
+  const f = (r.ok && r.fields) ? r.fields : {};
+  const oc = mergeCodes(codes);
+  const vc = oc.vcard;
+
+  // website + social — a scanned code is exact, printed text is only a reading
+  const website = oc.website || normUrl(f.website || '') || String(f.website || '').trim();
+  const socialList = [];
+  const addSoc = (x) => {
+    const v = normSocial(x);
+    if (!v) return;
+    const key = v.toLowerCase().replace(/\/+$/, '');
+    for (let i = 0; i < socialList.length; i++) {
+      if (socialList[i].toLowerCase().replace(/\/+$/, '') === key) return;
+    }
+    socialList.push(v);
+  };
+  oc.social.forEach(addSoc);
+  String(f.social || '').split(/[,;|]/).forEach(addSoc);
+
+  // mobiles — a vCard's CELL number is exact, so it leads; landlines are still dropped
+  const mobiles = [];
+  const push = (m) => { if (m && mobiles.indexOf(m) < 0) mobiles.push(m); };
+  const addMob = (x) => { const m = normMobile(x); if (isIndianMobile(m)) push(m); };
+  const addCodeMob = (x) => push(codeMobile(x));
+  if (vc) (vc.tels || []).filter((t) => t.cell).forEach((t) => addCodeMob(t.v));
+  addMob(f.mobile || '');
+  oc.phones.forEach((t) => addCodeMob(t.v));
+  if (vc) (vc.tels || []).filter((t) => !t.cell && !t.line).forEach((t) => addCodeMob(t.v));
+  String(f.phone_other || '').split(',').forEach(addMob);
+
+  const pre = {
+    trade_name: f.trade_name || (vc && vc.org) || '',
+    company_name: f.company_name || f.trade_name || (vc && vc.org) || '',
+    contact_person: (vc && vc.name) || f.contact_person || '',
+    designation: (vc && vc.title) || f.designation || '',
+    mobile: mobiles[0] || normMobile(f.mobile || ''),
+    phone_other: mobiles.slice(1).join(', '),
+    email: String(oc.emails[0] || f.email || '').trim(),
+    city: f.city || (vc && vc.adr ? vc.adr.city : '') || '',
+    area: f.area || '',
+    address: f.address || (vc && vc.address) || '',
+    state: f.state || (vc && vc.adr ? vc.adr.state : '') || '',
+    website: website,
+    social_links: socialList.join(', '),
+    card_code: oc.codes.join(' | '),
+  };
+  const gotSomething = Object.keys(pre).some((k) => String(pre[k] || '').trim());
+
   if (r.ok && r.fields) {
-    const f = r.fields;
-    const extraMobiles = String(f.phone_other || '').split(',')
-      .map(function (x) { return normMobile(x); })
-      .filter(function (x) { return isIndianMobile(x); })
-      .join(', ');
-    const pre = {
-      trade_name: f.trade_name || '', company_name: f.company_name || f.trade_name || '',
-      contact_person: f.contact_person || '', designation: f.designation || '',
-      mobile: normMobile(f.mobile || ''), phone_other: extraMobiles, email: f.email || '',
-      city: f.city || '', area: f.area || '',
-      address: f.address || '', state: f.state || '',
-    };
-    toast('Card read ✓ — please check the details', 'ok');
+    toast(oc.found ? 'Card read ✓ — code on the card read too' : 'Card read ✓ — please check the details', 'ok');
     showSub('New Client', () => renderClientForm(null, pre, 'scan'), true);
-  } else {
-    if (r.error === 'not_configured') toast('Card scanning is not set up yet — the photos will still be saved with the client.');
-    else if (r.error === 'quota') toast('Daily scan limit reached — please type the details; the photos will still be saved.');
-    else toast('Could not read the card — please type the details; the photos will still be saved.');
-    showSub('New Client', () => renderClientForm(null, {}, 'manual'), true);
+    return;
   }
+  // OCR failed, but a QR code on the card may still have given us everything
+  if (gotSomething) {
+    toast('Read the code on the card ✓ — please check the details', 'ok');
+    showSub('New Client', () => renderClientForm(null, pre, 'scan'), true);
+    return;
+  }
+  if (r.error === 'not_configured') toast('Card scanning is not set up yet — the photos will still be saved with the client.');
+  else if (r.error === 'quota') toast('Daily scan limit reached — please type the details; the photos will still be saved.');
+  else toast('Could not read the card — please type the details; the photos will still be saved.');
+  showSub('New Client', () => renderClientForm(null, {}, 'manual'), true);
 }
 
 function attachPhoto(side) {
@@ -525,6 +957,8 @@ function attachPhoto(side) {
     pickImage(async (file) => {
       try { S.photos[side] = await downscale(file, 1600); }
       catch (e) { toast('Could not read that image — try again.', 'err'); return; }
+      // read any QR / barcode from the ORIGINAL full-size photo, in the background
+      S.photos[side].codesP = readCodes(file).catch(() => []);
       redrawPhotos();
     }, fromGallery);
   };
@@ -659,6 +1093,7 @@ function renderClientForm(existing, pre, source) {
   const e = existing || {};
   const v = (k) => esc(pre[k] != null ? pre[k] : (e[k] != null ? e[k] : ''));
   const compVal = esc(String(pre.company_name || pre.trade_name || e.company_name || e.trade_name || '').trim());
+  const codeRaw = String(pre.card_code != null ? pre.card_code : (e.card_code != null ? e.card_code : '')).trim();
   const desigRaw = String((pre.designation != null ? pre.designation : e.designation) || '').trim();
   const DESIG_KNOWN = ['Partner', 'Owner', 'Founder', 'Staff'];
   const desigMatch = DESIG_KNOWN.find((k) => k.toLowerCase() === desigRaw.toLowerCase());
@@ -687,6 +1122,13 @@ function renderClientForm(existing, pre, source) {
     '<div id="mobile-note"></div></div>' +
     '<div class="field"><label>Other mobile numbers</label><input type="text" id="f-phone2" autocomplete="off" inputmode="tel" value="' + v('phone_other') + '" placeholder="Extra mobile numbers, if any"></div>' +
     '<div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="off" inputmode="email" value="' + v('email') + '" placeholder="name@gmail.com"></div>' +
+    '<div class="field"><label>Website</label><input type="text" id="f-website" autocomplete="off" inputmode="url" value="' + v('website') + '" placeholder="www.example.com"></div>' +
+    '<div class="field"><label>Social profiles</label><input type="text" id="f-social" autocomplete="off" value="' + v('social_links') + '" placeholder="Instagram / Facebook link">' +
+    '<div class="hint">More than one? Separate them with a comma</div></div>' +
+    (codeRaw
+      ? '<div class="field"><label>Scanned code</label><input type="text" id="f-code" autocomplete="off" value="' + v('card_code') + '">' +
+        '<div class="hint">Read from the QR / barcode printed on the card</div></div>'
+      : '') +
     '<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="' + v('owner_name') + '"></div>' +
     '</div>' +
 
@@ -756,6 +1198,15 @@ async function saveClient(editId) {
     return;
   }
 
+  const webRaw = $('#f-website').value.trim();
+  const webVal = normUrl(webRaw) || webRaw;
+  const socialVal = $('#f-social').value.split(',')
+    .map((x) => normSocial(x) || x.trim())
+    .filter(Boolean).join(', ');
+  const codeVal = $('#f-code')
+    ? $('#f-code').value.trim()
+    : (S.editingClient && S.editingClient.card_code ? S.editingClient.card_code : '');
+
   const desigVal = S.formState.desig === 'Other'
     ? ($('#f-desig-other') ? $('#f-desig-other').value.trim() : '')
     : (S.formState.desig || '');
@@ -767,6 +1218,9 @@ async function saveClient(editId) {
     mobile: mobile,
     phone_other: $('#f-phone2').value.trim() || null,
     email: $('#f-email').value.trim() || null,
+    website: webVal || null,
+    social_links: socialVal || null,
+    card_code: codeVal || null,
     owner_name: $('#f-owner').value.trim() || null,
     address: vals.address,
     is_polki_buyer: S.formState.polki === 'Yes' ? true : S.formState.polki === 'No' ? false : null,
@@ -851,7 +1305,7 @@ async function runSearch(qRaw) {
   let query = db.from('clients').select('id, trade_name, company_name, contact_person, city, area, category, interest, mobile');
   if (q) {
     const pat = '%' + q + '%';
-    query = query.or('trade_name.ilike.' + pat + ',company_name.ilike.' + pat + ',contact_person.ilike.' + pat + ',mobile.ilike.' + pat + ',phone_other.ilike.' + pat + ',city.ilike.' + pat + ',owner_name.ilike.' + pat + ',email.ilike.' + pat).limit(50);
+    query = query.or('trade_name.ilike.' + pat + ',company_name.ilike.' + pat + ',contact_person.ilike.' + pat + ',mobile.ilike.' + pat + ',phone_other.ilike.' + pat + ',city.ilike.' + pat + ',owner_name.ilike.' + pat + ',email.ilike.' + pat + ',website.ilike.' + pat + ',social_links.ilike.' + pat).limit(50);
   } else {
     query = query.order('created_at', { ascending: false }).limit(25);
   }
@@ -895,6 +1349,9 @@ function renderClientPage(cl) {
   if (cl.mobile) add('Mobile', '<a href="tel:' + esc(cl.mobile) + '" data-action="call">' + esc(cl.mobile) + '</a>');
   if (cl.phone_other) add('Other mobiles', esc(cl.phone_other));
   if (cl.email) add('Email', '<a href="mailto:' + esc(cl.email) + '">' + esc(cl.email) + '</a>');
+  if (cl.website) add('Website', linkHTML(cl.website));
+  if (cl.social_links) add('Social', socialHTML(cl.social_links));
+  if (cl.card_code) add('Scanned code', codeHTML(cl.card_code));
   add('Owner', esc(cl.owner_name));
   add('Location', esc([cl.area, cl.city, cl.state].filter(Boolean).join(', ')));
   add('Address', esc(cl.address));
@@ -1308,8 +1765,8 @@ async function exportAllData() {
 
     const today = todayStr();
     downloadFile('bj-clients-' + today + '.csv', buildCsv(
-      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', 'Other mobiles', 'Email', "Owner's name", 'Address', 'Area', 'City', 'State', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
-      clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.phone_other, c.email, c.owner_name, c.address, c.area, c.city, c.state, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
+      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', 'Other mobiles', 'Email', 'Website', 'Social profiles', 'Scanned code', "Owner's name", 'Address', 'Area', 'City', 'State', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
+      clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.phone_other, c.email, c.website, c.social_links, c.card_code, c.owner_name, c.address, c.area, c.city, c.state, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
 
     await new Promise((r) => setTimeout(r, 450));
     downloadFile('bj-meetings-' + today + '.csv', buildCsv(

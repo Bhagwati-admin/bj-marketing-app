@@ -125,7 +125,9 @@
     areas: [], sug: [], areaView: [], areaAll: false, screen: 'home',
   };
   const REJECT_REASONS = ['Natural only', 'Gold with CZ / moissanite only', 'Silver / fashion only', 'Indian vendor / supplier', 'Pawn shop', 'Chain store', 'Repair / watch only', 'Closed', 'Not a jeweller', 'Other'];
-  const STATES = ['FL', 'NY', 'NJ'];
+  // Derived from whatever is actually in the database (see loadAreas), so loading a new
+  // state needs no code change. The literals are only a fallback for a cold/failed load.
+  let STATES = ['FL', 'NY', 'NJ'];
 
   /* ---------- utils ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -200,7 +202,7 @@
      Short opener whose only job is to get 15 minutes. Never auto-sends: Ravi copies it
      or it opens WhatsApp/SMS pre-filled and he presses send himself. A store-specific
      message written during research (approach_msg) always beats this template. */
-  const REGION_NAME = { FL: 'Florida', NY: 'New York', NJ: 'New Jersey' };
+  const REGION_NAME = { FL: 'Florida', NY: 'New York', NJ: 'New Jersey', TX: 'Texas' };
   const OUTREACH = {
     signoff: 'Ravi\nBhagwati Jewels',
     place(p) { return p.city || REGION_NAME[p.region] || p.region || 'your area'; },
@@ -293,6 +295,8 @@
     try {
       const { data } = await sb.from('lf_areas').select('*').order('total', { ascending: false }).limit(600);
       S.areas = data || [];
+      const found = [...new Set(S.areas.map(a => a.region).filter(Boolean))].sort();
+      if (found.length) STATES = found;
     } catch (e) { S.areas = []; }
   }
   function areaSub(a) {
@@ -830,7 +834,8 @@
         <button class="btn btn-secondary" onclick="doSignOut()">Sign out</button></div></div>`;
       return;
     }
-    await Promise.all([loadHomeCounts(), loadAreas()]);
+    await loadAreas();          // sets STATES from the data
+    await loadHomeCounts();     // per-state counts iterate STATES
     renderHome();
   }
   window.doLogin = doLogin; window.doSignOut = doSignOut; window.doSearch = doSearch;

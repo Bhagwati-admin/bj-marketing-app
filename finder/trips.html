@@ -82,7 +82,9 @@
   'use strict';
   const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
   const $app = document.getElementById('app');
-  const STATES = ['FL', 'NY', 'NJ'];
+  // Derived from whatever regions are actually in the database, so loading a new
+  // state needs no code change here. The literals are only a cold-start fallback.
+  let STATES = ['FL', 'NY', 'NJ'];
   const ROAD_FACTOR = 1.35;      // straight-line km -> road km
   const SPEED_KMH = 45;          // urban/suburban average
   const MAX_STOPS = 12, SOFT_STOPS = 8, MAX_HOURS = 9;
@@ -425,7 +427,6 @@
       <div id="modal"></div>
     `, { title: 'Day ' + d.day_index + (d.day_date ? ' · ' + fmtDate(d.day_date) : ''), back: `openTrip('${d.trip_id}')` });
   }
-
   function editEnd(which) {
     const d = S.day, lbl = which === 'start' ? d.start_label : d.end_label;
     document.getElementById('modal').innerHTML = `
@@ -632,6 +633,14 @@
     if (error) { toast(error.message, 'err'); return; }
     init();
   }
+  async function loadStates() {
+    try {
+      const { data } = await sb.from('lf_areas').select('region').limit(2000);
+      const found = [...new Set((data || []).map(r => r.region).filter(Boolean))].sort();
+      if (found.length) STATES = found;
+    } catch (e) { /* keep fallback */ }
+  }
+
   async function init() {
     const { data: { session } } = await sb.auth.getSession();
     if (!session) { renderLogin(); return; }
@@ -642,6 +651,7 @@
         <h2>Owner only</h2><p class="sub">The Trip Planner is currently available only to the owner account.</p></div></div>`;
       return;
     }
+    await loadStates();
     await loadTrips(); renderTrips();
   }
   window.doLogin = doLogin; window.newTrip = newTrip; window.saveTrip = saveTrip; window.closeModal = closeModal;

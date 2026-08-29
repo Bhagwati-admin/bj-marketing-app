@@ -293,7 +293,7 @@
      never an address. */
   async function loadAreas() {
     try {
-      const { data } = await sb.from('lf_areas').select('*').order('total', { ascending: false }).limit(600);
+      const { data } = await sb.from('lf_areas').select('*').order('total', { ascending: false }).limit(3000);
       S.areas = data || [];
       const found = [...new Set(S.areas.map(a => a.region).filter(Boolean))].sort();
       if (found.length) STATES = found;

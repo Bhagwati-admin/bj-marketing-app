@@ -180,14 +180,22 @@
 
   const PRIO_LABEL = { 5: 'Sells lab-grown', 4: 'Bridal / custom focus', 3: 'Solid independent', 2: 'Needs verifying', 1: 'Weak fit' };
   function researchHtml(p) {
-    if (!p.summary && !p.good_at && !p.struggling_with && !p.pitch_angle) return '';
+    const reasons = Array.isArray(p.verdict_reasons) ? p.verdict_reasons : [];
+    const narrative = p.summary || p.good_at || p.struggling_with || p.pitch_angle;
+    // A rule-based reject has a reason but no write-up. It must still say WHY,
+    // otherwise the card reads as a verdict with nothing behind it.
+    if (!narrative && !reasons.length) return '';
     const sec = (cls, label, val) => val
       ? `<div class="res-sec ${cls}"><h5>${label}</h5><p>${esc(val)}</p></div>` : '';
+    const li = reasons.map(r =>
+      `<li>${esc(r.signal || '')}${r.src ? ' <i>— ' + esc(r.src) + '</i>' : ''}</li>`).join('');
     let ev = '';
-    if (Array.isArray(p.verdict_reasons) && p.verdict_reasons.length) {
-      const li = p.verdict_reasons.map(r =>
-        `<li>${esc(r.signal || '')}${r.src ? ' <i>— ' + esc(r.src) + '</i>' : ''}</li>`).join('');
-      ev = `<details><summary>Evidence (${p.verdict_reasons.length})</summary><ul class="ev">${li}</ul></details>`;
+    if (reasons.length) {
+      ev = narrative
+        ? `<details><summary>Evidence (${reasons.length})</summary><ul class="ev">${li}</ul></details>`
+        : `<div class="res-sec ${p.verdict === 'not_fit' ? 'gap' : 'good'}">
+             <h5>${p.verdict === 'not_fit' ? 'Why this was ruled out' : 'What we found'}</h5>
+             <ul class="ev" style="margin-top:2px">${li}</ul></div>`;
     }
     return `<div class="lf-res">
       ${p.summary ? `<p class="res-sum">${esc(p.summary)}</p>` : ''}

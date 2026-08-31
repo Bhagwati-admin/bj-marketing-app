@@ -163,11 +163,21 @@
     if (!v) return null;
     return /^https?:/i.test(v) ? v : 'https://' + v;
   }
+  /* Google Maps links. The /maps/search/<name>/@lat,lng form looks right but runs a
+     TEXT SEARCH anchored at those coordinates — so a generic name like "ABC Jewelry"
+     lands on a list of candidates instead of the shop. Verified in the browser.
+     A full street address as the query opens the business card directly (name, hours,
+     reviews, Directions), and falls back to the address itself if Google does not know
+     the business. Bare coordinates are correct but nameless, so they are the middle
+     option: used only when there is no usable address. */
   function mapsLink(p) {
-    if (p.latitude != null && p.longitude != null)
-      return 'https://www.google.com/maps/search/' + encodeURIComponent(p.name) + '/@' + p.latitude + ',' + p.longitude + ',17z';
-    const parts = [p.name, p.address, p.city, p.region, p.postcode, 'USA'].filter(Boolean);
-    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(parts.join(', '));
+    const base = 'https://www.google.com/maps/search/?api=1&query=';
+    if (p.address && p.city && p.region) {
+      const state = p.region + (p.postcode ? ' ' + p.postcode : '');
+      return base + encodeURIComponent([p.name, p.address, p.city, state].filter(Boolean).join(', '));
+    }
+    if (p.latitude != null && p.longitude != null) return base + p.latitude + ',' + p.longitude;
+    return base + encodeURIComponent([p.name, p.city, p.region, 'USA'].filter(Boolean).join(', '));
   }
   function statusOf(p) { return p.approved === true ? 'approved' : p.approved === false ? 'rejected' : 'pending'; }
   function relTime(ts) {

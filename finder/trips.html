@@ -69,6 +69,25 @@
     .rep-line:last-child { border-bottom: 0; }
     .rep-line b { font-weight: 800; }
     .leaflet-container { font: inherit; }
+    .ep-row { display: flex; gap: 8px; margin-bottom: 9px; }
+    .ep-row input { flex: 1; min-width: 0; }
+    .ep-loc { flex: 0 0 auto; border: 1.5px solid var(--line); background: #fff; border-radius: 11px;
+      padding: 0 13px; font-size: 13.5px; font-weight: 650; color: var(--maroon); cursor: pointer; white-space: nowrap; }
+    .ep-loc:disabled { opacity: .55; cursor: default; }
+    .ep-sug { list-style: none; margin: 0 0 10px; padding: 0; max-height: 34vh; overflow-y: auto;
+      border: 1.5px solid var(--line); border-radius: 12px; }
+    .ep-sug li { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--line); }
+    .ep-sug li:last-child { border-bottom: 0; }
+    .ep-sug li:active, .ep-sug li.on { background: var(--maroon-soft); }
+    .ep-sug .s-nm { font-weight: 650; font-size: 14.5px; }
+    .ep-sug .s-ad { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+    .ep-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .ep-chips button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px;
+      padding: 6px 11px; font-size: 12.5px; color: var(--maroon); cursor: pointer; }
+    #ep-map { height: 190px; border-radius: 12px; margin-bottom: 8px; display: none; }
+    .ep-conf { background: #e3f2e7; color: #16663c; border-radius: 10px; padding: 9px 11px;
+      font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+    .ep-hint { font-size: 12px; color: var(--muted); margin: 0 2px 10px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -427,43 +446,195 @@
       <div id="modal"></div>
     `, { title: 'Day ' + d.day_index + (d.day_date ? ' · ' + fmtDate(d.day_date) : ''), back: `openTrip('${d.trip_id}')` });
   }
+  /* ---------- start / end place picker ----------
+     Was a bare text box that silently geocoded on save. Now: typeahead against
+     TomTom (via the lf-geosearch edge function, so the key stays server-side),
+     the phone's own GPS, pasted coordinates or Google Maps links, previously
+     used places, and a map you confirm the pin on before saving. */
   function editEnd(which) {
-    const d = S.day, lbl = which === 'start' ? d.start_label : d.end_label;
+    const d = S.day;
+    const lbl = which === 'start' ? d.start_label : d.end_label;
+    const lat = which === 'start' ? d.start_lat : d.end_lat;
+    const lng = which === 'start' ? d.start_lng : d.end_lng;
+    S.ep = { which, sug: [], chosen: (lat != null ? { name: lbl, address: '', lat, lon: lng } : null), map: null, marker: null, t: null };
+    const recents = recentPlaces();
     document.getElementById('modal').innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-        <div class="modal">
+        <div class="modal" style="max-height:90vh;overflow-y:auto">
           <h3>${which === 'start' ? 'Where do you set off from?' : 'Where does the day end?'}</h3>
-          <p>A hotel, an airport, a city — anything Google Maps can find. Start and end can be different places.</p>
-          <div class="field"><input id="e-label" type="text" value="${esc(lbl || '')}" placeholder="e.g. Fort Lauderdale Airport"></div>
+          <p class="ep-hint">Type a hotel or address and pick from the list — you don't need the full address. You can also paste a Google Maps link, or use where you are now.</p>
+          <div class="ep-row">
+            <input id="ep-q" type="text" autocomplete="off" placeholder="e.g. Hilton Fort Lauderdale" value="${esc(lbl || '')}" oninput="epType(this.value)">
+            <button class="ep-loc" id="ep-loc" onclick="epHere()">📍 I'm here</button>
+          </div>
+          ${recents.length ? `<div class="ep-chips">${recents.map((r, i) =>
+            `<button onclick="epRecent(${i})">${esc(r.name.length > 28 ? r.name.slice(0, 27) + '…' : r.name)}</button>`).join('')}</div>` : ''}
+          <ul class="ep-sug" id="ep-sug" style="display:none"></ul>
+          <div id="ep-conf"></div>
+          <div id="ep-map"></div>
           <div class="modal-actions">
             <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-            <button class="btn btn-primary" onclick="saveEnd('${which}')">Save</button>
+            <button class="btn btn-primary" id="ep-save" onclick="epSave()">Save</button>
           </div>
         </div>
       </div>`;
-    setTimeout(() => { const el = document.getElementById('e-label'); if (el) el.focus(); }, 60);
+    S.epRecents = recents;
+    if (S.ep.chosen) epShow(S.ep.chosen, true);
+    setTimeout(() => { const el = document.getElementById('ep-q'); if (el) { el.focus(); el.select(); } }, 60);
   }
-  async function saveEnd(which) {
-    const label = document.getElementById('e-label').value.trim();
-    const patch = {};
-    if (!label) {
-      patch[which + '_label'] = null; patch[which + '_lat'] = null; patch[which + '_lng'] = null;
+
+  // hotels and airports already used on this trip, most recent first
+  function recentPlaces() {
+    const seen = new Set(), out = [];
+    for (const d of [...S.days].reverse()) {
+      for (const [l, a, o] of [[d.end_label, d.end_lat, d.end_lng], [d.start_label, d.start_lat, d.start_lng]]) {
+        if (!l || a == null) continue;
+        const k = l.toLowerCase();
+        if (seen.has(k)) continue;
+        seen.add(k); out.push({ name: l, address: '', lat: a, lon: o });
+      }
+    }
+    return out.slice(0, 4);
+  }
+
+  // a pasted Google Maps link or a raw "lat, lng" is already an exact point
+  function coordsFromText(t) {
+    const s = String(t || '');
+    let m = s.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/)
+         || s.match(/[?&](?:q|query|ll|daddr)=(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/)
+         || s.match(/^\s*(-?\d{1,2}\.\d{3,}),\s*(-?\d{1,3}\.\d{3,})\s*$/);
+    if (!m) return null;
+    const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    return { lat, lon };
+  }
+
+  function epType(v) {
+    const pasted = coordsFromText(v);
+    if (pasted) {
+      epReverse(pasted.lat, pasted.lon, 'Pinned from the link you pasted');
+      return;
+    }
+    clearTimeout(S.ep.t);
+    if (!v || v.trim().length < 3) { const u = document.getElementById('ep-sug'); if (u) u.style.display = 'none'; return; }
+    S.ep.t = setTimeout(() => epSearch(v.trim()), 450);
+  }
+
+  async function epSearch(q) {
+    const anchor = tripAnchor();
+    const payload = { q, region: (S.trip && S.trip.region) || null };
+    if (anchor) { payload.lat = anchor.lat; payload.lon = anchor.lng; }
+    let results = [];
+    try {
+      const { data, error } = await sb.functions.invoke('lf-geosearch', { body: payload });
+      if (!error && data && Array.isArray(data.results)) results = data.results;
+    } catch (e) { /* leave empty */ }
+    S.ep.sug = results;
+    const u = document.getElementById('ep-sug');
+    if (!u) return;
+    if (!results.length) {
+      u.style.display = 'block';
+      u.innerHTML = '<li style="cursor:default"><div class="s-ad">Nothing found. Try the hotel name plus the town, or paste a Google Maps link.</div></li>';
+      return;
+    }
+    u.style.display = 'block';
+    u.innerHTML = results.map((r, i) =>
+      `<li onclick="epPick(${i})"><div class="s-nm">${esc(r.name)}</div><div class="s-ad">${esc(r.address || '')}</div></li>`).join('');
+  }
+
+  // centre searches on the trip: the day's stops, else the state's approved stores
+  function tripAnchor() {
+    const d = S.day;
+    if (d && d.start_lat != null) return { lat: d.start_lat, lng: d.start_lng };
+    if (d && d.end_lat != null) return { lat: d.end_lat, lng: d.end_lng };
+    const withPt = (S.stops || []).find(s => s._pt);
+    return withPt ? withPt._pt : null;
+  }
+
+  function epPick(i) {
+    const r = S.ep.sug[i];
+    if (!r) return;
+    document.getElementById('ep-q').value = r.name;
+    document.getElementById('ep-sug').style.display = 'none';
+    epShow(r);
+  }
+  function epRecent(i) {
+    const r = (S.epRecents || [])[i];
+    if (!r) return;
+    document.getElementById('ep-q').value = r.name;
+    document.getElementById('ep-sug').style.display = 'none';
+    epShow(r);
+  }
+
+  function epHere() {
+    const btn = document.getElementById('ep-loc');
+    if (!navigator.geolocation) { toast('This device will not share its location', 'err'); return; }
+    btn.disabled = true; btn.textContent = 'Locating…';
+    navigator.geolocation.getCurrentPosition(
+      pos => { epReverse(pos.coords.latitude, pos.coords.longitude, 'Pinned to where you are now'); btn.disabled = false; btn.textContent = "📍 I'm here"; },
+      err => {
+        btn.disabled = false; btn.textContent = "📍 I'm here";
+        toast(err.code === 1 ? 'Location permission was declined' : 'Could not get your location', 'err');
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  }
+
+  async function epReverse(lat, lon, why) {
+    let r = { name: lat.toFixed(5) + ', ' + lon.toFixed(5), address: '', lat, lon };
+    try {
+      const { data, error } = await sb.functions.invoke('lf-geosearch', { body: { reverse: true, lat, lon } });
+      if (!error && data && data.results && data.results[0]) r = data.results[0];
+    } catch (e) { /* keep the raw coordinates */ }
+    const q = document.getElementById('ep-q'); if (q) q.value = r.name;
+    const u = document.getElementById('ep-sug'); if (u) u.style.display = 'none';
+    epShow(r, false, why);
+  }
+
+  // show the chosen point on a small map with a draggable pin
+  function epShow(r, quiet, why) {
+    S.ep.chosen = { name: r.name, address: r.address || '', lat: r.lat, lon: r.lon };
+    const conf = document.getElementById('ep-conf');
+    if (conf) conf.innerHTML = `<div class="ep-conf">✓ ${esc(why || 'Pinned on the map below')} — drag the pin if it is slightly off</div>`;
+    const el = document.getElementById('ep-map');
+    if (!el) return;
+    el.style.display = 'block';
+    if (!S.ep.map) {
+      S.ep.map = L.map(el, { zoomControl: true, attributionControl: false }).setView([r.lat, r.lon], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(S.ep.map);
+      S.ep.marker = L.marker([r.lat, r.lon], { draggable: true }).addTo(S.ep.map);
+      S.ep.marker.on('dragend', () => {
+        const p = S.ep.marker.getLatLng();
+        S.ep.chosen.lat = p.lat; S.ep.chosen.lon = p.lng;
+        const c = document.getElementById('ep-conf');
+        if (c) c.innerHTML = '<div class="ep-conf">✓ Pin moved — this exact spot will be saved</div>';
+      });
+      setTimeout(() => S.ep.map.invalidateSize(), 80);
     } else {
-      toast('Finding that place…');
-      let lat = null, lng = null;
-      try {
-        const q = label + (S.trip && S.trip.region ? ', ' + S.trip.region : '') + ', USA';
-        const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
-        const j = await r.json();
-        if (j && j.length) { lat = parseFloat(j[0].lat); lng = parseFloat(j[0].lon); }
-      } catch (e) { /* keep label without pin */ }
-      patch[which + '_label'] = label; patch[which + '_lat'] = lat; patch[which + '_lng'] = lng;
-      if (lat == null) toast("Saved, but couldn't pin it on the map", 'err');
+      S.ep.map.setView([r.lat, r.lon], 15);
+      S.ep.marker.setLatLng([r.lat, r.lon]);
+      setTimeout(() => S.ep.map.invalidateSize(), 80);
+    }
+  }
+
+  async function epSave() {
+    const which = S.ep.which;
+    const typed = (document.getElementById('ep-q').value || '').trim();
+    const patch = {};
+    if (!typed && !S.ep.chosen) {
+      patch[which + '_label'] = null; patch[which + '_lat'] = null; patch[which + '_lng'] = null;
+    } else if (!S.ep.chosen) {
+      toast('Pick a place from the list so the map has a pin', 'err');
+      return;
+    } else {
+      patch[which + '_label'] = typed || S.ep.chosen.name;
+      patch[which + '_lat'] = S.ep.chosen.lat;
+      patch[which + '_lng'] = S.ep.chosen.lon;
     }
     const { error } = await sb.from('lf_trip_days').update(patch).eq('id', S.day.id);
     if (error) { toast(error.message, 'err'); return; }
-    Object.assign(S.day, patch); closeModal();
-    if (patch[which + '_lat'] != null) toast('Saved ✓', 'ok');
+    Object.assign(S.day, patch);
+    S.ep.map = null; S.ep.marker = null;
+    closeModal(); toast('Saved ✓', 'ok');
     renderDay();
   }
 
@@ -656,7 +827,8 @@
   }
   window.doLogin = doLogin; window.newTrip = newTrip; window.saveTrip = saveTrip; window.closeModal = closeModal;
   window.openTrip = openTrip; window.backToTrips = backToTrips; window.addDay = addDay; window.openDay = openDay;
-  window.editEnd = editEnd; window.saveEnd = saveEnd; window.openPicker = openPicker; window.pickSearch = pickSearch;
+  window.editEnd = editEnd; window.epType = epType; window.epPick = epPick;
+  window.epRecent = epRecent; window.epHere = epHere; window.epSave = epSave; window.openPicker = openPicker; window.pickSearch = pickSearch;
   window.togglePick = togglePick; window.addPicked = addPicked; window.removeStop = removeStop;
   window.optimise = optimise; window.setOutcome = setOutcome; window.openReport = openReport; window.copyReport = copyReport;
   init();

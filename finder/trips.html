@@ -88,6 +88,28 @@
     .ep-conf { background: #e3f2e7; color: #16663c; border-radius: 10px; padding: 9px 11px;
       font-size: 13px; font-weight: 600; margin-bottom: 10px; }
     .ep-hint { font-size: 12px; color: var(--muted); margin: 0 2px 10px; line-height: 1.5; }
+    .tp-item { position: relative; }
+    .tp-kebab { position: absolute; top: 8px; right: 6px; background: none; border: 0; font-size: 19px;
+      color: var(--muted); padding: 4px 9px; cursor: pointer; line-height: 1; border-radius: 8px; }
+    .tp-kebab:active { background: #f0ece5; }
+    .tp-titlerow { display: flex; align-items: center; gap: 8px; }
+    .tp-titlerow .grow { flex: 1; min-width: 0; }
+    .tp-iconbtn { background: none; border: 1.5px solid var(--line); border-radius: 9px; padding: 6px 10px;
+      font-size: 13px; color: var(--maroon); cursor: pointer; white-space: nowrap; }
+    .tp-iconbtn.danger { color: #a12b24; border-color: #f0cfcc; }
+    .sheet { position: fixed; inset: 0; background: rgba(20,14,24,.42); display: flex; align-items: flex-end;
+      justify-content: center; z-index: 60; }
+    .sheet-inner { background: var(--card); width: 100%; max-width: 520px; border-radius: 18px 18px 0 0;
+      padding: 8px 0 14px; box-shadow: 0 -6px 26px rgba(0,0,0,.2); }
+    .sheet-inner h4 { margin: 10px 18px 6px; font-size: 15px; }
+    .sheet-inner .sheet-sub { margin: 0 18px 10px; font-size: 12.5px; color: var(--muted); }
+    .sheet-act { display: block; width: 100%; text-align: left; background: none; border: 0;
+      padding: 14px 18px; font-size: 15.5px; color: var(--ink, #2a2430); cursor: pointer; }
+    .sheet-act:active { background: #f6f2ec; }
+    .sheet-act.danger { color: #a12b24; font-weight: 650; }
+    .sheet-act.cancel { color: var(--muted); border-top: 1px solid var(--line); margin-top: 6px; }
+    .warn-box { background: #fbe1df; color: #a12b24; border-radius: 10px; padding: 11px 13px;
+      font-size: 13.2px; line-height: 1.5; margin: 0 0 12px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -320,6 +342,7 @@
       const over = m.count > MAX_STOPS || m.total > MAX_HOURS * 60;
       const done = stops.filter(s => s.status !== 'planned').length;
       return `<div class="tp-item" onclick="openDay('${d.id}')">
+        <button class="tp-kebab" onclick="event.stopPropagation();dayMenu('${d.id}')" aria-label="Day options">⋯</button>
         <h4>Day ${d.day_index}${d.day_date ? ' · ' + fmtDate(d.day_date) : ''}</h4>
         <div class="tp-sub">${d.start_label ? esc(d.start_label) : 'no start set'} → ${d.end_label ? esc(d.end_label) : 'no end set'}</div>
         <div class="tp-chiprow">
@@ -332,13 +355,19 @@
     }).join('');
     $app.innerHTML = shell(`
       <div class="tp-sum">
-        <div class="big">${esc(t.name)}</div>
-        <div class="det">${t.region || ''}${t.start_date ? ' · ' + fmtDate(t.start_date) : ''}${t.end_date && t.end_date !== t.start_date ? ' → ' + fmtDate(t.end_date) : ''}</div>
+        <div class="tp-titlerow">
+          <div class="grow">
+            <div class="big">${esc(t.name)}</div>
+            <div class="det">${t.region || ''}${t.start_date ? ' · ' + fmtDate(t.start_date) : ''}${t.end_date && t.end_date !== t.start_date ? ' → ' + fmtDate(t.end_date) : ''}</div>
+          </div>
+          <button class="tp-iconbtn" onclick="editTrip()">✎ Edit</button>
+        </div>
       </div>
       <div class="section-label">Days</div>
       ${days || '<div class="empty">No days yet — add the first one.</div>'}
       <button class="btn btn-primary" onclick="addDay()">+ Add a day</button>
       <button class="btn btn-secondary" style="margin-top:9px" onclick="openReport()">📋 Trip report</button>
+      <button class="btn btn-secondary" style="margin-top:9px;color:#a12b24" onclick="askDeleteTrip()">🗑 Delete this trip</button>
       <div id="modal"></div>
     `, { title: t.name, back: "backToTrips()" });
   }
@@ -410,7 +439,7 @@
           <div class="tp-mini">
             ${p.phone ? `<a href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>` : ''}
             <a target="_blank" rel="noopener" href="${esc(navToPlace(p))}">🧭 Navigate</a>
-            <button onclick="removeStop('${s.id}')">Remove</button>
+            <button onclick="stopMenu('${s.id}')">⋯ Edit</button>
           </div>
           ${outBtns}
         </div>
@@ -429,6 +458,10 @@
         <div class="tp-endline"><div class="pin pin-e">E</div>
           <div class="val ${d.end_label ? '' : 'empty'}">${esc(d.end_label || 'Where you finish (can be a different city)')}</div>
           <button class="btn btn-small btn-secondary" style="width:auto" onclick="editEnd('end')">Set</button></div>
+        <div class="tp-titlerow" style="margin-top:10px;gap:8px">
+          <button class="tp-iconbtn" onclick="editDayDate()">✎ Change the date</button>
+          <button class="tp-iconbtn danger" onclick="askDeleteDay(S.day.id)">🗑 Delete this day</button>
+        </div>
       </div>
 
       <div class="tp-sum">
@@ -452,6 +485,159 @@
       <div id="modal"></div>
     `, { title: 'Day ' + d.day_index + (d.day_date ? ' · ' + fmtDate(d.day_date) : ''), back: `openTrip('${d.trip_id}')` });
   }
+  /* ---------- editing and deleting: trips, days, stops ----------
+     Everything destructive goes through an in-app confirmation sheet. Native
+     confirm() is deliberately avoided: a browser modal blocks the page and, in
+     a PWA on a phone, is easy to dismiss by accident. Deletes rely on the
+     database cascades (trip -> days -> stops), so one delete is enough. */
+  function closeSheet() { const el = document.getElementById('sheet'); if (el) el.remove(); }
+  function sheet(html) {
+    closeSheet();
+    const el = document.createElement('div');
+    el.id = 'sheet'; el.className = 'sheet';
+    el.onclick = (e) => { if (e.target === el) closeSheet(); };
+    el.innerHTML = `<div class="sheet-inner">${html}</div>`;
+    document.body.appendChild(el);
+  }
+
+  /* ---- trip ---- */
+  function editTrip() {
+    const t = S.trip;
+    document.getElementById('modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+          <h3>Edit trip</h3>
+          <div class="field"><label>Name</label><input id="et-name" type="text" value="${esc(t.name || '')}"></div>
+          <div class="field"><label>State</label><select id="et-region">${STATES.map(x =>
+            `<option${x === t.region ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
+          <div class="tp-row2">
+            <div class="field"><label>First day</label><input id="et-start" type="date" value="${t.start_date || ''}"></div>
+            <div class="field"><label>Last day</label><input id="et-end" type="date" value="${t.end_date || ''}"></div>
+          </div>
+          <p class="ep-hint">Changing the first day does not move days you have already added — use “Change the date” on a day for that.</p>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveTripEdit()">Save</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  async function saveTripEdit() {
+    const name = document.getElementById('et-name').value.trim();
+    if (!name) { toast('Give the trip a name', 'err'); return; }
+    const patch = { name, region: document.getElementById('et-region').value,
+      start_date: document.getElementById('et-start').value || null,
+      end_date: document.getElementById('et-end').value || null };
+    const { error } = await sb.from('lf_trips').update(patch).eq('id', S.trip.id);
+    if (error) { toast(error.message, 'err'); return; }
+    Object.assign(S.trip, patch);
+    closeModal(); toast('Trip updated ✓', 'ok'); renderTrip();
+  }
+  function askDeleteTrip() {
+    const n = S.days.length;
+    const stops = Object.values(S.dayStops || {}).reduce((a, v) => a + v.length, 0);
+    sheet(`
+      <h4>Delete “${esc(S.trip.name)}”?</h4>
+      <p class="sheet-sub">This also removes ${n} day${n === 1 ? '' : 's'} and ${stops} planned stop${stops === 1 ? '' : 's'}. Your jewellers and their approvals are not affected. This cannot be undone.</p>
+      <button class="sheet-act danger" onclick="doDeleteTrip()">Delete the trip</button>
+      <button class="sheet-act cancel" onclick="closeSheet()">Keep it</button>`);
+  }
+  async function doDeleteTrip() {
+    const { error } = await sb.from('lf_trips').delete().eq('id', S.trip.id);
+    closeSheet();
+    if (error) { toast(error.message, 'err'); return; }
+    toast('Trip deleted', 'ok');
+    S.trip = null; S.days = []; S.dayStops = {};
+    await loadTrips(); renderTrips();
+  }
+
+  /* ---- day ---- */
+  function dayMenu(dayId) {
+    const d = S.days.find(x => x.id === dayId);
+    if (!d) return;
+    const stops = (S.dayStops[dayId] || []).length;
+    sheet(`
+      <h4>Day ${d.day_index}${d.day_date ? ' · ' + fmtDate(d.day_date) : ''}</h4>
+      <p class="sheet-sub">${stops} stop${stops === 1 ? '' : 's'} planned</p>
+      <button class="sheet-act" onclick="closeSheet();openDay('${dayId}')">Open this day</button>
+      <button class="sheet-act" onclick="closeSheet();openDay('${dayId}').then(editDayDate)">Change the date</button>
+      <button class="sheet-act danger" onclick="askDeleteDay('${dayId}')">Delete this day</button>
+      <button class="sheet-act cancel" onclick="closeSheet()">Cancel</button>`);
+  }
+  function editDayDate() {
+    const d = S.day;
+    if (!d) return;
+    closeSheet();
+    document.getElementById('modal').innerHTML = `
+      <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+          <h3>Date for day ${d.day_index}</h3>
+          <div class="field"><input id="dd-date" type="date" value="${d.day_date || ''}"></div>
+          <p class="ep-hint">This date is what gets written into the opening message you send jewellers, so keep it accurate.</p>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveDayDate()">Save</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  async function saveDayDate() {
+    const v = document.getElementById('dd-date').value || null;
+    const { error } = await sb.from('lf_trip_days').update({ day_date: v }).eq('id', S.day.id);
+    if (error) { toast(error.message, 'err'); return; }
+    S.day.day_date = v;
+    closeModal(); toast('Date updated ✓', 'ok'); renderDay();
+  }
+  function askDeleteDay(dayId) {
+    const d = S.days.find(x => x.id === dayId) || S.day;
+    const stops = (S.dayStops[dayId] || S.stops || []).length;
+    sheet(`
+      <h4>Delete day ${d ? d.day_index : ''}?</h4>
+      <p class="sheet-sub">${stops} planned stop${stops === 1 ? '' : 's'} on this day will be removed with it. The jewellers themselves stay in your list, and any outcomes you logged are lost. This cannot be undone.</p>
+      <button class="sheet-act danger" onclick="doDeleteDay('${dayId}')">Delete the day</button>
+      <button class="sheet-act cancel" onclick="closeSheet()">Keep it</button>`);
+  }
+  async function doDeleteDay(dayId) {
+    const tripId = (S.day && S.day.trip_id) || (S.trip && S.trip.id);
+    const { error } = await sb.from('lf_trip_days').delete().eq('id', dayId);
+    closeSheet();
+    if (error) { toast(error.message, 'err'); return; }
+    // keep Day 1, Day 2, Day 3 contiguous after a deletion
+    const { data: left } = await sb.from('lf_trip_days').select('id, day_index')
+      .eq('trip_id', tripId).order('day_index');
+    let i = 1;
+    for (const row of left || []) {
+      if (row.day_index !== i) await sb.from('lf_trip_days').update({ day_index: i }).eq('id', row.id);
+      i++;
+    }
+    toast('Day deleted', 'ok');
+    openTrip(tripId);
+  }
+
+  /* ---- stop ---- */
+  function stopMenu(stopId) {
+    const s = S.stops.find(x => x.id === stopId);
+    if (!s) return;
+    const p = s.place || {};
+    const others = S.days.filter(d => d.id !== S.day.id);
+    sheet(`
+      <h4>${esc(p.name || 'Stop')}</h4>
+      <p class="sheet-sub">${esc([p.address, p.city].filter(Boolean).join(', ') || 'no address on file')}</p>
+      ${others.length ? others.map(d => `<button class="sheet-act" onclick="moveStop('${stopId}','${d.id}')">Move to day ${d.day_index}${d.day_date ? ' · ' + fmtDate(d.day_date) : ''}</button>`).join('') : ''}
+      <button class="sheet-act danger" onclick="closeSheet();removeStop('${stopId}')">Remove from this trip</button>
+      <button class="sheet-act cancel" onclick="closeSheet()">Cancel</button>`);
+  }
+  async function moveStop(stopId, dayId) {
+    const { data: existing } = await sb.from('lf_stops').select('id').eq('day_id', dayId);
+    const seq = (existing || []).length;
+    const { error } = await sb.from('lf_stops').update({ day_id: dayId, seq }).eq('id', stopId);
+    closeSheet();
+    if (error) { toast(error.message, 'err'); return; }
+    const d = S.days.find(x => x.id === dayId);
+    toast(`Moved to day ${d ? d.day_index : ''} ✓`, 'ok');
+    openDay(S.day.id);
+  }
+
   /* ---------- start / end place picker ----------
      Was a bare text box that silently geocoded on save. Now: typeahead against
      TomTom (via the lf-geosearch edge function, so the key stays server-side),
@@ -833,6 +1019,12 @@
   }
   window.doLogin = doLogin; window.newTrip = newTrip; window.saveTrip = saveTrip; window.closeModal = closeModal;
   window.openTrip = openTrip; window.backToTrips = backToTrips; window.addDay = addDay; window.openDay = openDay;
+  window.closeSheet = closeSheet;
+  window.editTrip = editTrip; window.saveTripEdit = saveTripEdit;
+  window.askDeleteTrip = askDeleteTrip; window.doDeleteTrip = doDeleteTrip;
+  window.dayMenu = dayMenu; window.editDayDate = editDayDate; window.saveDayDate = saveDayDate;
+  window.askDeleteDay = askDeleteDay; window.doDeleteDay = doDeleteDay;
+  window.stopMenu = stopMenu; window.moveStop = moveStop;
   window.editEnd = editEnd; window.epType = epType; window.epPick = epPick;
   window.epRecent = epRecent; window.epHere = epHere; window.epSave = epSave; window.openPicker = openPicker; window.pickSearch = pickSearch;
   window.togglePick = togglePick; window.addPicked = addPicked; window.removeStop = removeStop;

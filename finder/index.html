@@ -610,6 +610,11 @@
     const ig = igLink(p.instagram); if (ig) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(ig)}">📸 Instagram</a>`);
     const fb = fbLink(p.facebook); if (fb) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(fb)}">📘 Facebook</a>`);
     c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(mapsLink(p))}">🗺️ Map</a>`);
+    // Exact-coordinates fallback. "Map" searches by name and address, which opens the
+    // business card when Google knows the shop — but some shops publish no address at
+    // all (delivery-only, home studios), and then the search drifts. Pin never drifts.
+    if (p.latitude != null && p.longitude != null)
+      c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}">📍 Pin</a>`);
     return c;
   }
   function openDetail(id) {

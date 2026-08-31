@@ -828,6 +828,7 @@ function mergeCodes(codes) {
     } else if (k.kind === 'website') { if (!r.website) r.website = k.value; }
     else if (k.kind === 'social') r.social.push(k.value);
     else if (k.kind === 'phone') r.phones.push({ v: k.value, cell: true });
+    else if (k.kind === 'email') r.emails.push(k.value);
     else if (k.kind === 'code') {
       // a QR can hold thousands of characters — keep the field, sheet and CSV readable
       const t = String(k.text);

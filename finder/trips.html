@@ -347,7 +347,13 @@
     const idx = S.days.length + 1;
     let date = null;
     if (S.trip.start_date) {
-      const d = new Date(S.trip.start_date + 'T00:00:00'); d.setDate(d.getDate() + idx - 1);
+      // Anchor at MIDDAY UTC and step in UTC. Parsing 'YYYY-MM-DDT00:00:00' gives
+      // LOCAL midnight, and toISOString() then converts back to UTC — so from
+      // India (UTC+5:30) every day came out one day EARLY. That date is fed into
+      // the outreach message ("I am in {city} on {date}"), so the error reached
+      // customers, not just the screen.
+      const d = new Date(S.trip.start_date + 'T12:00:00Z');
+      d.setUTCDate(d.getUTCDate() + idx - 1);
       date = d.toISOString().slice(0, 10);
     }
     const prev = S.days[S.days.length - 1];

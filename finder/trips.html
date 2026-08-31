@@ -217,15 +217,40 @@
     const q = [p.name, p.address, p.city, p.region, 'USA'].filter(Boolean).join(', ');
     return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(q);
   }
-  function navWholeDay(day, stops) {
+  /* Google's directions URL accepts at most 9 waypoints. The old navWholeDay
+     just did .slice(0, 9), so on a 12-stop day THREE stops vanished from the
+     route with nothing on screen to say so — you would drive the day and quietly
+     miss the last few calls. Now the day is split into consecutive legs, each
+     within the limit, with leg 2 starting where leg 1 finished. No stop is
+     dropped, ever. */
+  const MAX_WAYPOINTS = 9;
+  function navLegs(day, stops) {
     const pts = stops.map(s => s._pt).filter(Boolean);
-    if (!pts.length) return null;
-    const origin = day.start_lat != null ? `${day.start_lat},${day.start_lng}` : `${pts[0].lat},${pts[0].lng}`;
-    const endPt = day.end_lat != null ? `${day.end_lat},${day.end_lng}` : `${pts[pts.length-1].lat},${pts[pts.length-1].lng}`;
-    const mid = (day.start_lat != null ? pts : pts.slice(1));
-    const wp = (day.end_lat != null ? mid : mid.slice(0, -1)).slice(0, 9).map(p => `${p.lat},${p.lng}`).join('|');
-    return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${endPt}` +
-           (wp ? '&waypoints=' + encodeURIComponent(wp) : '') + '&travelmode=driving';
+    if (!pts.length) return [];
+    const start = day.start_lat != null ? { lat: day.start_lat, lng: day.start_lng } : null;
+    const end   = day.end_lat   != null ? { lat: day.end_lat,   lng: day.end_lng   } : null;
+    const legs = [];
+    // cursor may be null on the first leg: with no hotel pinned, omitting origin
+    // makes Google route from wherever the phone actually is.
+    let cursor = start;
+    let i = 0, n = 1, guard = 0;
+    while (i < pts.length && guard++ < 20) {
+      const chunk = pts.slice(i, i + MAX_WAYPOINTS);
+      const isLast = i + chunk.length >= pts.length;
+      let dest, wps;
+      if (isLast && end) { dest = end; wps = chunk; }
+      else { dest = chunk[chunk.length - 1]; wps = chunk.slice(0, -1); }
+      const q = wps.map(p => `${p.lat},${p.lng}`).join('|');
+      legs.push({
+        n, stops: chunk.length,
+        url: 'https://www.google.com/maps/dir/?api=1' +
+             (cursor ? `&origin=${cursor.lat},${cursor.lng}` : '') +
+             `&destination=${dest.lat},${dest.lng}` +
+             (q ? '&waypoints=' + encodeURIComponent(q) : '') + '&travelmode=driving',
+      });
+      cursor = dest; i += chunk.length; n++;
+    }
+    return legs;
   }
 
   /* ---------- shell ---------- */
@@ -446,7 +471,7 @@
       </div>`;
     }).join('');
     const endLeg = (prev && d.end_lat != null) ? km(prev, { lat: d.end_lat, lng: d.end_lng }) : null;
-    const dayNav = navWholeDay(d, stops);
+    const legs = navLegs(d, stops);
     const over = m.count > MAX_STOPS || m.total > MAX_HOURS * 60;
     const light = m.count && m.count < SOFT_STOPS;
     $app.innerHTML = shell(`
@@ -474,8 +499,15 @@
 
       <div class="tp-row2">
         <button class="btn btn-secondary" onclick="optimise()">↕️ Best order</button>
-        ${dayNav ? `<a class="btn btn-secondary" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(dayNav)}">🧭 Whole day</a>` : ''}
+        ${legs.length === 1 ? `<a class="btn btn-secondary" style="text-decoration:none" target="_blank" rel="noopener" href="${esc(legs[0].url)}">🧭 Whole day</a>` : ''}
       </div>
+      ${legs.length > 1 ? `<div class="tp-sum" style="margin-top:9px">
+        <div class="big">🧭 Route in ${legs.length} legs</div>
+        <div class="det">Google Maps takes at most ${MAX_WAYPOINTS} stops in one link, so this day opens as ${legs.length} routes. Drive leg 1, then open leg 2 — it starts where leg 1 ended, and every stop is covered.</div>
+        <div class="tp-mini" style="margin-top:9px">
+          ${legs.map(l => `<a target="_blank" rel="noopener" href="${esc(l.url)}">Leg ${l.n} · ${l.stops} stop${l.stops === 1 ? '' : 's'}</a>`).join('')}
+        </div>
+      </div>` : ''}
 
       <div class="section-label">The run${stops.length ? '' : ' — nothing added yet'}</div>
       ${rows || '<div class="empty"><div class="big">📍</div>Add your approved jewellers, then tap Best order.</div>'}

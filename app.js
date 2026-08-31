@@ -710,15 +710,23 @@ function hostOf(u) {
   try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch (_) { return ''; }
 }
 
+/* Turns text into a clickable link, or returns '' if it is not a real web address.
+   ONLY http(s) survives. A value like "javascript://a.b/%0a<code>" parses as a valid
+   URL but must never become an href — it would run script in the signed-in owner's
+   session — so anything that is not http/https is rejected and shown as plain text. */
 function normUrl(s) {
   let v = String(s == null ? '' : s).trim().replace(/[),.;:]+$/, '');
-  if (!v) return '';
-  if (/^(mailto:|tel:|upi:)/i.test(v)) return v;
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) v = 'https://' + v.replace(/^\/+/, '');
-  if (/\s/.test(v)) return '';
-  let h = '';
-  try { h = new URL(v).hostname; } catch (_) { return ''; }
-  if (!h || h.indexOf('.') < 0) return '';
+  if (!v || /\s/.test(v)) return '';
+  if (!/^https?:\/\//i.test(v)) {
+    // A scheme that is not http(s) is out. "example.com:8080/x" is a host and port,
+    // not a scheme, so it is still allowed through.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(v) && !/^[a-z0-9.-]+:\d+([/?#]|$)/i.test(v)) return '';
+    v = 'https://' + v.replace(/^\/+/, '');
+  }
+  let u;
+  try { u = new URL(v); } catch (_) { return ''; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+  if (!u.hostname || u.hostname.indexOf('.') < 0) return '';
   return v;
 }
 
@@ -820,8 +828,11 @@ function mergeCodes(codes) {
     } else if (k.kind === 'website') { if (!r.website) r.website = k.value; }
     else if (k.kind === 'social') r.social.push(k.value);
     else if (k.kind === 'phone') r.phones.push({ v: k.value, cell: true });
-    else if (k.kind === 'email') r.emails.push(k.value);
-    else if (k.kind === 'code') r.codes.push(k.text);
+    else if (k.kind === 'code') {
+      // a QR can hold thousands of characters — keep the field, sheet and CSV readable
+      const t = String(k.text);
+      r.codes.push(t.length > 200 ? t.slice(0, 200) + '…' : t);
+    }
   });
   return r;
 }

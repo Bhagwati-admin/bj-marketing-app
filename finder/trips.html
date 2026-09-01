@@ -733,15 +733,67 @@
     return { lat, lon };
   }
 
+  /* Clearing the pin the moment the text is edited is the important part here.
+     Without it the label and the coordinates could drift apart: a Google link was
+     once saved as the label while the pin still held a place 40 miles away, and
+     nothing on screen showed the mismatch. If the text changes, the pin goes and
+     a new one must be picked. */
+  function epUnpick() {
+    S.ep.chosen = null;
+    const c = document.getElementById('ep-conf'); if (c) c.innerHTML = '';
+    const el = document.getElementById('ep-map'); if (el) el.style.display = 'none';
+  }
+
   function epType(v) {
+    const txt = (v || '').trim();
+    if (S.ep.chosen && txt !== (S.ep.chosen.name || '').trim()) epUnpick();
     const pasted = coordsFromText(v);
     if (pasted) {
       epReverse(pasted.lat, pasted.lon, 'Pinned from the link you pasted');
       return;
     }
     clearTimeout(S.ep.t);
-    if (!v || v.trim().length < 3) { const u = document.getElementById('ep-sug'); if (u) u.style.display = 'none'; return; }
-    S.ep.t = setTimeout(() => epSearch(v.trim()), 450);
+    // A shortened maps.app.goo.gl link carries no coordinates. Searching for the
+    // URL as if it were a hotel name is how a wrong pin got saved, so resolve the
+    // link server-side instead of ever text-searching it.
+    if (/^https?:\/\//i.test(txt)) {
+      S.ep.t = setTimeout(() => epResolve(txt), 350);
+      return;
+    }
+    if (txt.length < 3) { const u = document.getElementById('ep-sug'); if (u) u.style.display = 'none'; return; }
+    S.ep.t = setTimeout(() => epSearch(txt), 450);
+  }
+
+  async function epResolve(link) {
+    const conf = document.getElementById('ep-conf');
+    if (conf) conf.innerHTML = '<div class="ep-hint">Following that link…</div>';
+    let res = null, err = null;
+    try {
+      const { data, error } = await sb.functions.invoke('lf-geosearch', { body: { resolve: link } });
+      if (error) err = 'the link could not be followed';
+      else if (data && Array.isArray(data.results) && data.results.length) res = data.results;
+      else err = (data && data.error) || 'it did not lead to a place';
+    } catch (e) { err = 'the link could not be followed'; }
+
+    const u = document.getElementById('ep-sug');
+    if (!res) {
+      if (conf) conf.innerHTML = `<div class="warn-box">That link could not be read — ${esc(err)}. Type the hotel or airport name instead and pick it from the list.</div>`;
+      if (u) u.style.display = 'none';
+      return;
+    }
+    if (res.length === 1) {
+      document.getElementById('ep-q').value = res[0].name;
+      if (u) u.style.display = 'none';
+      epShow(res[0], false, 'Read from the link you pasted');
+      return;
+    }
+    S.ep.sug = res;
+    if (u) {
+      u.style.display = 'block';
+      u.innerHTML = res.map((r, i) =>
+        `<li onclick="epPick(${i})"><div class="s-nm">${esc(r.name)}</div><div class="s-ad">${esc(r.address || '')}</div></li>`).join('');
+    }
+    if (conf) conf.innerHTML = '<div class="ep-hint">That link names a place — pick the right match below.</div>';
   }
 
   async function epSearch(q) {
@@ -850,7 +902,9 @@
       toast('Pick a place from the list so the map has a pin', 'err');
       return;
     } else {
-      patch[which + '_label'] = typed || S.ep.chosen.name;
+      // the pin is the source of truth; never save a label that describes somewhere else
+      const chosenName = (S.ep.chosen.name || '').trim();
+      patch[which + '_label'] = (typed && typed === chosenName) ? typed : chosenName;
       patch[which + '_lat'] = S.ep.chosen.lat;
       patch[which + '_lng'] = S.ep.chosen.lon;
     }

@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7b1e3c">
+  <title>Bhagwati Jewels — US Visits</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="US Visits">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    :root { --mar: var(--maroon, #7b1e3c); --cd: var(--card, #fff); --mu: var(--muted, #6b6b6b);
+            --rd: var(--radius, 12px); --sh: var(--shadow, 0 1px 3px rgba(0,0,0,.12)); }
+    * { -webkit-tap-highlight-color: transparent; }
+    /* the header is sticky; without this, tapping a field lets iOS scroll it under the header */
+    html { scroll-padding-top: 104px; }
+    body { margin: 0; background: #f6f3f4; color: #1c1c1c;
+           font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           padding-bottom: env(safe-area-inset-bottom); }
+    .v-hd { position: sticky; top: 0; z-index: 30; background: var(--mar); color: #fff;
+            padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; }
+    .v-hd h1 { margin: 0; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .v-hd .sp { flex: 1; }
+    .v-back { background: none; border: 0; color: #fff; font-size: 20px; padding: 2px 8px 2px 0; cursor: pointer; }
+    .v-out { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 8px; }
+    .v-sync { display: block; margin-top: 7px; font-size: 12.5px; border-radius: 20px; padding: 4px 11px;
+              background: rgba(255,255,255,.16); border: 0; color: #fff; cursor: pointer; }
+    .v-sync.warn { background: #fbe1df; color: #a12b24; font-weight: 600; }
+    .v-sync.wait { background: #fcefd2; color: #7a4a02; font-weight: 600; }
+    .v-tabs { display: flex; background: var(--cd); border-bottom: 1px solid #e6e0e2; position: sticky;
+              top: 0; z-index: 20; }
+    .v-tabs button { flex: 1; background: none; border: 0; padding: 12px 4px 10px; font-size: 13.5px;
+                     color: var(--mu); cursor: pointer; border-bottom: 2.5px solid transparent; }
+    .v-tabs button.on { color: var(--mar); font-weight: 600; border-bottom-color: var(--mar); }
+    .wrap { padding: 13px; max-width: 720px; margin: 0 auto; }
+    .card { background: var(--cd); border-radius: var(--rd); box-shadow: var(--sh); padding: 13px 14px; margin-bottom: 11px; }
+    .card h3 { margin: 0 0 3px; font-size: 15.5px; }
+    .card .sub { font-size: 12.5px; color: var(--mu); }
+    .sec-t { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--mu);
+             margin: 18px 2px 8px; font-weight: 600; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12.5px; color: var(--mu); margin-bottom: 5px; font-weight: 600; }
+    .field input[type=text], .field input[type=email], .field input[type=tel],
+    .field input[type=date], .field input[type=number], .field textarea, .field select {
+      width: 100%; box-sizing: border-box; padding: 11px 12px; font-size: 16px; font-family: inherit;
+      border: 1px solid #d9d2d4; border-radius: 9px; background: #fff; color: inherit; }
+    .field textarea { min-height: 96px; resize: vertical; }
+    .field input:focus, .field textarea:focus { outline: 2px solid var(--mar); outline-offset: -1px; border-color: var(--mar); }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip { border: 1px solid #d9d2d4; background: #fff; color: #333; border-radius: 20px;
+            padding: 8px 13px; font-size: 13.5px; cursor: pointer; font-family: inherit; }
+    .chip.on { background: var(--mar); border-color: var(--mar); color: #fff; font-weight: 600; }
+    .chip.hot.on { background: #c0392b; border-color: #c0392b; }
+    .chip.warm.on { background: #b8860b; border-color: #b8860b; }
+    .chip.cold.on { background: #4a6b8a; border-color: #4a6b8a; }
+    .btn { display: block; width: 100%; box-sizing: border-box; padding: 14px; font-size: 16px;
+           font-weight: 600; font-family: inherit; border: 0; border-radius: 11px;
+           background: var(--mar); color: #fff; cursor: pointer; }
+    .btn.ghost { background: #fff; color: var(--mar); border: 1.5px solid var(--mar); }
+    .btn:disabled { opacity: .55; }
+    .row { display: flex; gap: 9px; }
+    .row .field { flex: 1; }
+    .q { display: flex; align-items: center; gap: 9px; padding: 11px 12px; background: var(--cd);
+         border-radius: var(--rd); box-shadow: var(--sh); margin-bottom: 8px; }
+    .q .body { flex: 1; min-width: 0; }
+    .q .nm { font-size: 14.5px; font-weight: 600; }
+    .q .mt { font-size: 12.5px; color: var(--mu); }
+    .q a.go, .q button.go { border: 1px solid var(--mar); background: #fff; color: var(--mar);
+         border-radius: 8px; padding: 7px 10px; font-size: 13px; text-decoration: none; font-family: inherit; cursor: pointer; }
+    .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+    .pill.overdue { background: #fbe1df; color: #a12b24; }
+    .pill.today { background: #fcefd2; color: #7a4a02; }
+    .pill.next7 { background: #eee9f2; color: #5b4a6b; }
+    .pill.later { background: #eee; color: #666; }
+    .pill.hot { background: #fbe1df; color: #a12b24; }
+    .pill.warm { background: #fcefd2; color: #7a4a02; }
+    .pill.cold { background: #e7eef5; color: #2c4a68; }
+    .empty { text-align: center; color: var(--mu); font-size: 13.5px; padding: 26px 14px; }
+    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 90;
+             background: #222; color: #fff; padding: 11px 16px; border-radius: 22px; font-size: 13.5px;
+             max-width: 90%; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+    .toast.ok { background: #16663c; } .toast.err { background: #a12b24; }
+    .banner { background: #fcefd2; color: #7a4a02; padding: 9px 13px; font-size: 12.5px; text-align: center; }
+    .banner.off { background: #4a4a4a; color: #fff; }
+    #gate { max-width: 340px; margin: 12vh auto; padding: 0 20px; }
+    #gate h2 { text-align: center; color: var(--mar); font-size: 19px; }
+    .hist { border-left: 2.5px solid #e6e0e2; padding-left: 12px; margin-left: 3px; }
+    .hist .v { margin-bottom: 14px; }
+    .hist .v .when { font-size: 12px; color: var(--mu); }
+    .hist .v .fb { font-size: 13.5px; margin-top: 3px; white-space: pre-wrap; }
+    .tags { font-size: 12px; color: var(--mu); margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+<div id="gate" style="display:none">
+  <h2>US Visits</h2>
+  <p style="text-align:center;color:#6b6b6b;font-size:13px;margin-top:-6px">Bhagwati Jewels — United States</p>
+  <div class="field"><label>Email</label><input id="g-em" type="email" autocomplete="username"></div>
+  <div class="field"><label>Password</label><input id="g-pw" type="password" autocomplete="current-password"></div>
+  <button class="btn" id="g-go">Sign in</button>
+  <p id="g-err" style="color:#a12b24;font-size:13px;text-align:center"></p>
+</div>
+
+<div id="app" style="display:none">
+  <div class="v-hd">
+    <h1><button class="v-back" id="hd-back" style="display:none" onclick="goBack()">‹</button>
+        <span id="hd-title">US Visits</span><span class="sp"></span>
+        <button class="v-out" onclick="signOut()">Sign out</button></h1>
+    <button class="v-sync" id="sync-b" onclick="flush(true)">✓ All saved</button>
+  </div>
+  <div class="banner off" id="off-b" style="display:none">No signal — visits are being saved on this phone</div>
+  <div class="v-tabs" id="tabs">
+    <button data-t="today" class="on" onclick="tab('today')">Today</button>
+    <button data-t="log" onclick="tab('log')">Log a visit</button>
+    <button data-t="clients" onclick="tab('clients')">Clients</button>
+  </div>
+  <div class="wrap" id="view"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js"></script>
+<script src="../config.js"></script>
+<script>
+(function () {
+  'use strict';
+  // Boot guard. The Supabase library comes from a CDN; the service worker caches it after the
+  // first online visit, but a cold first load with no signal would otherwise show a blank screen.
+  if (!window.supabase || !window.supabase.createClient || typeof BJ_CONFIG === 'undefined') {
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.innerHTML =
+        '<div style="max-width:340px;margin:16vh auto;padding:0 24px;text-align:center;' +
+        'font:15px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;color:#1c1c1c">' +
+        '<h2 style="color:#7b1e3c;font-size:19px">Could not finish loading</h2>' +
+        '<p>One of the app files did not download. This happens on a first open with no signal.</p>' +
+        '<p style="color:#6b6b6b;font-size:13.5px">Get a bar of signal and reload once. After that ' +
+        'the app opens offline on its own.</p>' +
+        '<button onclick="location.reload()" style="padding:13px 22px;font-size:16px;font-weight:600;' +
+        'border:0;border-radius:11px;background:#7b1e3c;color:#fff">Reload</button></div>';
+    });
+    return;
+  }
+  const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
+
+  const S = { tab: 'today', view: null, stack: [], queue: [], work: [], pack: null,
+              engaged: [], place: null, form: null, client: null, busy: false };
+
+  /* ---------------- small helpers ---------------- */
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const digits = (s) => String(s || '').replace(/[^\d+]/g, '');
+  function uuid() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+  // Local calendar date. NEVER toISOString() on a local midnight — from India that lands a day early.
+  function todayISO() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function addDaysISO(iso, n) {
+    const d = new Date(iso + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso + 'T12:00:00Z');
+    return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  }
+  function fmtWhen(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' +
+           d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  let toastT;
+  function toast(msg, kind) {
+    const old = document.querySelector('.toast'); if (old) old.remove();
+    const el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' ' + kind : ''); el.textContent = msg;
+    document.body.appendChild(el);
+    clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 3400);
+  }
+
+  /* ---------------- offline queue ---------------- */
+  // IndexedDB where available, localStorage where Safari blocks it (private tabs).
+  const DBN = 'bj_us_visits', STORE = 'queue', LSK = 'bj_us_queue';
+  let backend = null;
+  function openDB() {
+    return new Promise((res, rej) => {
+      let r; try { r = indexedDB.open(DBN, 1); } catch (e) { return rej(e); }
+      r.onupgradeneeded = () => { const db = r.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' }); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.onblocked = () => rej(new Error('idb blocked'));
+    });
+  }
+  function idbTx(db, mode, fn) {
+    return new Promise((res, rej) => {
+      const t = db.transaction(STORE, mode); const rq = fn(t.objectStore(STORE));
+      t.oncomplete = () => res(rq ? rq.result : undefined);
+      t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  }
+  const lsAll = () => { try { return JSON.parse(localStorage.getItem(LSK) || '[]'); } catch (e) { return []; } };
+  const lsSave = (a) => { try { localStorage.setItem(LSK, JSON.stringify(a)); } catch (e) {} };
+  const Q = {
+    async pick() {
+      if (backend) return backend;
+      try { const db = await openDB(); await idbTx(db, 'readonly', (s) => s.count()); backend = { db }; }
+      catch (e) { backend = { ls: true }; }
+      return backend;
+    },
+    async all() {
+      const b = await Q.pick();
+      if (b.ls) return lsAll();
+      try { return (await idbTx(b.db, 'readonly', (s) => s.getAll())) || []; }
+      catch (e) { return lsAll(); }
+    },
+    async put(item) {
+      const b = await Q.pick();
+      if (b.ls) { const a = lsAll().filter((x) => x.id !== item.id); a.push(item); lsSave(a); return; }
+      try { await idbTx(b.db, 'readwrite', (s) => s.put(item)); }
+      catch (e) { const a = lsAll().filter((x) => x.id !== item.id); a.push(item); lsSave(a); }
+    },
+    async del(id) {
+      const b = await Q.pick();
+      if (b.ls) { lsSave(lsAll().filter((x) => x.id !== id)); return; }
+      try { await idbTx(b.db, 'readwrite', (s) => s.delete(id)); }
+      catch (e) { lsSave(lsAll().filter((x) => x.id !== id)); }
+    }
+  };
+
+  function isNetErr(e) {
+    const m = String((e && (e.message || e.error_description)) || e || '').toLowerCase();
+    return !navigator.onLine || m.includes('failed to fetch') || m.includes('networkerror') ||
+           m.includes('load failed') || m.includes('network request failed') || m.includes('timeout');
+  }
+
+  async function refreshQueue() { S.queue = await Q.all(); renderSync(); }
+
+  function renderSync() {
+    const b = $('sync-b'); if (!b) return;
+    const stuck = S.queue.filter((q) => q.stuck).length;
+    const wait = S.queue.length - stuck;
+    $('off-b').style.display = navigator.onLine ? 'none' : 'block';
+    b.className = 'v-sync';
+    if (stuck) { b.classList.add('warn'); b.textContent = '⚠️ ' + stuck + ' could not be saved — tap'; }
+    else if (wait) { b.classList.add('wait');
+      b.textContent = '⏳ ' + wait + (wait === 1 ? ' visit' : ' visits') + ' waiting to sync — tap to retry'; }
+    else b.textContent = navigator.onLine ? '✓ All saved' : '✓ All saved on this phone';
+  }
+
+  let flushing = false;
+  async function flush(manual) {
+    if (flushing) return;
+    flushing = true;
+    try {
+      await refreshQueue();
+      if (!S.queue.length) { if (manual) toast('Nothing waiting — everything is saved', 'ok'); return; }
+      if (!navigator.onLine) { if (manual) toast('Still no signal. Your visits are safe on this phone.'); return; }
+      let done = 0, failed = 0;
+      const items = S.queue.slice().sort((a, b) => (a.created || 0) - (b.created || 0));
+      for (const it of items) {
+        try {
+          const { error } = await sb.rpc('lf_log_visit', { p: it.payload });
+          if (error) throw error;
+          await Q.del(it.id); done++;
+        } catch (e) {
+          if (isNetErr(e)) { break; }                       // offline again — stop, keep everything
+          it.tries = (it.tries || 0) + 1;
+          it.lastError = String((e && e.message) || e);
+          if (it.tries >= 3) it.stuck = true;               // a real rejection, not a dropped signal
+          await Q.put(it); failed++;
+        }
+      }
+      await refreshQueue();
+      if (done && manual) toast(done + (done === 1 ? ' visit synced' : ' visits synced'), 'ok');
+      else if (done) toast(done + (done === 1 ? ' visit synced ✓' : ' visits synced ✓'), 'ok');
+      if (failed && manual) showStuck();
+      if (done) { loadWork().then(() => { if (S.tab === 'today' && !S.stack.length) render(); }); }
+    } finally { flushing = false; }
+  }
+  function showStuck() {
+    const bad = S.queue.filter((q) => q.stuck);
+    if (!bad.length) { toast('Retrying…'); return; }
+    alert('These visits were rejected by the server and need attention:\n\n' +
+      bad.map((b) => '• ' + (b.label || 'visit') + '\n  ' + (b.lastError || '')).join('\n\n') +
+      '\n\nNothing has been lost — they are still on this phone.');
+  }
+
+  /* ---------------- trip pack (so the shop list works offline) ---------------- */
+  const PACK = 'bj_us_trippack';
+  function loadPackLocal() { try { S.pack = JSON.parse(localStorage.getItem(PACK) || 'null'); } catch (e) { S.pack = null; } }
+  async function refreshPack() {
+    if (!navigator.onLine) return;
+    try {
+      const { data: trips } = await sb.from('lf_trips').select('*').order('start_date', { ascending: true });
+      if (!trips || !trips.length) return;
+      const t = trips.find((x) => x.status !== 'done') || trips[trips.length - 1];
+      const { data: days } = await sb.from('lf_trip_days').select('*').eq('trip_id', t.id).order('day_index');
+      const dayIds = (days || []).map((d) => d.id);
+      let stops = [];
+      if (dayIds.length) {
+        const { data } = await sb.from('lf_stops')
+          .select('id,day_id,place_id,seq,status,visited_at,lf_places(id,name,city,region,address,phone,website,priority,pitch_angle,approach_msg)')
+          .in('day_id', dayIds).order('seq');
+        stops = data || [];
+      }
+      S.pack = { at: Date.now(), trip: t, days: days || [],
+        stops: stops.map((s) => ({ id: s.id, day_id: s.day_id, place_id: s.place_id, seq: s.seq,
+          status: s.status, visited_at: s.visited_at, place: s.lf_places })) };
+      try { localStorage.setItem(PACK, JSON.stringify(S.pack)); } catch (e) {}
+    } catch (e) { /* keep whatever pack we already had */ }
+  }
+
+  async function loadWork() {
+    if (!navigator.onLine) return;
+    try {
+      const { data } = await sb.from('lf_work_queue').select('*').order('due_date').limit(500);
+      S.work = data || [];
+      try { localStorage.setItem('bj_us_work', JSON.stringify(S.work)); } catch (e) {}
+    } catch (e) {
+      try { S.work = JSON.parse(localStorage.getItem('bj_us_work') || '[]'); } catch (e2) { S.work = []; }
+    }
+  }
+
+  /* ---------------- option lists ---------------- */
+  const ROLES = ['Owner', 'Buyer', 'Manager', 'Staff', 'Other'];
+  const OUTCOMES = [['met', '✓ Met the buyer'], ['order', '🧾 Placed an order'],
+    ['buyer_out', '↻ Buyer was out'], ['not_interested', '✗ Not interested'],
+    ['no_answer', '— Closed / no answer'], ['other', 'Other']];
+  const INTEREST = [['hot', '🔥 Hot'], ['warm', 'Warm'], ['cold', 'Cold']];
+  const ASKED = ['Studs & solitaires', 'Engagement rings', 'Bridal sets', 'Tennis bracelets',
+    'Necklaces & pendants', 'Bangles & bracelets', "Men's jewellery", 'Loose stones',
+    'Custom / bespoke', 'IGI certificates', 'Price list', 'Memo / consignment',
+    'Credit terms', 'Ready stock', 'Overnight from NY'];
+  const OBJECTIONS = ['Price too high', 'Already has a supplier', 'Natural diamonds only',
+    'Minimum order too big', 'Wants longer credit', 'Not buying this season',
+    'Wants to see quality first', 'Worried about resale', 'Must ask a partner', 'Other'];
+  const ORDER_TYPES = [['none', 'No order yet'], ['memo', 'On memo'], ['trial', 'Trial order'],
+    ['outright', 'Outright order'], ['custom', 'Custom order']];
+  const NEXT = ['Send price list', 'Send samples', 'Send on memo', 'Call back',
+    'Visit again', 'Send IGI certificates', 'Nothing for now'];
+
+  /* ---------------- navigation ---------------- */
+  function tab(t) { S.tab = t; S.stack = []; S.client = null;
+    [...document.querySelectorAll('#tabs button')].forEach((b) => b.classList.toggle('on', b.dataset.t === t));
+    render(); }
+  function push(v) { S.stack.push(v); render(); }
+  function goBack() { S.stack.pop(); render(); }
+
+  function render() {
+    const v = $('view'); if (!v) return;
+    const top = S.stack[S.stack.length - 1];
+    $('hd-back').style.display = top ? '' : 'none';
+    $('tabs').style.display = top ? 'none' : 'flex';
+    if (top === 'form') { $('hd-title').textContent = 'Log a visit'; return v.innerHTML = formHtml(); }
+    if (top === 'client') { $('hd-title').textContent = 'Client'; return v.innerHTML = clientHtml(); }
+    $('hd-title').textContent = 'US Visits';
+    if (S.tab === 'today') return v.innerHTML = todayHtml();
+    if (S.tab === 'log') return v.innerHTML = pickHtml();
+    return v.innerHTML = clientsHtml();
+  }
+
+  /* ---------------- TODAY ---------------- */
+  function bucketOf(due) {
+    const t = todayISO();
+    if (due < t) return 'overdue';
+    if (due === t) return 'today';
+    if (due <= addDaysISO(t, 7)) return 'next7';
+    return 'later';
+  }
+  function todayHtml() {
+    const t = todayISO();
+    const day = S.pack && (S.pack.days || []).find((d) => d.day_date === t);
+    const stops = day ? (S.pack.stops || []).filter((s) => s.day_id === day.id) : [];
+    const pend = stops.filter((s) => s.status === 'planned');
+    const loggedIds = new Set(S.queue.map((q) => q.payload && q.payload.stop_id).filter(Boolean));
+
+    let h = '';
+    if (day) {
+      h += '<div class="sec-t">Today on the road — ' + esc(S.pack.trip.name) + ', day ' + day.day_index + '</div>';
+      if (!stops.length) h += '<div class="empty">No stops planned for today.</div>';
+      h += stops.map((s) => {
+        const p = s.place || {}; const done = s.status !== 'planned' || loggedIds.has(s.id);
+        return '<div class="q"><div class="body"><div class="nm">' + s.seq + '. ' + esc(p.name || 'Shop') +
+          (done ? ' <span class="pill next7">logged</span>' : '') + '</div>' +
+          '<div class="mt">' + esc([p.address, p.city].filter(Boolean).join(', ') || 'no address') + '</div></div>' +
+          (p.phone ? '<a class="go" href="tel:' + esc(digits(p.phone)) + '">Call</a>' : '') +
+          '<button class="go" onclick="openForm(' + JSON.stringify(JSON.stringify({ place: p, stop_id: s.id, trip_id: S.pack.trip.id })).replace(/"/g, '&quot;') + ')">' +
+          (done ? 'Log again' : 'Log visit') + '</button></div>';
+      }).join('');
+    } else {
+      h += '<div class="sec-t">Today</div>' +
+        '<div class="card"><h3>No trip day set for today</h3><div class="sub">You can still log any visit — use the ' +
+        '<b>Log a visit</b> tab and search for the shop.</div></div>';
+    }
+
+    const groups = [['overdue', 'Overdue'], ['today', 'Due today'], ['next7', 'Next 7 days']];
+    const open = S.work.filter((w) => w.due_date);
+    h += '<div class="sec-t">Follow-ups to work on' + (open.length ? ' (' + open.length + ')' : '') + '</div>';
+    let any = false;
+    for (const [k, label] of groups) {
+      const rows = open.filter((w) => bucketOf(w.due_date) === k);
+      if (!rows.length) continue;
+      any = true;
+      h += '<div style="margin:0 2px 6px"><span class="pill ' + k + '">' + label + ' · ' + rows.length + '</span></div>';
+      h += rows.map(workRow).join('');
+    }
+    const later = open.filter((w) => bucketOf(w.due_date) === 'later');
+    if (later.length) { any = true;
+      h += '<div style="margin:10px 2px 6px"><span class="pill later">Later · ' + later.length + '</span></div>' +
+           later.slice(0, 20).map(workRow).join(''); }
+    if (!any) h += '<div class="empty">Nothing outstanding. Follow-ups you set while logging visits appear here.</div>';
+    return h;
+  }
+  function workRow(w) {
+    return '<div class="q"><div class="body"><div class="nm">' + esc(w.name || 'Shop') +
+      (w.interest ? ' <span class="pill ' + esc(w.interest) + '">' + esc(w.interest) + '</span>' : '') + '</div>' +
+      '<div class="mt">' + esc(w.what) + ' · due ' + esc(fmtDate(w.due_date)) +
+      (w.city ? ' · ' + esc(w.city) : '') + '</div></div>' +
+      (w.phone ? '<a class="go" href="tel:' + esc(digits(w.phone)) + '">Call</a>' : '') +
+      '<button class="go" onclick="doneFollowup(\'' + w.id + '\')">Done</button></div>';
+  }
+  async function doneFollowup(id) {
+    if (!navigator.onLine) return toast('Needs signal to tick a follow-up off', 'err');
+    const { error } = await sb.from('lf_followups')
+      .update({ status: 'done', done_at: new Date().toISOString() }).eq('id', id);
+    if (error) return toast(error.message, 'err');
+    S.work = S.work.filter((w) => w.id !== id); render(); toast('Done ✓', 'ok');
+  }
+
+  /* ---------------- PICK A SHOP ---------------- */
+  let searchT;
+  function pickHtml() {
+    return '<div class="field"><label>Which shop did you visit?</label>' +
+      '<input id="pk" type="text" placeholder="Type a shop name or city" ' +
+      'oninput="onPick(this.value)" autocomplete="off"></div>' +
+      '<div id="pk-res"></div>' +
+      (navigator.onLine ? '' : '<div class="empty">No signal — you can only pick shops from this trip ' +
+        'while offline. Everything on your planned days is available.</div>');
+  }
+  function onPick(q) { clearTimeout(searchT); searchT = setTimeout(() => doPick(q), 260); }
+  async function doPick(q) {
+    const box = $('pk-res'); if (!box) return;
+    const term = (q || '').trim();
+    if (term.length < 2) { box.innerHTML = ''; return; }
+    let rows = [];
+    const packRows = ((S.pack && S.pack.stops) || [])
+      .map((s) => Object.assign({}, s.place, { _stop: s.id }))
+      .filter((p) => p && ((p.name || '') + ' ' + (p.city || '')).toLowerCase().includes(term.toLowerCase()));
+    if (navigator.onLine) {
+      try {
+        const { data } = await sb.from('lf_places').select('id,name,city,region,address,phone,website,priority,pitch_angle')
+          .eq('hidden', false).is('skip_reason', null)
+          .or('name.ilike.%' + term + '%,city.ilike.%' + term + '%')
+          .order('priority', { ascending: false }).limit(40);
+        rows = data || [];
+      } catch (e) { rows = []; }
+    }
+    const seen = new Set(); const all = [];
+    for (const r of packRows.concat(rows)) { if (r && r.id && !seen.has(r.id)) { seen.add(r.id); all.push(r); } }
+    if (!all.length) { box.innerHTML = '<div class="empty">No match. Check the spelling, or try the city.</div>'; return; }
+    box.innerHTML = all.slice(0, 40).map((p) => {
+      const arg = JSON.stringify(JSON.stringify({ place: p, stop_id: p._stop || '', trip_id: (S.pack && S.pack.trip && p._stop) ? S.pack.trip.id : '' })).replace(/"/g, '&quot;');
+      return '<div class="q"><div class="body"><div class="nm">' + esc(p.name) +
+        (p.priority >= 5 ? ' ⭐' : '') + '</div><div class="mt">' +
+        esc([p.address, p.city, p.region].filter(Boolean).join(', ')) + '</div></div>' +
+        '<button class="go" onclick="openForm(' + arg + ')">Log visit</button></div>';
+    }).join('');
+  }
+
+  /* ---------------- THE VISIT FORM ---------------- */
+  function openForm(json) {
+    const a = typeof json === 'string' ? JSON.parse(json) : json;
+    S.place = a.place;
+    const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
+    S.form = {
+      id: uuid(), place_id: a.place.id, stop_id: a.stop_id || '', trip_id: a.trip_id || '',
+      visited_at: new Date().toISOString(), channel: 'in_person',
+      outcome: '', interest: '', met_name: '', met_role: '', met_mobile: '', met_email: '',
+      save_contact: true, asked: [], asked_notes: '', objections: [], objection_notes: '',
+      order_type: '', order_value: '', feedback: '',
+      next_step: '', next_due: tripEnd ? addDaysISO(tripEnd, 3) : addDaysISO(todayISO(), 7)
+    };
+    push('form');
+  }
+  function fset(k, v) { S.form[k] = v; render(); }
+  function ftoggle(k, v) {
+    const a = S.form[k]; const i = a.indexOf(v);
+    if (i < 0) a.push(v); else a.splice(i, 1);
+    render();
+  }
+  function fraw(k, v) { S.form[k] = v; }          // text inputs: no re-render, keeps the keyboard up
+
+  function chipRow(list, sel, onclick, cls) {
+    return '<div class="chips">' + list.map((it) => {
+      const [val, label] = Array.isArray(it) ? it : [it, it];
+      const on = Array.isArray(sel) ? sel.indexOf(val) >= 0 : sel === val;
+      return '<button type="button" class="chip ' + (cls || '') + (on ? ' on' : '') + '" onclick="' +
+        onclick + '(' + JSON.stringify(val).replace(/"/g, '&quot;') + ')">' + esc(label) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function formHtml() {
+    const f = S.form, p = S.place || {};
+    const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
+    const dueChips = [['__t', 'Tomorrow'], ['__3', 'In 3 days']];
+    if (tripEnd) dueChips.push(['__trip', 'After the trip']);
+    return '<div class="card"><h3>' + esc(p.name || 'Shop') + (p.priority >= 5 ? ' ⭐' : '') + '</h3>' +
+      '<div class="sub">' + esc([p.address, p.city, p.region].filter(Boolean).join(', ') || 'no address on file') + '</div>' +
+      (p.pitch_angle ? '<div class="sub" style="margin-top:6px;color:var(--mar)">🎯 ' + esc(String(p.pitch_angle).split('. ')[0]) + '.</div>' : '') +
+      '</div>' +
+
+      '<div class="sec-t">How did it go?</div>' +
+      chipRow(OUTCOMES, f.outcome, 'setOutcomeF') +
+
+      '<div class="sec-t">How interested are they?</div>' +
+      '<div class="chips">' + INTEREST.map(([v, l]) =>
+        '<button type="button" class="chip ' + v + (f.interest === v ? ' on' : '') +
+        '" onclick="setInterest(\'' + v + '\')">' + esc(l) + '</button>').join('') + '</div>' +
+
+      '<div class="sec-t">Who did you meet?</div>' +
+      '<div class="field"><label>Name</label><input type="text" value="' + esc(f.met_name) +
+        '" oninput="fraw(\'met_name\',this.value)" placeholder="e.g. Daniel Alvarez"></div>' +
+      chipRow(ROLES, f.met_role, 'setRole') +
+      '<div class="row" style="margin-top:11px">' +
+        '<div class="field"><label>Their mobile</label><input type="tel" inputmode="tel" value="' + esc(f.met_mobile) +
+          '" oninput="fraw(\'met_mobile\',this.value)" placeholder="direct number"></div>' +
+        '<div class="field"><label>Their email</label><input type="text" inputmode="email" value="' + esc(f.met_email) +
+          '" oninput="fraw(\'met_email\',this.value)"></div></div>' +
+
+      '<div class="sec-t">What did they ask about?</div>' +
+      chipRow(ASKED, f.asked, 'toggleAsked') +
+      '<div class="field" style="margin-top:11px"><label>Sizes, price points, anything specific</label>' +
+        '<input type="text" value="' + esc(f.asked_notes) + '" oninput="fraw(\'asked_notes\',this.value)" ' +
+        'placeholder="e.g. 1ct–2ct studs under $900"></div>' +
+
+      '<div class="sec-t">What held them back?</div>' +
+      chipRow(OBJECTIONS, f.objections, 'toggleObj') +
+      '<div class="field" style="margin-top:11px"><label>In their words</label>' +
+        '<input type="text" value="' + esc(f.objection_notes) + '" oninput="fraw(\'objection_notes\',this.value)"></div>' +
+
+      '<div class="sec-t">Did they commit to anything?</div>' +
+      chipRow(ORDER_TYPES, f.order_type, 'setOrderType') +
+      (f.order_type && f.order_type !== 'none'
+        ? '<div class="field" style="margin-top:11px"><label>Rough value (USD)</label>' +
+          '<input type="number" inputmode="decimal" step="1" min="0" value="' + esc(f.order_value) +
+          '" oninput="fraw(\'order_value\',this.value)" placeholder="e.g. 4500"></div>' : '') +
+
+      '<div class="sec-t">Their feedback — the part you will want later</div>' +
+      '<div class="field"><textarea oninput="fraw(\'feedback\',this.value)" placeholder="What they actually said. Tap the microphone on your keyboard to dictate.">' +
+        esc(f.feedback) + '</textarea></div>' +
+
+      '<div class="sec-t">What happens next?</div>' +
+      chipRow(NEXT, f.next_step, 'setNext') +
+      (f.next_step && f.next_step !== 'Nothing for now'
+        ? '<div style="margin-top:11px">' + chipRow(dueChips, f.due_pick || '', 'setDue') +
+          '<div class="field" style="margin-top:9px"><label>Due on</label><input type="date" value="' +
+          esc(f.next_due) + '" oninput="dueTyped(this.value)"></div></div>' : '') +
+
+      '<button class="btn" style="margin:18px 0 6px" id="save-b" onclick="saveVisit()">Save this visit</button>' +
+      '<button class="btn ghost" style="margin-bottom:26px" onclick="goBack()">Cancel</button>' +
+      '<div class="sub" style="text-align:center;padding-bottom:20px">' +
+        (navigator.onLine ? 'Saves straight to your database.' :
+          'No signal — this will be saved on your phone and synced automatically.') + '</div>';
+  }
+  function setOutcomeF(v) { fset('outcome', S.form.outcome === v ? '' : v); }
+  function setInterest(v) { fset('interest', S.form.interest === v ? '' : v); }
+  function setRole(v) { fset('met_role', S.form.met_role === v ? '' : v); }
+  function setOrderType(v) { fset('order_type', S.form.order_type === v ? '' : v); }
+  function setNext(v) { fset('next_step', S.form.next_step === v ? '' : v); }
+  function toggleAsked(v) { ftoggle('asked', v); }
+  function toggleObj(v) { ftoggle('objections', v); }
+  function dueTyped(v) { S.form.next_due = v; S.form.due_pick = ''; }
+  function setDue(k) {
+    const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
+    if (k === '__t') S.form.next_due = addDaysISO(todayISO(), 1);
+    else if (k === '__3') S.form.next_due = addDaysISO(todayISO(), 3);
+    else if (k === '__trip' && tripEnd) S.form.next_due = addDaysISO(tripEnd, 3);
+    S.form.due_pick = k;          // so the chip you tapped actually lights up
+    render();
+  }
+
+  async function saveVisit() {
+    const f = S.form;
+    if (!f.outcome) return toast('Pick how it went first', 'err');
+    const b = $('save-b'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
+    const payload = {
+      id: f.id, place_id: f.place_id, stop_id: f.stop_id || '', trip_id: f.trip_id || '',
+      visited_at: f.visited_at, channel: f.channel, outcome: f.outcome, interest: f.interest || '',
+      met_name: f.met_name.trim(), met_role: f.met_role, met_mobile: f.met_mobile.trim(),
+      met_email: f.met_email.trim(), save_contact: f.met_name.trim() ? 'true' : 'false',
+      asked_about: f.asked, asked_notes: f.asked_notes.trim(),
+      objections: f.objections, objection_notes: f.objection_notes.trim(),
+      order_type: f.order_type, order_value: f.order_value === '' ? '' : String(f.order_value),
+      feedback: f.feedback.trim(),
+      next_step: f.next_step === 'Nothing for now' ? '' : f.next_step,
+      next_step_due: (f.next_step && f.next_step !== 'Nothing for now') ? f.next_due : ''
+    };
+    if (payload.next_step && payload.next_step_due) {
+      payload.followup = { due_date: payload.next_step_due, what: payload.next_step };
+    }
+    // Phone first, always. Then try the network. Nothing can be lost by a dead signal.
+    await Q.put({ id: f.id, created: Date.now(), payload,
+      label: (S.place && S.place.name ? S.place.name : 'visit') + ' · ' + fmtWhen(f.visited_at) });
+    await refreshQueue();
+    S.stack = []; S.tab = 'today';
+    [...document.querySelectorAll('#tabs button')].forEach((x) => x.classList.toggle('on', x.dataset.t === 'today'));
+    if (S.pack && f.stop_id) {
+      const s = (S.pack.stops || []).find((x) => x.id === f.stop_id);
+      if (s) { s.status = payload.outcome === 'met' || payload.outcome === 'order' ? 'met' : s.status;
+               try { localStorage.setItem(PACK, JSON.stringify(S.pack)); } catch (e) {} }
+    }
+    render();
+    toast(navigator.onLine ? 'Saved ✓' : 'Saved on this phone ✓', 'ok');
+    flush();
+  }
+
+  /* ---------------- CLIENTS ---------------- */
+  function clientsHtml() {
+    if (!navigator.onLine) return '<div class="empty">Client history needs signal.</div>';
+    return '<div class="field"><input id="cs" type="text" placeholder="Search the shops you have visited" ' +
+      'value="' + esc(S.cterm || '') + '" oninput="onCSearch(this.value)" autocomplete="off"></div>' +
+      '<div id="c-res">' + engagedList() + '</div>';
+  }
+  // Filters in place. Re-rendering the tab on each keystroke blanks the box and drops the keyboard.
+  function engagedList() {
+    const rows = S.engaged;
+    if (!rows.length) return '<div class="empty">No visits logged yet. Once you log one, the shop appears here with its full history.</div>';
+    const term = (S.cterm || '').trim().toLowerCase();
+    const list = term ? rows.filter((r) => ((r.name || '') + ' ' + (r.city || '')).toLowerCase().indexOf(term) >= 0) : rows;
+    if (!list.length) return '<div class="empty">No visited shop matches that.</div>';
+    return '<div class="sec-t">' + list.length + (list.length === 1 ? ' shop' : ' shops') + ' visited</div>' +
+      list.map((r) =>
+      '<div class="q"><div class="body"><div class="nm">' + esc(r.name) +
+      (r.interest ? ' <span class="pill ' + esc(r.interest) + '">' + esc(r.interest) + '</span>' : '') + '</div>' +
+      '<div class="mt">' + esc(r.city || '') + ' · ' + r.visits + (r.visits === 1 ? ' visit' : ' visits') +
+      ' · last ' + esc(fmtWhen(r.last_visit)) +
+      (r.open_followups ? ' · ' + r.open_followups + ' open' : '') + '</div></div>' +
+      '<button class="go" onclick="openClient(\'' + r.id + '\')">Open</button></div>').join('');
+  }
+  function onCSearch(v) { S.cterm = v; const b = $('c-res'); if (b) b.innerHTML = engagedList(); }
+  async function loadEngaged() {
+    if (!navigator.onLine) return;
+    try {
+      const { data } = await sb.from('lf_engaged').select('*').order('last_visit', { ascending: false }).limit(500);
+      S.engaged = data || [];
+    } catch (e) { S.engaged = []; }
+  }
+  async function openClient(id) {
+    S.client = { loading: true, id }; push('client');
+    try {
+      const [pl, vs, cs, fs] = await Promise.all([
+        sb.from('lf_places').select('*').eq('id', id).single(),
+        sb.from('lf_visits').select('*').eq('place_id', id).order('visited_at', { ascending: false }),
+        sb.from('lf_contacts').select('*').eq('place_id', id).order('created_at'),
+        sb.from('lf_followups').select('*').eq('place_id', id).order('due_date')
+      ]);
+      S.client = { id, place: pl.data, visits: vs.data || [], contacts: cs.data || [], followups: fs.data || [] };
+    } catch (e) { S.client = { id, error: String(e.message || e) }; }
+    render();
+  }
+  function clientHtml() {
+    const c = S.client || {};
+    if (c.loading) return '<div class="empty">Loading…</div>';
+    if (c.error) return '<div class="empty">Could not load this client.<br>' + esc(c.error) + '</div>';
+    const p = c.place || {};
+    let h = '<div class="card"><h3>' + esc(p.name) + (p.priority >= 5 ? ' ⭐' : '') + '</h3>' +
+      '<div class="sub">' + esc([p.address, p.city, p.region, p.postcode].filter(Boolean).join(', ')) + '</div>' +
+      '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
+      (p.phone ? '<a class="go" href="tel:' + esc(digits(p.phone)) + '">📞 Call</a>' : '') +
+      (p.website ? '<a class="go" target="_blank" rel="noopener" href="' + esc(p.website) + '">🌐 Site</a>' : '') +
+      '<button class="go" onclick="openForm(' + JSON.stringify(JSON.stringify({ place: p, stop_id: '', trip_id: '' })).replace(/"/g, '&quot;') + ')">＋ Log a visit</button>' +
+      '</div></div>';
+
+    if ((c.contacts || []).length) {
+      h += '<div class="sec-t">People</div>' + c.contacts.map((k) =>
+        '<div class="q"><div class="body"><div class="nm">' + esc(k.name) +
+        (k.role ? ' <span class="sub">· ' + esc(k.role) + '</span>' : '') + '</div>' +
+        '<div class="mt">' + esc([k.mobile, k.email].filter(Boolean).join(' · ') || '—') + '</div></div>' +
+        (k.mobile ? '<a class="go" href="tel:' + esc(digits(k.mobile)) + '">Call</a>' : '') + '</div>').join('');
+    }
+    const openF = (c.followups || []).filter((f) => f.status === 'open');
+    if (openF.length) {
+      h += '<div class="sec-t">Open follow-ups</div>' + openF.map((f) =>
+        '<div class="q"><div class="body"><div class="nm">' + esc(f.what) + '</div>' +
+        '<div class="mt"><span class="pill ' + bucketOf(f.due_date) + '">due ' + esc(fmtDate(f.due_date)) + '</span></div></div>' +
+        '<button class="go" onclick="doneFollowup(\'' + f.id + '\')">Done</button></div>').join('');
+    }
+
+    h += '<div class="sec-t">Every visit (' + (c.visits || []).length + ')</div>';
+    if (!(c.visits || []).length) h += '<div class="empty">No visits recorded yet.</div>';
+    else h += '<div class="card"><div class="hist">' + c.visits.map((v) => {
+      const asked = Array.isArray(v.asked_about) ? v.asked_about : [];
+      const objs = Array.isArray(v.objections) ? v.objections : [];
+      const oc = (OUTCOMES.find((o) => o[0] === v.outcome) || [null, v.outcome || '—'])[1];
+      return '<div class="v"><div class="when">' + esc(fmtWhen(v.visited_at)) + ' · ' + esc(oc) +
+        (v.interest ? ' · <span class="pill ' + esc(v.interest) + '">' + esc(v.interest) + '</span>' : '') + '</div>' +
+        (v.met_name ? '<div class="mt" style="font-size:12.5px;color:var(--mu)">Met ' + esc(v.met_name) +
+          (v.met_role ? ', ' + esc(v.met_role) : '') + '</div>' : '') +
+        (v.feedback ? '<div class="fb">' + esc(v.feedback) + '</div>' : '') +
+        (asked.length ? '<div class="tags">Asked about: ' + esc(asked.join(', ')) + '</div>' : '') +
+        (v.asked_notes ? '<div class="tags">' + esc(v.asked_notes) + '</div>' : '') +
+        (objs.length ? '<div class="tags">Held back by: ' + esc(objs.join(', ')) + '</div>' : '') +
+        (v.objection_notes ? '<div class="tags">' + esc(v.objection_notes) + '</div>' : '') +
+        (v.order_type && v.order_type !== 'none'
+          ? '<div class="tags"><b>Order:</b> ' + esc((ORDER_TYPES.find((o) => o[0] === v.order_type) || [null, v.order_type])[1]) +
+            (v.order_value ? ' · $' + esc(v.order_value) : '') + '</div>' : '') +
+        (v.next_step ? '<div class="tags">Next: ' + esc(v.next_step) +
+          (v.next_step_due ? ' by ' + esc(fmtDate(v.next_step_due)) : '') + '</div>' : '') +
+        '</div>';
+    }).join('') + '</div></div>';
+    return h;
+  }
+
+  /* ---------------- auth + boot ---------------- */
+  async function signOut() { await sb.auth.signOut(); location.reload(); }
+  async function doSignIn() {
+    const em = $('g-em').value.trim(), pw = $('g-pw').value;
+    if (!em || !pw) { $('g-err').textContent = 'Enter your email and password.'; return; }
+    $('g-err').textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
+    if (error) { $('g-err').textContent = error.message; return; }
+    boot();
+  }
+  async function boot() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) { $('gate').style.display = ''; $('app').style.display = 'none'; return; }
+    $('gate').style.display = 'none'; $('app').style.display = '';
+    loadPackLocal();
+    try { S.work = JSON.parse(localStorage.getItem('bj_us_work') || '[]'); } catch (e) { S.work = []; }
+    await refreshQueue();
+    render();
+    await Promise.all([refreshPack(), loadWork(), loadEngaged()]);
+    render();
+    flush();
+    const url = new URL(location.href);
+    const pid = url.searchParams.get('place');
+    if (pid && navigator.onLine) {
+      const { data } = await sb.from('lf_places').select('*').eq('id', pid).single();
+      if (data) openForm({ place: data, stop_id: url.searchParams.get('stop') || '', trip_id: url.searchParams.get('trip') || '' });
+    }
+  }
+
+  window.addEventListener('online', () => { renderSync(); flush(); refreshPack(); });
+  window.addEventListener('offline', renderSync);
+  setInterval(() => { if (S.queue.length && navigator.onLine) flush(); }, 25000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) flush(); });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+  }
+
+  Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
+    setOutcomeF, setInterest, setRole, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj,
+    onPick, onCSearch, openClient, doneFollowup, signOut });
+  $('g-go').onclick = doSignIn;
+  $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
+  boot();
+})();
+</script>
+</body>
+</html>

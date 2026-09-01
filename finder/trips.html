@@ -1028,9 +1028,14 @@
     if (error) { toast(error.message, 'err'); return; }
     init();
   }
+  /* Supabase caps ANY single response at 1,000 rows regardless of the limit you
+     ask for. lf_areas holds 1,145 rows, so this used to read 1,000 of them and
+     Texas — which has one area — fell off the end. The state dropdown therefore
+     still hid a state, which is the exact bug the dynamic list was meant to fix.
+     lf_health is one row per state, so it is both complete and cheap. */
   async function loadStates() {
     try {
-      const { data } = await sb.from('lf_areas').select('region').limit(2000);
+      const { data } = await sb.from('lf_health').select('region');
       const found = [...new Set((data || []).map(r => r.region).filter(Boolean))].sort();
       if (found.length) STATES = found;
     } catch (e) { /* keep fallback */ }

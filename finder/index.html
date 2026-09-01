@@ -311,9 +311,22 @@
      never an address. */
   async function loadAreas() {
     try {
-      const { data } = await sb.from('lf_areas').select('*').order('total', { ascending: false }).limit(3000);
-      S.areas = data || [];
-      const found = [...new Set(S.areas.map(a => a.region).filter(Boolean))].sort();
+      // Supabase caps ANY single response at 1,000 rows however large a limit you
+      // pass, so raising .limit() from 600 to 3000 changed nothing beyond 1,000 —
+      // 145 of the 1,145 towns were still missing. Page through with .range().
+      let all = [], from = 0;
+      for (let page = 0; page < 12; page++) {
+        const { data, error } = await sb.from('lf_areas').select('*')
+          .order('total', { ascending: false }).range(from, from + 999);
+        if (error || !data || !data.length) break;
+        all = all.concat(data);
+        if (data.length < 1000) break;
+        from += 1000;
+      }
+      S.areas = all;
+      // one row per state, so no cap can hide a state from the dropdown
+      const { data: h } = await sb.from('lf_health').select('region');
+      const found = [...new Set((h || []).map(r => r.region).filter(Boolean))].sort();
       if (found.length) STATES = found;
     } catch (e) { S.areas = []; }
   }

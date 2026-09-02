@@ -373,7 +373,8 @@
   const ORDER_TYPES = [['none', 'No order yet'], ['memo', 'On memo'], ['trial', 'Trial order'],
     ['outright', 'Outright order'], ['custom', 'Custom order']];
   const NEXT = ['Send price list', 'Send samples', 'Send on memo', 'Call back',
-    'Visit again', 'Send IGI certificates', 'Nothing for now'];
+    'Visit again', 'Visit next trip', 'Send IGI certificates', 'Nothing for now'];
+  const NO_DATE = 'Visit next trip';   // no date: surfaces whenever a day is planned in that city
 
   /* ---------------- navigation ---------------- */
   function tab(t) { S.tab = t; S.stack = []; S.client = null;
@@ -430,7 +431,8 @@
     }
 
     const groups = [['overdue', 'Overdue'], ['today', 'Due today'], ['next7', 'Next 7 days']];
-    const open = S.work.filter((w) => w.due_date);
+    const cityOnes = S.work.filter((w) => w.kind === 'next_city_visit' || !w.due_date);
+    const open = S.work.filter((w) => w.due_date && w.kind !== 'next_city_visit');
     h += '<div class="sec-t">Follow-ups to work on' + (open.length ? ' (' + open.length + ')' : '') + '</div>';
     let any = false;
     for (const [k, label] of groups) {
@@ -444,13 +446,26 @@
     if (later.length) { any = true;
       h += '<div style="margin:10px 2px 6px"><span class="pill later">Later · ' + later.length + '</span></div>' +
            later.slice(0, 20).map(workRow).join(''); }
-    if (!any) h += '<div class="empty">Nothing outstanding. Follow-ups you set while logging visits appear here.</div>';
+    if (!any) h += '<div class="empty">Nothing dated. Follow-ups you set while logging visits appear here.</div>';
+
+    if (cityOnes.length) {
+      const byCity = {};
+      cityOnes.forEach(function (w) { const c = w.city || 'Unknown'; (byCity[c] = byCity[c] || []).push(w); });
+      h += '<div class="sec-t">Call in when you are next in these cities (' + cityOnes.length + ')</div>';
+      h += Object.keys(byCity).sort().map(function (c) {
+        return '<div style="margin:10px 2px 6px"><span class="pill next7">' + esc(c) + ' · ' +
+          byCity[c].length + (byCity[c].length === 1 ? ' shop' : ' shops') + '</span></div>' +
+          byCity[c].map(workRow).join('');
+      }).join('');
+    }
     return h;
   }
   function workRow(w) {
     return '<div class="q"><div class="body"><div class="nm">' + esc(w.name || 'Shop') +
       (w.interest ? ' <span class="pill ' + esc(w.interest) + '">' + esc(w.interest) + '</span>' : '') + '</div>' +
-      '<div class="mt">' + esc(w.what) + ' · due ' + esc(fmtDate(w.due_date)) +
+      '<div class="mt">' + esc(w.what) +
+      (w.kind === 'next_city_visit' ? ' · no date, next time you are there'
+                                    : ' · due ' + esc(fmtDate(w.due_date))) +
       (w.city ? ' · ' + esc(w.city) : '') + '</div></div>' +
       (w.phone ? '<a class="go" href="tel:' + esc(digits(w.phone)) + '">Call</a>' : '') +
       '<button class="go" onclick="doneFollowup(\'' + w.id + '\')">Done</button></div>';
@@ -571,6 +586,10 @@
         '" onclick="setInterest(\'' + v + '\')">' + esc(l) + '</button>').join('') + '</div>' +
 
       '<div class="sec-t">Who did you meet?</div>' +
+      '<button type="button" class="btn ghost" style="margin-bottom:12px" onclick="scanCard()">' +
+        (f.card ? '📇 Scan another card' : '📇 Scan their card') + '</button>' +
+      '<input type="file" id="card-file" accept="image/*" style="display:none" onchange="cardChosen(this)">' +
+      (f.card ? cardPanel(f.card) : '') +
       '<div class="field"><label>Name</label><input type="text" value="' + esc(f.met_name) +
         '" oninput="fraw(\'met_name\',this.value)" placeholder="e.g. Daniel Alvarez"></div>' +
       chipRow(ROLES, f.met_role, 'setRole') +
@@ -604,7 +623,11 @@
 
       '<div class="sec-t">What happens next?</div>' +
       chipRow(NEXT, f.next_step, 'setNext') +
-      (f.next_step && f.next_step !== 'Nothing for now'
+      (f.next_step === NO_DATE
+        ? '<div class="card" style="margin-top:11px"><div class="sub">No date needed. ' +
+          esc(p.name || 'This shop') + ' will come up again whenever you plan a day in ' +
+          esc(p.city || 'this city') + '.</div></div>' : '') +
+      (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE
         ? '<div style="margin-top:11px">' + chipRow(dueChips, f.due_pick || '', 'setDue') +
           '<div class="field" style="margin-top:9px"><label>Due on</label><input type="date" value="' +
           esc(f.next_due) + '" oninput="dueTyped(this.value)"></div></div>' : '') +
@@ -644,6 +667,152 @@
     render();
   }
 
+  /* ---------- business-card scanning ---------- */
+  // Their card is the truth. Everything else in this database was scraped off the web.
+  function scanCard() {
+    if (!navigator.onLine) {
+      return toast('Scanning needs signal. Type what you can — you can scan the card later.', 'err');
+    }
+    const el = $('card-file'); if (el) { el.value = ''; el.click(); }
+  }
+
+  async function fileToB64(file, maxPx) {
+    const draw = (w, h, src) => {
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(src, 0, 0, w, h);
+      return cv.toDataURL('image/jpeg', 0.82).split(',')[1];
+    };
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
+      return draw(Math.round(bmp.width * k), Math.round(bmp.height * k), bmp);
+    } catch (e) {
+      // older Safari
+      return await new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => {
+          const k = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+          res(draw(Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k), img));
+        };
+        img.onerror = () => rej(new Error('Could not read that photo'));
+        img.src = URL.createObjectURL(file);
+      });
+    }
+  }
+
+  async function cardChosen(input) {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    toast('Reading the card…');
+    try {
+      const b64 = await fileToB64(file, 1600);
+      const r = await sb.auth.getSession();
+      const tok = r && r.data && r.data.session ? r.data.session.access_token : null;
+      if (!tok) return toast('Sign in again to scan a card', 'err');
+      const res = await fetch(BJ_CONFIG.SUPABASE_URL + '/functions/v1/scan-card-us', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: BJ_CONFIG.SUPABASE_KEY,
+                   Authorization: 'Bearer ' + tok },
+        body: JSON.stringify({ image_base64: b64, mime_type: 'image/jpeg' })
+      });
+      const j = await res.json();
+      if (j.error === 'quota') return toast('Free scanning quota is used up for now — type the details.', 'err');
+      if (j.error === 'not_configured') return toast('No scanning key set up yet.', 'err');
+      if (!j.ok) return toast(j.error || 'Could not read that card', 'err');
+      applyCard(j.fields);
+    } catch (e) {
+      toast('Could not read that card: ' + String(e.message || e), 'err');
+    }
+  }
+
+  const prettyPhone = (d) => {
+    const n = String(d || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    return n.length === 10 ? n.slice(0, 3) + '-' + n.slice(3, 6) + '-' + n.slice(6) : String(d || '');
+  };
+
+  function applyCard(c) {
+    const f = S.form;
+    f.card = c; f.card_used = true;
+    if (c.contact_person) f.met_name = c.contact_person;
+    if (c.designation) {
+      const hit = ROLES.find((r) => r.toLowerCase() === String(c.designation).toLowerCase().trim());
+      f.met_role = hit || f.met_role;          // a title we do not have a chip for stays on the card panel
+    }
+    if (c.mobile) f.met_mobile = prettyPhone(c.mobile);
+    else if (c.phone_other) f.met_mobile = prettyPhone(String(c.phone_other).split(',')[0].replace(/^[^:]*:/, ''));
+    if (c.email) f.met_email = String(c.email).toLowerCase();
+    render();
+    const got = ['contact_person', 'designation', 'mobile', 'email', 'website', 'address', 'booth']
+      .filter((k) => c[k]).length;
+    toast(got ? 'Read ' + got + ' details off the card ✓' : 'Card read, but nothing usable on it', got ? 'ok' : 'err');
+  }
+
+  // What on the card disagrees with what we scraped for the SHOP itself.
+  function cardDiffs() {
+    const c = S.form.card, p = S.place || {};
+    if (!c) return [];
+    const out = [];
+    const shopPhone = String(p.phone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    let cardLine = '';
+    if (c.phone_other) cardLine = String(c.phone_other).split(',')[0].replace(/^[^:]*:/, '');
+    else if (c.mobile) cardLine = c.mobile;
+    const cardPhone = String(cardLine).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    if (cardPhone.length === 10 && cardPhone !== shopPhone) {
+      out.push({ k: 'phone', label: 'Phone', was: p.phone || '(none on file)', now: prettyPhone(cardPhone) });
+    }
+    const host = (u) => String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+    if (c.website && host(c.website) !== host(p.website)) {
+      out.push({ k: 'website', label: 'Website', was: p.website || '(none on file)',
+                 now: /^https?:/i.test(c.website) ? c.website : 'https://' + c.website });
+    }
+    if (c.address && String(c.address).trim().toLowerCase() !== String(p.address || '').trim().toLowerCase()) {
+      out.push({ k: 'address', label: 'Address', was: p.address || '(none on file)', now: c.address });
+    }
+    return out;
+  }
+
+  function cardPanel(c) {
+    const rows = [['contact_person', 'Name'], ['designation', 'Title'], ['business_name', 'Business'],
+      ['mobile', 'Cell'], ['phone_other', 'Other numbers'], ['email', 'Email'],
+      ['website', 'Website'], ['social', 'Social'], ['booth', 'Booth / suite'], ['address', 'Address']]
+      .filter(([k]) => c[k]);
+    const d = cardDiffs();
+    return '<div class="card" style="border-left:3px solid var(--mar)">' +
+      '<h3 style="font-size:14px">📇 What the card says</h3>' +
+      rows.map(([k, l]) => '<div class="sub" style="margin-top:3px"><b>' + esc(l) + ':</b> ' +
+        esc(k === 'mobile' ? prettyPhone(c[k]) : c[k]) + '</div>').join('') +
+      (d.length
+        ? '<div style="margin-top:11px;padding-top:10px;border-top:1px solid #eee">' +
+          '<div class="sub" style="margin-bottom:7px"><b>This disagrees with what we found online:</b></div>' +
+          d.map((x) => '<div class="sub" style="margin-bottom:4px">' + esc(x.label) + ': <s>' +
+            esc(x.was) + '</s> → <b>' + esc(x.now) + '</b></div>').join('') +
+          '<button type="button" class="btn ghost" style="margin-top:9px" onclick="applyShopFix()">' +
+          'Use the card instead — fix ' + d.length + (d.length === 1 ? ' detail' : ' details') +
+          ' on this shop</button></div>'
+        : '<div class="sub" style="margin-top:9px">Matches what we already had on the shop.</div>') +
+      '</div>';
+  }
+
+  async function applyShopFix() {
+    const d = cardDiffs();
+    if (!d.length) return;
+    if (!navigator.onLine) return toast('Needs signal to correct the shop record', 'err');
+    const patch = {};
+    d.forEach((x) => { patch[x.k] = x.now; });
+    const before = {};
+    d.forEach((x) => { before[x.k] = (S.place || {})[x.k] || null; });
+    const { error } = await sb.from('lf_places').update(patch).eq('id', S.form.place_id);
+    if (error) return toast(error.message, 'err');
+    Object.assign(S.place, patch);
+    render();
+    toastAction('Shop record corrected from the card ✓', 'Undo', async () => {
+      const { error: e2 } = await sb.from('lf_places').update(before).eq('id', S.form.place_id);
+      if (e2) return toast(e2.message, 'err');
+      Object.assign(S.place, before); render(); toast('Put the old details back', 'ok');
+    });
+  }
+
   async function saveVisit() {
     const f = S.form;
     if (!f.outcome) return toast('Pick how it went first', 'err');
@@ -664,10 +833,15 @@
       order_type: f.order_type, order_value: f.order_value === '' ? '' : String(f.order_value),
       feedback: f.feedback.trim(),
       next_step: f.next_step === 'Nothing for now' ? '' : f.next_step,
-      next_step_due: (f.next_step && f.next_step !== 'Nothing for now') ? f.next_due : ''
+      next_step_due: (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE)
+        ? f.next_due : '',
+      contact_source: f.card_used ? 'card_scan' : 'typed'
     };
-    if (payload.next_step && payload.next_step_due) {
-      payload.followup = { due_date: payload.next_step_due, what: payload.next_step };
+    if (payload.next_step === NO_DATE) {
+      payload.followup = { kind: 'next_city_visit',
+        what: 'Call in again when next in ' + ((S.place && S.place.city) || 'this city') };
+    } else if (payload.next_step && payload.next_step_due) {
+      payload.followup = { kind: 'date', due_date: payload.next_step_due, what: payload.next_step };
     }
     // Phone first, always. Then try the network. Nothing can be lost by a dead signal.
     await Q.put({ id: f.id, created: Date.now(), payload,
@@ -841,7 +1015,7 @@
   }
 
   Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
-    setOutcomeF, setInterest, setRole, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj,
+    setOutcomeF, setInterest, setRole, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
     onPick, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });

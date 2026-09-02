@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#7b1e3c">
   <title>Bhagwati Jewels — US Visits</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="visits-manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="US Visits">
@@ -83,6 +83,9 @@
              background: #222; color: #fff; padding: 11px 16px; border-radius: 22px; font-size: 13.5px;
              max-width: 90%; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
     .toast.ok { background: #16663c; } .toast.err { background: #a12b24; }
+    .toast-act { background: none; border: 0; color: #9fe0b8; font-weight: 700; font-size: 13.5px;
+                 margin-left: 10px; padding: 2px 4px; text-decoration: underline; cursor: pointer;
+                 font-family: inherit; }
     .banner { background: #fcefd2; color: #7a4a02; padding: 9px 13px; font-size: 12.5px; text-align: center; }
     .banner.off { background: #4a4a4a; color: #fff; }
     #gate { max-width: 340px; margin: 12vh auto; padding: 0 20px; }
@@ -121,7 +124,7 @@
   <div class="wrap" id="view"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <script src="../config.js"></script>
 <script>
 (function () {
@@ -179,6 +182,18 @@
     const d = new Date(ts);
     return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' +
            d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  function toastAction(msg, label, fn) {
+    const old = document.querySelector('.toast'); if (old) old.remove();
+    const el = document.createElement('div');
+    el.className = 'toast ok';
+    el.textContent = msg;
+    const b = document.createElement('button');
+    b.className = 'toast-act'; b.textContent = label;
+    b.onclick = () => { el.remove(); clearTimeout(toastT); fn(); };
+    el.appendChild(b);
+    document.body.appendChild(el);
+    clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 8000);
   }
   let toastT;
   function toast(msg, kind) {
@@ -251,7 +266,16 @@
     const b = $('sync-b'); if (!b) return;
     const stuck = S.queue.filter((q) => q.stuck).length;
     const wait = S.queue.length - stuck;
-    $('off-b').style.display = navigator.onLine ? 'none' : 'block';
+    const off = $('off-b');
+    if (off) {
+      if (S.degraded) {
+        off.style.display = 'block';
+        off.textContent = 'Cannot reach the server — keep logging. Everything is saved on this phone and syncs when you are back.';
+      } else if (!navigator.onLine) {
+        off.style.display = 'block';
+        off.textContent = 'No signal — visits are being saved on this phone';
+      } else off.style.display = 'none';
+    }
     b.className = 'v-sync';
     if (stuck) { b.classList.add('warn'); b.textContent = '⚠️ ' + stuck + ' could not be saved — tap'; }
     else if (wait) { b.classList.add('wait');
@@ -431,12 +455,28 @@
       (w.phone ? '<a class="go" href="tel:' + esc(digits(w.phone)) + '">Call</a>' : '') +
       '<button class="go" onclick="doneFollowup(\'' + w.id + '\')">Done</button></div>';
   }
+  function afterFollowupChange() {
+    if (S.stack[S.stack.length - 1] === 'client' && S.client && S.client.id) openClient(S.client.id);
+    else render();
+  }
   async function doneFollowup(id) {
     if (!navigator.onLine) return toast('Needs signal to tick a follow-up off', 'err');
+    const row = S.work.find((w) => w.id === id);          // keep it so Undo can restore instantly
     const { error } = await sb.from('lf_followups')
       .update({ status: 'done', done_at: new Date().toISOString() }).eq('id', id);
     if (error) return toast(error.message, 'err');
-    S.work = S.work.filter((w) => w.id !== id); render(); toast('Done ✓', 'ok');
+    S.work = S.work.filter((w) => w.id !== id);
+    afterFollowupChange();
+    toastAction('Done ✓', 'Undo', () => reopenFollowup(id, row));
+  }
+  async function reopenFollowup(id, row) {
+    const { error } = await sb.from('lf_followups')
+      .update({ status: 'open', done_at: null }).eq('id', id);
+    if (error) return toast(error.message, 'err');
+    if (row && !S.work.some((w) => w.id === id)) S.work.push(row);
+    afterFollowupChange();
+    toast('Put back on your list', 'ok');
+    loadWork().then(afterFollowupChange);
   }
 
   /* ---------------- PICK A SHOP ---------------- */
@@ -743,18 +783,32 @@
   }
 
   /* ---------------- auth + boot ---------------- */
-  async function signOut() { await sb.auth.signOut(); location.reload(); }
+  async function signOut() {
+    try { localStorage.removeItem(SEEN_KEY); } catch (e) {}
+    try { await sb.auth.signOut(); } catch (e) {}
+    location.reload();
+  }
   async function doSignIn() {
     const em = $('g-em').value.trim(), pw = $('g-pw').value;
     if (!em || !pw) { $('g-err').textContent = 'Enter your email and password.'; return; }
     $('g-err').textContent = 'Signing in…';
     const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
     if (error) { $('g-err').textContent = error.message; return; }
+    try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
     boot();
   }
+  const SEEN_KEY = 'bj_us_signed_in';
+  const everSignedIn = () => { try { return localStorage.getItem(SEEN_KEY) === '1'; } catch (e) { return false; } };
   async function boot() {
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) { $('gate').style.display = ''; $('app').style.display = 'none'; return; }
+    let session = null;
+    try { const r = await sb.auth.getSession(); session = r && r.data ? r.data.session : null; }
+    catch (e) { session = null; }
+    if (session) { try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {} }
+    // With no signal a token refresh cannot succeed and getSession can come back empty.
+    // Showing a login screen to someone standing in a shop would lose the visit outright,
+    // so if this phone has signed in before, run the app anyway and let everything queue.
+    S.degraded = !session && everSignedIn();
+    if (!session && !S.degraded) { $('gate').style.display = ''; $('app').style.display = 'none'; return; }
     $('gate').style.display = 'none'; $('app').style.display = '';
     loadPackLocal();
     try { S.work = JSON.parse(localStorage.getItem('bj_us_work') || '[]'); } catch (e) { S.work = []; }
@@ -771,7 +825,13 @@
     }
   }
 
-  window.addEventListener('online', () => { renderSync(); flush(); refreshPack(); });
+  window.addEventListener('online', async () => {
+    if (S.degraded) {
+      try { const r = await sb.auth.getSession(); if (r && r.data && r.data.session) S.degraded = false; }
+      catch (e) { /* still not reachable; stay in the safe mode */ }
+    }
+    renderSync(); flush(); refreshPack();
+  });
   window.addEventListener('offline', renderSync);
   setInterval(() => { if (S.queue.length && navigator.onLine) flush(); }, 25000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) flush(); });
@@ -782,7 +842,7 @@
 
   Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
     setOutcomeF, setInterest, setRole, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj,
-    onPick, onCSearch, openClient, doneFollowup, signOut });
+    onPick, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
   boot();

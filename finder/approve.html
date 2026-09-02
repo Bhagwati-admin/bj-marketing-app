@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#7b1e3c">
+  <title>Bhagwati Jewels — Approve stores</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    :root { --mar: var(--maroon, #7b1e3c); --cd: var(--card, #fff); --mu: var(--muted, #6b6b6b);
+            --rd: var(--radius, 12px); --sh: var(--shadow, 0 1px 3px rgba(0,0,0,.12)); }
+    * { -webkit-tap-highlight-color: transparent; }
+    html { scroll-padding-top: 104px; }
+    body { margin: 0; background: #f6f3f4; color: #1c1c1c;
+           font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .hd { position: sticky; top: 0; z-index: 30; background: var(--mar); color: #fff;
+          padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; }
+    .hd h1 { margin: 0; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .hd .sp { flex: 1; }
+    .back { background: none; border: 0; color: #fff; font-size: 20px; padding: 2px 8px 2px 0; cursor: pointer; }
+    .out { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 8px; }
+    .prog { margin-top: 7px; font-size: 12.5px; color: rgba(255,255,255,.9); }
+    .wrap { padding: 13px; max-width: 760px; margin: 0 auto; padding-bottom: 130px; }
+    .sec-t { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--mu);
+             margin: 16px 2px 8px; font-weight: 600; }
+    .city { display: flex; align-items: center; gap: 10px; background: var(--cd); border-radius: var(--rd);
+            box-shadow: var(--sh); padding: 13px 14px; margin-bottom: 9px; cursor: pointer; }
+    .city .nm { font-size: 15.5px; font-weight: 600; flex: 1; }
+    .city .ct { font-size: 12.5px; color: var(--mu); }
+    .row { background: var(--cd); border-radius: var(--rd); box-shadow: var(--sh);
+           padding: 12px 13px; margin-bottom: 9px; display: flex; gap: 11px; align-items: flex-start; }
+    .row.picked { outline: 2px solid var(--mar); }
+    .row.gone { opacity: .45; }
+    .tick { width: 26px; height: 26px; flex: 0 0 26px; border-radius: 7px; border: 1.5px solid #cfc6c9;
+            background: #fff; cursor: pointer; font-size: 16px; line-height: 24px; text-align: center;
+            color: #fff; padding: 0; font-family: inherit; margin-top: 1px; }
+    .tick.on { background: var(--mar); border-color: var(--mar); }
+    .body { flex: 1; min-width: 0; }
+    .body .nm { font-size: 15px; font-weight: 600; }
+    .body .ad { font-size: 12.5px; color: var(--mu); margin-top: 1px; }
+    .why { font-size: 13px; margin-top: 6px; }
+    .why b { color: var(--mar); }
+    .pill { display: inline-block; font-size: 10.5px; padding: 2px 7px; border-radius: 20px;
+            font-weight: 700; margin-left: 6px; vertical-align: 1px; }
+    .p5 { background: #e3f2e7; color: #16663c; }
+    .p4 { background: #fcefd2; color: #7a4a02; }
+    .p3 { background: #eee9f2; color: #5b4a6b; }
+    .warn { background: #fbe1df; color: #a12b24; }
+    .mini { display: flex; gap: 12px; margin-top: 8px; font-size: 12.5px; flex-wrap: wrap; }
+    .mini a, .mini button { color: var(--mar); background: none; border: 0; padding: 0;
+                            font-size: 12.5px; text-decoration: none; cursor: pointer; font-family: inherit; }
+    .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--cd);
+           border-top: 1px solid #e6e0e2; padding: 11px 13px calc(env(safe-area-inset-bottom) + 11px);
+           box-shadow: 0 -2px 10px rgba(0,0,0,.07); }
+    .bar .inner { max-width: 760px; margin: 0 auto; display: flex; gap: 9px; align-items: center; }
+    .bar .cnt { font-size: 13px; color: var(--mu); flex: 1; }
+    .btn { padding: 13px 18px; font-size: 15.5px; font-weight: 600; font-family: inherit; border: 0;
+           border-radius: 11px; background: var(--mar); color: #fff; cursor: pointer; }
+    .btn.ghost { background: #fff; color: var(--mar); border: 1.5px solid var(--mar); }
+    .btn:disabled { opacity: .45; }
+    .quick { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 11px; }
+    .chip { border: 1px solid #d9d2d4; background: #fff; color: #333; border-radius: 20px;
+            padding: 7px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    .chip.on { background: var(--mar); border-color: var(--mar); color: #fff; font-weight: 600; }
+    .empty { text-align: center; color: var(--mu); font-size: 13.5px; padding: 26px 14px; }
+    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 92px; z-index: 90;
+             background: #222; color: #fff; padding: 11px 16px; border-radius: 22px; font-size: 13.5px;
+             max-width: 90%; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+    .toast.ok { background: #16663c; } .toast.err { background: #a12b24; }
+    .toast-act { background: none; border: 0; color: #9fe0b8; font-weight: 700; font-size: 13.5px;
+                 margin-left: 10px; text-decoration: underline; cursor: pointer; font-family: inherit; }
+    #gate { max-width: 340px; margin: 12vh auto; padding: 0 20px; }
+    #gate h2 { text-align: center; color: var(--mar); font-size: 19px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12.5px; color: var(--mu); margin-bottom: 5px; font-weight: 600; }
+    .field input { width: 100%; box-sizing: border-box; padding: 11px 12px; font-size: 16px;
+                   font-family: inherit; border: 1px solid #d9d2d4; border-radius: 9px; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 80; display: flex;
+                align-items: flex-end; }
+    .sheet { background: var(--cd); width: 100%; border-radius: 16px 16px 0 0; padding: 16px 16px
+             calc(env(safe-area-inset-bottom) + 16px); max-height: 82vh; overflow: auto; }
+    .sheet h4 { margin: 0 0 4px; font-size: 16px; }
+    .sheet p { margin: 0 0 12px; font-size: 13px; color: var(--mu); }
+    .sheet-act { display: block; width: 100%; text-align: left; background: #f6f3f4; border: 0;
+                 border-radius: 10px; padding: 13px 14px; margin-bottom: 8px; font-size: 14.5px;
+                 font-family: inherit; cursor: pointer; }
+    .sheet-act.cancel { background: #fff; border: 1px solid #d9d2d4; text-align: center; }
+  </style>
+</head>
+<body>
+
+<div id="gate" style="display:none">
+  <h2>Approve stores</h2>
+  <div class="field"><label>Email</label><input id="g-em" type="email" autocomplete="username"></div>
+  <div class="field"><label>Password</label><input id="g-pw" type="password" autocomplete="current-password"></div>
+  <button class="btn" style="width:100%" id="g-go">Sign in</button>
+  <p id="g-err" style="color:#a12b24;font-size:13px;text-align:center"></p>
+</div>
+
+<div id="app" style="display:none">
+  <div class="hd">
+    <h1><button class="back" id="hd-back" style="display:none" onclick="back()">‹</button>
+        <span id="hd-title">Approve stores</span><span class="sp"></span>
+        <button class="out" onclick="signOut()">Sign out</button></h1>
+    <div class="prog" id="prog"></div>
+  </div>
+  <div class="wrap" id="view"></div>
+  <div class="bar" id="bar" style="display:none"><div class="inner">
+    <span class="cnt" id="cnt"></span>
+    <button class="btn ghost" onclick="clearPicks()">Clear</button>
+    <button class="btn" id="go" onclick="approvePicked()">Approve</button>
+  </div></div>
+  <div id="modal"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+<script src="../config.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (!window.supabase || !window.supabase.createClient || typeof BJ_CONFIG === 'undefined') {
+    document.addEventListener('DOMContentLoaded', function () {
+      document.body.innerHTML = '<div style="max-width:340px;margin:16vh auto;padding:0 24px;' +
+        'text-align:center;font:15px/1.5 -apple-system,sans-serif"><h2 style="color:#7b1e3c">' +
+        'Could not finish loading</h2><p>Reload with a bar of signal.</p>' +
+        '<button onclick="location.reload()" style="padding:13px 22px;font-size:16px;border:0;' +
+        'border-radius:11px;background:#7b1e3c;color:#fff">Reload</button></div>';
+    });
+    return;
+  }
+  const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
+
+  const S = { region: 'FL', cities: [], city: null, rows: [], picks: new Set(),
+              done: 0, totals: null, busy: false, filter: 'p4' };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const digits = (s) => String(s || '').replace(/[^\d+]/g, '');
+  let toastT;
+  function toast(msg, kind, actLabel, actFn) {
+    const old = document.querySelector('.toast'); if (old) old.remove();
+    const el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' ' + kind : ''); el.textContent = msg;
+    if (actLabel) { const b = document.createElement('button'); b.className = 'toast-act';
+      b.textContent = actLabel; b.onclick = () => { el.remove(); clearTimeout(toastT); actFn(); };
+      el.appendChild(b); }
+    document.body.appendChild(el);
+    clearTimeout(toastT); toastT = setTimeout(() => el.remove(), actLabel ? 9000 : 3600);
+  }
+
+  // Google Maps form proved correct in Ravi's own browser: full address opens the business card.
+  function mapsLink(p) {
+    const base = 'https://www.google.com/maps/search/?api=1&query=';
+    if (p.address && p.city && p.region) {
+      const st = p.region + (p.postcode ? ' ' + p.postcode : '');
+      return base + encodeURIComponent([p.name, p.address, p.city, st].filter(Boolean).join(', '));
+    }
+    if (p.latitude != null) return base + p.latitude + ',' + p.longitude;
+    return base + encodeURIComponent([p.name, p.city, p.region, 'USA'].filter(Boolean).join(', '));
+  }
+  const firstSentence = (t) => {
+    const s = String(t || '').trim(); if (!s) return '';
+    const m = s.match(/^[\s\S]{0,190}?[.!?](\s|$)/);
+    return (m ? m[0] : s.slice(0, 190)).trim();
+  };
+  const TIGHT = /(appointment only|closed sunday and monday|closed saturday and sunday|fri\W*sun only|mon\W*fri)/i;
+
+  /* ---------- loading ---------- */
+  async function loadCities() {
+    const { data, error } = await sb.from('lf_approve_queue').select('*').order('ready', { ascending: false });
+    if (error) { toast(error.message, 'err'); return; }
+    S.cities = (data || []).filter((c) => c.region === S.region);
+    S.allRegions = [...new Set((data || []).map((r) => r.region))].sort();
+    const { count } = await sb.from('lf_places').select('id', { count: 'exact', head: true })
+      .eq('hidden', false).eq('region', S.region).eq('approved', true);
+    S.totals = { approved: count || 0,
+                 ready: S.cities.reduce((a, c) => a + c.ready, 0) };
+  }
+  async function loadCity(city) {
+    S.city = city; S.rows = []; S.picks = new Set();
+    const { data, error } = await sb.from('lf_places')
+      .select('id,name,city,region,address,postcode,phone,website,priority,summary,pitch_angle,good_at,opening_hours,latitude,longitude')
+      .eq('hidden', false).eq('verdict', 'fit').is('skip_reason', null).is('approved', null)
+      .eq('region', S.region).eq('city', city)
+      .not('approach_msg', 'is', null).not('latitude', 'is', null)
+      .order('priority', { ascending: false, nullsFirst: false }).order('name');
+    if (error) { toast(error.message, 'err'); return; }
+    S.rows = data || [];
+    applyFilter();
+  }
+  function applyFilter() {
+    S.picks = new Set();
+    for (const r of S.rows) {
+      const p = r.priority || 0;
+      if (S.filter === 'p5' && p === 5) S.picks.add(r.id);
+      else if (S.filter === 'p4' && p >= 4) S.picks.add(r.id);
+      else if (S.filter === 'all') S.picks.add(r.id);
+    }
+    render();
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    const v = $('view');
+    $('hd-back').style.display = S.city ? '' : 'none';
+    $('hd-title').textContent = S.city ? S.city : 'Approve stores';
+    if (S.totals) {
+      $('prog').textContent = S.region + ': ' + S.totals.approved + ' approved · ' +
+        S.totals.ready + ' waiting on your yes or no';
+    }
+    if (!S.city) { $('bar').style.display = 'none'; v.innerHTML = citiesHtml(); return; }
+    v.innerHTML = rowsHtml();
+    const n = S.picks.size;
+    $('bar').style.display = '';
+    $('cnt').textContent = n ? n + (n === 1 ? ' store ticked' : ' stores ticked') : 'Nothing ticked';
+    $('go').disabled = !n || S.busy;
+    $('go').textContent = S.busy ? 'Saving…' : (n ? 'Approve ' + n : 'Approve');
+  }
+  function citiesHtml() {
+    let h = '';
+    if ((S.allRegions || []).length > 1) {
+      h += '<div class="quick">' + S.allRegions.map((r) =>
+        '<button class="chip' + (r === S.region ? ' on' : '') + '" onclick="setRegion(\'' + r + '\')">' +
+        esc(r) + '</button>').join('') + '</div>';
+    }
+    if (!S.cities.length) return h + '<div class="empty">Nothing waiting in ' + esc(S.region) +
+      '. Every store with an opener and a map pin has had your decision.</div>';
+    h += '<div class="sec-t">Work a city at a time — these are the ones the trip planner can route</div>';
+    h += S.cities.map((c) =>
+      '<div class="city" onclick="openCity(' + JSON.stringify(JSON.stringify(c.city)).replace(/"/g, '&quot;') + ')">' +
+      '<div class="nm">' + esc(c.city) + '</div><div class="ct">' + c.ready + ' ready' +
+      (c.p5 ? ' · <b style="color:#16663c">' + c.p5 + ' sell lab-grown</b>' : '') +
+      (c.p4 ? ' · ' + c.p4 + ' strong' : '') + '</div><div style="color:#bbb">›</div></div>').join('');
+    return h;
+  }
+  function rowsHtml() {
+    if (!S.rows.length) return '<div class="empty">Nothing left here.</div>';
+    const counts = { p5: 0, p4: 0, all: S.rows.length };
+    for (const r of S.rows) { const p = r.priority || 0; if (p === 5) counts.p5++; if (p >= 4) counts.p4++; }
+    let h = '<div class="quick">' +
+      '<button class="chip' + (S.filter === 'p5' ? ' on' : '') + '" onclick="setFilter(\'p5\')">Tick the ' + counts.p5 + ' lab-grown</button>' +
+      '<button class="chip' + (S.filter === 'p4' ? ' on' : '') + '" onclick="setFilter(\'p4\')">Tick the ' + counts.p4 + ' strongest</button>' +
+      '<button class="chip' + (S.filter === 'all' ? ' on' : '') + '" onclick="setFilter(\'all\')">Tick all ' + counts.all + '</button>' +
+      '<button class="chip' + (S.filter === 'none' ? ' on' : '') + '" onclick="setFilter(\'none\')">Untick all</button></div>';
+    h += S.rows.map((r) => {
+      const p = r.priority || 0;
+      const on = S.picks.has(r.id);
+      const why = firstSentence(r.pitch_angle) || firstSentence(r.summary) || firstSentence(r.good_at);
+      const tight = r.opening_hours && TIGHT.test(r.opening_hours);
+      return '<div class="row' + (on ? ' picked' : '') + (r._done ? ' gone' : '') + '" id="r-' + r.id + '">' +
+        '<button class="tick' + (on ? ' on' : '') + '" onclick="toggle(\'' + r.id + '\')" ' +
+          'aria-label="tick">' + (on ? '✓' : '') + '</button>' +
+        '<div class="body"><div class="nm">' + esc(r.name) +
+          (p === 5 ? '<span class="pill p5">sells lab-grown</span>' :
+           p === 4 ? '<span class="pill p4">strong</span>' : '<span class="pill p3">worth a look</span>') +
+          (tight ? '<span class="pill warn">tight hours</span>' : '') + '</div>' +
+        '<div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ') || 'no address') + '</div>' +
+        (why ? '<div class="why">' + esc(why) + '</div>' : '') +
+        (tight ? '<div class="why"><b>Hours:</b> ' + esc(String(r.opening_hours).slice(0, 110)) + '</div>' : '') +
+        '<div class="mini">' +
+          '<a target="_blank" rel="noopener" href="' + esc(mapsLink(r)) + '">🗺️ Map</a>' +
+          (r.website ? '<a target="_blank" rel="noopener" href="' + esc(r.website) + '">🌐 Site</a>' : '') +
+          (r.phone ? '<a href="tel:' + esc(digits(r.phone)) + '">📞 ' + esc(r.phone) + '</a>' : '') +
+          '<button onclick="askReject(\'' + r.id + '\')">Not a fit</button>' +
+        '</div></div></div>';
+    }).join('');
+    return h;
+  }
+
+  /* ---------- actions ---------- */
+  function setRegion(r) { S.region = r; S.city = null; loadCities().then(render); }
+  function openCity(json) { loadCity(typeof json === 'string' ? JSON.parse(json) : json); }
+  function back() { S.city = null; S.rows = []; S.picks = new Set(); loadCities().then(render); }
+  function setFilter(f) { S.filter = f; applyFilter(); }
+  function toggle(id) { if (S.picks.has(id)) S.picks.delete(id); else S.picks.add(id); render(); }
+  function clearPicks() { S.picks = new Set(); render(); }
+
+  // PostgREST puts the id list in the URL, so send it in chunks rather than one huge request.
+  async function chunked(ids, patch) {
+    let n = 0;
+    for (let i = 0; i < ids.length; i += 40) {
+      const slice = ids.slice(i, i + 40);
+      const { error, count } = await sb.from('lf_places')
+        .update(patch, { count: 'exact' })
+        .in('id', slice)
+        .is('approved', null);          // never overwrite a decision already made
+      if (error) throw error;
+      n += (count == null ? slice.length : count);
+    }
+    return n;
+  }
+
+  async function approvePicked() {
+    const ids = [...S.picks]; if (!ids.length || S.busy) return;
+    S.busy = true; render();
+    try {
+      const n = await chunked(ids, { approved: true, verdict: 'fit', verdict_source: 'manual' });
+      S.rows = S.rows.filter((r) => !S.picks.has(r.id));
+      S.picks = new Set();
+      if (S.totals) { S.totals.approved += n; S.totals.ready -= n; }
+      const c = S.cities.find((x) => x.city === S.city); if (c) c.ready = Math.max(0, c.ready - n);
+      S.busy = false;
+      applyFilter();
+      toast(n + (n === 1 ? ' store approved' : ' stores approved') + ' — routable in the trip planner now',
+            'ok', 'Undo', () => undoApprove(ids));
+      if (!S.rows.length) back();
+    } catch (e) {
+      S.busy = false; render(); toast(String(e.message || e), 'err');
+    }
+  }
+  async function undoApprove(ids) {
+    try {
+      let n = 0;
+      for (let i = 0; i < ids.length; i += 40) {
+        const { error } = await sb.from('lf_places')
+          .update({ approved: null }).in('id', ids.slice(i, i + 40)).eq('approved', true);
+        if (error) throw error;
+        n += ids.slice(i, i + 40).length;
+      }
+      toast('Put ' + n + ' back for review', 'ok');
+      await loadCities();
+      if (S.city) await loadCity(S.city); else render();
+    } catch (e) { toast(String(e.message || e), 'err'); }
+  }
+
+  const REASONS = ['Silver / fashion only', 'Gold with CZ / moissanite only', 'Natural diamonds only',
+    'Pawn or loan business', 'Repair / watch service only', 'Chain, too many locations',
+    'Indian vendor / supplier', 'Not actually a jeweller', 'Closed down'];
+  function askReject(id) {
+    const r = S.rows.find((x) => x.id === id); if (!r) return;
+    $('modal').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)closeSheet()">' +
+      '<div class="sheet"><h4>' + esc(r.name) + '</h4>' +
+      '<p>Why is this one not a fit? The reason shows on the card, so it is never a silent reject.</p>' +
+      REASONS.map((x, i) => '<button class="sheet-act" onclick="doReject(\'' + id + '\',' + i + ')">' +
+        esc(x) + '</button>').join('') +
+      '<button class="sheet-act cancel" onclick="closeSheet()">Cancel</button></div></div>';
+  }
+  function closeSheet() { $('modal').innerHTML = ''; }
+  async function doReject(id, ri) {
+    const reason = REASONS[ri] || 'Other';
+    closeSheet();
+    const { error } = await sb.from('lf_places').update({
+      approved: false, verdict: 'not_fit', verdict_source: 'manual',
+      verdict_reasons: [{ signal: reason, src: 'Ravi' }]
+    }).eq('id', id).is('approved', null);
+    if (error) return toast(error.message, 'err');
+    S.rows = S.rows.filter((r) => r.id !== id);
+    S.picks.delete(id);
+    if (S.totals) S.totals.ready = Math.max(0, S.totals.ready - 1);
+    const c = S.cities.find((x) => x.city === S.city); if (c) c.ready = Math.max(0, c.ready - 1);
+    render();
+    toast('Rejected — ' + reason, 'ok');
+  }
+
+  /* ---------- auth ---------- */
+  async function signOut() { try { await sb.auth.signOut(); } catch (e) {} location.reload(); }
+  async function doSignIn() {
+    const em = $('g-em').value.trim(), pw = $('g-pw').value;
+    if (!em || !pw) { $('g-err').textContent = 'Enter your email and password.'; return; }
+    $('g-err').textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
+    if (error) { $('g-err').textContent = error.message; return; }
+    boot();
+  }
+  async function boot() {
+    let session = null;
+    try { const r = await sb.auth.getSession(); session = r && r.data ? r.data.session : null; } catch (e) {}
+    if (!session) { $('gate').style.display = ''; $('app').style.display = 'none'; return; }
+    $('gate').style.display = 'none'; $('app').style.display = '';
+    await loadCities();
+    render();
+  }
+
+  Object.assign(window, { setRegion, openCity, back, setFilter, toggle, clearPicks,
+    approvePicked, undoApprove, askReject, closeSheet, doReject, signOut });
+  $('g-go').onclick = doSignIn;
+  $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
+  boot();
+})();
+</script>
+</body>
+</html>

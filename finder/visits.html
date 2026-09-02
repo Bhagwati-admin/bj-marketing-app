@@ -513,6 +513,7 @@
 
   function formHtml() {
     const f = S.form, p = S.place || {};
+    const nudging = !!f.nudged && visitNeedsMore(f) && visitIsBlank(f);
     const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
     const dueChips = [['__t', 'Tomorrow'], ['__3', 'In 3 days']];
     if (tripEnd) dueChips.push(['__trip', 'After the trip']);
@@ -568,11 +569,23 @@
           '<div class="field" style="margin-top:9px"><label>Due on</label><input type="date" value="' +
           esc(f.next_due) + '" oninput="dueTyped(this.value)"></div></div>' : '') +
 
-      '<button class="btn" style="margin:18px 0 6px" id="save-b" onclick="saveVisit()">Save this visit</button>' +
+      (nudging
+        ? '<div class="banner" style="border-radius:10px;margin:18px 0 8px;text-align:left">' +
+          'Nothing recorded about what they said, and no next step — so this shop will not ' +
+          'appear in your after-trip list. Add either, or save it as it is.</div>' : '') +
+      '<button class="btn" style="margin:' + (nudging ? '0' : '18px') + ' 0 6px" id="save-b" ' +
+        'onclick="saveVisit()">' + (nudging ? 'Save anyway' : 'Save this visit') + '</button>' +
       '<button class="btn ghost" style="margin-bottom:26px" onclick="goBack()">Cancel</button>' +
       '<div class="sub" style="text-align:center;padding-bottom:20px">' +
         (navigator.onLine ? 'Saves straight to your database.' :
           'No signal — this will be saved on your phone and synced automatically.') + '</div>';
+  }
+  // A met-the-buyer or order visit with no feedback AND no next step is almost always an
+  // accident of being busy in a shop. Nudge once, never block.
+  function visitNeedsMore(f) { return f.outcome === 'met' || f.outcome === 'order'; }
+  function visitIsBlank(f) {
+    return !String(f.feedback || '').trim() &&
+           (!f.next_step || f.next_step === 'Nothing for now');
   }
   function setOutcomeF(v) { fset('outcome', S.form.outcome === v ? '' : v); }
   function setInterest(v) { fset('interest', S.form.interest === v ? '' : v); }
@@ -594,6 +607,12 @@
   async function saveVisit() {
     const f = S.form;
     if (!f.outcome) return toast('Pick how it went first', 'err');
+    if (visitNeedsMore(f) && visitIsBlank(f) && !f.nudged) {
+      f.nudged = true; render();
+      const w = document.querySelector('.banner[style*="border-radius"]');
+      if (w) w.scrollIntoView({ block: 'center' });
+      return;
+    }
     const b = $('save-b'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
     const payload = {
       id: f.id, place_id: f.place_id, stop_id: f.stop_id || '', trip_id: f.trip_id || '',

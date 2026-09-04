@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Card reader test</title>
+<style>
+:root{
+  --ground:#F1F3F7;--surface:#fff;--ink:#15171C;--ink-2:#565D6E;--ink-3:#858C9C;
+  --rule:#D9DDE6;--rule-soft:#E9ECF2;--accent:#A4194E;--accent-soft:#F7E6ED;
+  --ok:#1D6B46;--ok-soft:#E4F0EA;--warn:#8A5A05;--warn-soft:#F8EEDA;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#13151A;--surface:#1B1E25;--ink:#E9EBF0;--ink-2:#A2A9B8;--ink-3:#767E8E;
+  --rule:#2E333D;--rule-soft:#262B33;--accent:#EB6B96;--accent-soft:#33121F;
+  --ok:#63C295;--ok-soft:#12291F;--warn:#D9A94A;--warn-soft:#2C2413;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:620px;margin:0 auto;padding:22px 16px 60px}
+h1{font-size:21px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--ink-2);font-size:14px;margin:0 0 20px}
+.pick{display:block;width:100%;background:var(--accent);color:#fff;border:none;border-radius:10px;
+  padding:16px;font-size:17px;font-weight:600;text-align:center;cursor:pointer}
+.pick:active{opacity:.85}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.hint{color:var(--ink-3);font-size:13px;text-align:center;margin:10px 0 0}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px;
+  padding:14px 16px;margin-top:18px}
+.card h2{font-size:15px;margin:0 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:2px 7px;border-radius:4px}
+.c-run{background:var(--accent-soft);color:var(--accent)}
+.c-ok{background:var(--ok-soft);color:var(--ok)}
+.c-no{background:var(--warn-soft);color:var(--warn)}
+.meta{color:var(--ink-3);font-size:12px;margin:0 0 10px}
+dl{display:grid;grid-template-columns:104px 1fr;gap:0;margin:0;font-size:14px}
+dt{color:var(--ink-2);padding:6px 8px 6px 0;border-top:1px solid var(--rule-soft);font-size:13px}
+dd{margin:0;padding:6px 0;border-top:1px solid var(--rule-soft);word-break:break-word}
+dd.none{color:var(--ink-3)}
+.thumb{width:100%;max-height:200px;object-fit:cover;object-position:center;border-radius:8px;margin-bottom:12px;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Card reader test</h1>
+  <p class="sub">Pick one or more photos of visiting cards. Each is shrunk the same way the app shrinks it, then read. Nothing is saved to your client list &mdash; this page only shows what the reader found.</p>
+  <label class="pick" for="pick">Choose card photos</label>
+  <input id="pick" type="file" accept="image/*" multiple>
+  <p class="hint">Indian and American cards both work. Front side is enough.</p>
+  <div id="out"></div>
+</div>
+<script>
+var EP = "https://njikksnabvdmzynepdgw.supabase.co/functions/v1/us-live";
+var G  = "bj-uslive-7e31c";
+var KEYS = ["country","trade_name","company_name","contact_person","designation","mobile",
+            "phone_other","email","website","social","address","area","city","state","zip"];
+var out = document.getElementById("out");
+
+function shrink(file){
+  return new Promise(function(res, rej){
+    var img = new Image(), u = URL.createObjectURL(file);
+    img.onload = function(){
+      var s = Math.min(1, 1600 / Math.max(img.width, img.height));
+      var c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(u);
+      res(c.toDataURL("image/jpeg", 0.82).split(",")[1]);
+    };
+    img.onerror = function(){ rej(new Error("could not open that photo")); };
+    img.src = u;
+  });
+}
+
+function box(file){
+  var d = document.createElement("div"); d.className = "card";
+  var img = document.createElement("img"); img.className = "thumb"; img.alt = "";
+  img.src = URL.createObjectURL(file);
+  var h = document.createElement("h2");
+  var name = document.createTextNode("Card " + (out.children.length + 1));
+  var chip = document.createElement("span"); chip.className = "chip c-run"; chip.textContent = "reading";
+  h.appendChild(name); h.appendChild(chip);
+  var meta = document.createElement("p"); meta.className = "meta"; meta.textContent = "shrinking…";
+  d.appendChild(img); d.appendChild(h); d.appendChild(meta);
+  out.appendChild(d);
+  return { el: d, chip: chip, meta: meta };
+}
+
+function show(b, fields){
+  var dl = document.createElement("dl");
+  for (var i = 0; i < KEYS.length; i++){
+    var k = KEYS[i], v = fields[k];
+    var dt = document.createElement("dt"); dt.textContent = k.replace(/_/g, " ");
+    var dd = document.createElement("dd");
+    if (v){ dd.textContent = v; } else { dd.textContent = "—"; dd.className = "none"; }
+    dl.appendChild(dt); dl.appendChild(dd);
+  }
+  b.el.appendChild(dl);
+}
+
+async function run(file, n){
+  var b = box(file);
+  var b64;
+  try { b64 = await shrink(file); }
+  catch (e){ b.chip.className = "chip c-no"; b.chip.textContent = "no"; b.meta.textContent = e.message; return; }
+  b.meta.textContent = "sent " + Math.round(b64.length / 1365) + " KB — waiting for the reader…";
+  var t0 = Date.now(), j;
+  try {
+    var r = await fetch(EP, { method: "POST", headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ g: G, tag: "t" + Date.now() + "_" + n, image_base64: b64, mime_type: "image/jpeg" }) });
+    j = await r.json();
+  } catch (e){
+    b.chip.className = "chip c-no"; b.chip.textContent = "no";
+    b.meta.textContent = "could not reach the reader — check the signal and try again";
+    return;
+  }
+  var secs = Math.round((Date.now() - t0) / 1000);
+  var scan = j && j.scan;
+  if (scan && scan.ok && scan.fields){
+    b.chip.className = "chip c-ok"; b.chip.textContent = "read";
+    b.meta.textContent = secs + "s · " + scan.model + " · " + (scan.used_today || "?") + " of " + (scan.daily_limit || "?") + " scans used today";
+    show(b, scan.fields);
+  } else {
+    b.chip.className = "chip c-no"; b.chip.textContent = "no";
+    var err = (scan && scan.error) || (j && j.error) || "no answer";
+    b.meta.textContent = err === "busy" ? secs + "s · the reader is busy right now — try again in a moment"
+      : err === "daily_limit" ? "the 100 scans for today are used up"
+      : secs + "s · " + err;
+  }
+}
+
+document.getElementById("pick").addEventListener("change", async function(e){
+  var files = [].slice.call(e.target.files);
+  for (var i = 0; i < files.length; i++){
+    await run(files[i], i);
+    if (i < files.length - 1) await new Promise(function(r){ setTimeout(r, 1500); });
+  }
+  e.target.value = "";
+});
+</script>
+</body>
+</html>

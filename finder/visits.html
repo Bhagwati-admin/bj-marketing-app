@@ -95,6 +95,14 @@
     .hist .v .when { font-size: 12px; color: var(--mu); }
     .hist .v .fb { font-size: 13.5px; margin-top: 3px; white-space: pre-wrap; }
     .tags { font-size: 12px; color: var(--mu); margin-top: 4px; }
+    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: #fff;
+      border-bottom: 1px solid #e7e0e6; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
+      color: #7a7280; background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
+    .bjnav a.on { background: #7b1e3c; color: #fff; }
+    .bjback { display: block; background: #f6e7c4; color: #7a5410; border: 0; border-bottom: 1px solid #e6d4a8;
+      width: 100%; text-align: left; padding: 10px 14px; font-size: 13.5px; font-weight: 650;
+      cursor: pointer; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -115,6 +123,11 @@
         <button class="v-out" onclick="signOut()">Sign out</button></h1>
     <button class="v-sync" id="sync-b" onclick="flush(true)">✓ All saved</button>
   </div>
+  <nav class="bjnav">
+    <a href="./">🔎 Leads</a><a href="trips.html">🗺️ Trips</a>
+    <a href="visits.html" class="on" aria-current="page">📝 Visits</a><a href="approve.html">✅ Approve</a>
+  </nav>
+  <a class="bjback" id="back-day" style="display:none" href="#">‹ Back to the trip day</a>
   <div class="banner off" id="off-b" style="display:none">No signal — visits are being saved on this phone</div>
   <div class="v-tabs" id="tabs">
     <button data-t="today" class="on" onclick="tab('today')">Today</button>
@@ -148,7 +161,8 @@
   const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
 
   const S = { tab: 'today', view: null, stack: [], queue: [], work: [], pack: null,
-              engaged: [], place: null, form: null, client: null, busy: false };
+              engaged: [], place: null, form: null, client: null, busy: false,
+              backDay: '', backTrip: '' };
 
   /* ---------------- small helpers ---------------- */
   const $ = (id) => document.getElementById(id);
@@ -855,7 +869,10 @@
                try { localStorage.setItem(PACK, JSON.stringify(S.pack)); } catch (e) {} }
     }
     render();
-    toast(navigator.onLine ? 'Saved ✓' : 'Saved on this phone ✓', 'ok');
+    const msg = navigator.onLine ? 'Saved ✓' : 'Saved on this phone ✓';
+    const href = backHref();
+    if (href) toastAction(msg, 'Back to the day', () => { location.href = href; });
+    else toast(msg, 'ok');
     flush();
   }
 
@@ -993,10 +1010,27 @@
     flush();
     const url = new URL(location.href);
     const pid = url.searchParams.get('place');
+    // Arriving from a trip stop used to be a one-way door: there was no route back to
+    // the day being worked. Remember where he came from and offer the way back.
+    S.backDay = url.searchParams.get('back') || '';
+    S.backTrip = url.searchParams.get('trip') || '';
+    showBack();
     if (pid && navigator.onLine) {
       const { data } = await sb.from('lf_places').select('*').eq('id', pid).single();
-      if (data) openForm({ place: data, stop_id: url.searchParams.get('stop') || '', trip_id: url.searchParams.get('trip') || '' });
+      if (data) openForm({ place: data, stop_id: url.searchParams.get('stop') || '', trip_id: S.backTrip });
     }
+  }
+
+  function backHref() {
+    if (S.backDay) return 'trips.html?day=' + encodeURIComponent(S.backDay);
+    if (S.backTrip) return 'trips.html?trip=' + encodeURIComponent(S.backTrip);
+    return '';
+  }
+  function showBack() {
+    const el = $('back-day'); if (!el) return;
+    const href = backHref();
+    if (!href) { el.style.display = 'none'; return; }
+    el.href = href; el.style.display = '';
   }
 
   window.addEventListener('online', async () => {

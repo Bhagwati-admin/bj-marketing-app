@@ -91,6 +91,13 @@
     .chip-p5 { background: #f6e7c4; color: #7a5410; }
     .lf-pipe .hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.45; }
     .lf-signout { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 10px; }
+    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: var(--card, #fff);
+      border-bottom: 1px solid var(--line, #e7e0e6); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
+      color: var(--muted, #7a7280); background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
+    .bjnav a.on { background: var(--maroon, #7b1e3c); color: #fff; }
+    .lf-back { background: none; border: 0; color: #fff; font-size: 20px; padding: 4px 10px 4px 0;
+      margin-left: -4px; cursor: pointer; }
     .leaflet-container { font: inherit; }
   </style>
 </head>
@@ -389,21 +396,34 @@
   }
 
   /* ---------- shell ---------- */
+  // The four Finder screens are separate pages, so every one of them carries the same
+  // row of links. Without it a screen can only be reached by typing its URL.
+  function navHtml(here) {
+    const items = [['./', '🔎 Leads', 'leads'], ['trips.html', '🗺️ Trips', 'trips'],
+                   ['visits.html', '📝 Visits', 'visits'], ['approve.html', '✅ Approve', 'approve']];
+    return '<nav class="bjnav">' + items.map(([href, label, key]) =>
+      `<a href="${href}"${key === here ? ' class="on" aria-current="page"' : ''}>${label}</a>`).join('') + '</nav>';
+  }
   function shell(inner, opts) {
     opts = opts || {};
+    // On the results screen the badge becomes a back chevron: searching used to be a
+    // one-way door, with the area picker and pipeline card unreachable without a reload.
+    const onResults = S.screen === 'results';
     return `
     <div id="appbar">
-      <div class="mini-badge">BJ</div>
+      ${onResults ? '<button class="lf-back" title="Back to home" onclick="goHome()">‹</button>'
+                  : '<div class="mini-badge">BJ</div>'}
       <div class="titles">
         <div class="app-name">Bhagwati Jewels</div>
         <div class="screen-name">Lead Finder${opts.sub ? ' · ' + esc(opts.sub) : ''}</div>
       </div>
       <div style="margin-left:auto"></div>
-      <a class="lf-signout" href="trips.html" style="text-decoration:none;font-weight:650">Trips →</a>
       <button class="lf-signout" onclick="doSignOut()">Sign out</button>
     </div>
+    ${navHtml('leads')}
     <div id="content">${inner}</div>`;
   }
+  function goHome() { S.screen = 'home'; renderHome(); }
 
   /* ---------- auth ---------- */
   function renderLogin(msg) {
@@ -874,7 +894,7 @@
     await loadHomeCounts();     // per-state counts iterate STATES
     renderHome();
   }
-  window.doLogin = doLogin; window.doSignOut = doSignOut; window.doSearch = doSearch;
+  window.doLogin = doLogin; window.doSignOut = doSignOut; window.doSearch = doSearch; window.goHome = goHome;
   window.setFilter = setFilter; window.setView = setView; window.approve = approve;
   window.openReject = openReject; window.closeReject = closeReject; window.doReject = doReject;
   window.saveOtherReason = saveOtherReason;

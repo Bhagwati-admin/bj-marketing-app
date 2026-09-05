@@ -110,6 +110,11 @@
     .sheet-act.cancel { color: var(--muted); border-top: 1px solid var(--line); margin-top: 6px; }
     .warn-box { background: #fbe1df; color: #a12b24; border-radius: 10px; padding: 11px 13px;
       font-size: 13.2px; line-height: 1.5; margin: 0 0 12px; font-weight: 600; }
+    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: var(--card, #fff);
+      border-bottom: 1px solid var(--line, #e7e0e6); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
+      color: var(--muted, #7a7280); background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
+    .bjnav a.on { background: var(--maroon, #7b1e3c); color: #fff; }
   </style>
 </head>
 <body>
@@ -254,6 +259,15 @@
   }
 
   /* ---------- shell ---------- */
+  // The four Finder screens are separate pages, so every one of them carries the same
+  // row of links. It renders on every screen, unlike the old "Find leads" link, which
+  // was hidden whenever a back button was present - i.e. on the trip, day and report screens.
+  function navHtml(here) {
+    const items = [['./', '🔎 Leads', 'leads'], ['trips.html', '🗺️ Trips', 'trips'],
+                   ['visits.html', '📝 Visits', 'visits'], ['approve.html', '✅ Approve', 'approve']];
+    return '<nav class="bjnav">' + items.map(([href, label, key]) =>
+      `<a href="${href}"${key === here ? ' class="on" aria-current="page"' : ''}>${label}</a>`).join('') + '</nav>';
+  }
   function shell(inner, opts) {
     opts = opts || {};
     return `
@@ -264,8 +278,8 @@
         <div class="screen-name">${esc(opts.title || 'Trip Planner')}</div>
       </div>
       <div style="margin-left:auto"></div>
-      ${opts.back ? '' : '<a class="tp-signout" href="./" style="text-decoration:none">Find leads →</a>'}
     </div>
+    ${navHtml('trips')}
     <div id="content">${inner}</div>`;
   }
 
@@ -426,7 +440,17 @@
   }
   async function openDay(id) {
     const { data: d } = await sb.from('lf_trip_days').select('*').eq('id', id).single();
+    if (!d) { toast('That day is no longer there', 'err'); return backToTrips(); }
     S.day = d;
+    // A day can now be opened cold from a URL (?day=…), which is how the Visit Log
+    // sends Ravi back. Several screens read S.trip — the stop picker reads
+    // S.trip.region — so load the trip context if it is not already in memory.
+    if (!S.trip || S.trip.id !== d.trip_id) {
+      const { data: t } = await sb.from('lf_trips').select('*').eq('id', d.trip_id).single();
+      S.trip = t || null;
+      const { data: ds } = await sb.from('lf_trip_days').select('*').eq('trip_id', d.trip_id).order('day_index');
+      S.days = ds || [];
+    }
     const { data: st } = await sb.from('lf_stops')
       .select('*, place:lf_places(id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment,pitch_angle)')
       .eq('day_id', id).order('seq');
@@ -464,7 +488,7 @@
           <div class="tp-mini">
             ${p.phone ? `<a href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>` : ''}
             <a target="_blank" rel="noopener" href="${esc(navToPlace(p))}">🧭 Navigate</a>
-            <a href="visits.html?place=${encodeURIComponent(p.id || '')}&stop=${encodeURIComponent(s.id)}&trip=${encodeURIComponent(S.trip ? S.trip.id : '')}">📝 Log visit</a>
+            <a href="visits.html?place=${encodeURIComponent(p.id || '')}&stop=${encodeURIComponent(s.id)}&trip=${encodeURIComponent((S.trip && S.trip.id) || (S.day && S.day.trip_id) || '')}&back=${encodeURIComponent(S.day ? S.day.id : '')}">📝 Log visit</a>
             <button onclick="stopMenu('${s.id}')">⋯ Move / Remove</button>
           </div>
           ${outBtns}
@@ -965,7 +989,7 @@
       <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
         <div class="modal" style="max-height:88vh;overflow-y:auto">
           <h3>Add stops</h3>
-          <p>Your approved jewellers${S.trip.region ? ' in ' + esc(S.trip.region) : ''}, nearest to the day's start first. ↻ means the buyer was out last time.</p>
+          <p>Your approved jewellers${(S.trip && S.trip.region) ? ' in ' + esc(S.trip.region) : ''}, nearest to the day's start first. ↻ means the buyer was out last time.</p>
           <div class="field"><input id="pk-q" type="text" placeholder="Search by name or city" value="${esc(S.pick.q)}" oninput="pickSearch(this.value)"></div>
           ${items || '<div class="empty">Nothing matches.</div>'}
           <div class="modal-actions" style="position:sticky;bottom:0;background:var(--card);padding-top:10px">
@@ -1107,7 +1131,14 @@
       return;
     }
     await loadStates();
-    await loadTrips(); renderTrips();
+    await loadTrips();
+    const q = new URL(location.href).searchParams;
+    const day = q.get('day'), trip = q.get('trip');
+    // Clear the query so a later refresh or back-swipe does not reopen the same day.
+    if (day || trip) { try { history.replaceState(null, '', location.pathname); } catch (e) {} }
+    if (day) { try { await openDay(day); return; } catch (e) { /* fall through to the list */ } }
+    if (trip) { try { await openTrip(trip); return; } catch (e) { /* fall through */ } }
+    renderTrips();
   }
   window.doLogin = doLogin; window.newTrip = newTrip; window.saveTrip = saveTrip; window.closeModal = closeModal;
   window.openTrip = openTrip; window.backToTrips = backToTrips; window.addDay = addDay; window.openDay = openDay;

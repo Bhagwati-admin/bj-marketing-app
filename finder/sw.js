@@ -1,9 +1,9 @@
 /* Bhagwati Jewels — US Lead Finder offline shell.
    Scope is /finder/ ONLY. It must never cache the India app at the site root. */
-const CACHE = 'bj-finder-v2';
+const CACHE = 'bj-finder-v3';
 const SHELL = [
   './',                       // the directory URL a Home Screen icon may open
-  './visits.html', './trips.html', './index.html',
+  './visits.html', './trips.html', './index.html', './approve.html',
   './manifest.json', './visits-manifest.json', './icon.svg',
   '../styles.css', '../config.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js'

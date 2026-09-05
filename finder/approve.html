@@ -87,6 +87,11 @@
                  border-radius: 10px; padding: 13px 14px; margin-bottom: 8px; font-size: 14.5px;
                  font-family: inherit; cursor: pointer; }
     .sheet-act.cancel { background: #fff; border: 1px solid #d9d2d4; text-align: center; }
+    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: #fff;
+      border-bottom: 1px solid #e7e0e6; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
+      color: #7a7280; background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
+    .bjnav a.on { background: #7b1e3c; color: #fff; }
   </style>
 </head>
 <body>
@@ -106,6 +111,11 @@
         <button class="out" onclick="signOut()">Sign out</button></h1>
     <div class="prog" id="prog"></div>
   </div>
+  <nav class="bjnav">
+    <a href="./">🔎 Leads</a><a href="trips.html">🗺️ Trips</a>
+    <a href="visits.html">📝 Visits</a>
+    <a href="approve.html" class="on" aria-current="page">✅ Approve</a>
+  </nav>
   <div class="wrap" id="view"></div>
   <div class="bar" id="bar" style="display:none"><div class="inner">
     <span class="cnt" id="cnt"></span>

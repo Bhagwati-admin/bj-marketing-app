@@ -115,6 +115,29 @@
     .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
       color: var(--muted, #7a7280); background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
     .bjnav a.on { background: var(--maroon, #7b1e3c); color: #fff; }
+    .pk-tabs { display: flex; gap: 7px; margin: 0 0 10px; }
+    .pk-tabs button { flex: 1; border: 1.5px solid var(--line); background: #fff; border-radius: 10px;
+      padding: 8px; font-size: 13.5px; font-weight: 650; color: #5d5765; cursor: pointer; font-family: inherit; }
+    .pk-tabs button.on { background: var(--maroon); border-color: var(--maroon); color: #fff; }
+    .pk-line { font-size: 12.5px; color: var(--muted); margin: 0 2px 10px; line-height: 1.45; }
+    .area { background: var(--card); border: 2px solid transparent; border-radius: 13px; box-shadow: var(--shadow);
+      padding: 12px 13px; margin-bottom: 9px; }
+    .area.pickedsome { border-color: var(--maroon); }
+    .area-top { display: flex; gap: 11px; align-items: flex-start; cursor: pointer; }
+    .area-txt { flex: 1; min-width: 0; }
+    .area-nm { font-weight: 700; font-size: 15px; }
+    .area-ct { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    .area-det { font-size: 13px; font-weight: 650; margin-top: 5px; }
+    .area-det.near { color: #16663c; }
+    .area-det.mid { color: #8a5a10; }
+    .area-det.far { color: #a12b24; }
+    .area-est { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+    .area-mini { flex: 0 0 auto; border-radius: 8px; background: #f4f1f4; border: 1px solid var(--line); }
+    .area-acts { display: flex; gap: 7px; margin-top: 10px; }
+    .area-acts button { flex: 1; border: 1.5px solid var(--line); background: #fff; border-radius: 9px;
+      padding: 8px 6px; font-size: 12.5px; font-weight: 650; color: var(--maroon); cursor: pointer; font-family: inherit; }
+    .area-acts button.solid { background: var(--maroon); border-color: var(--maroon); color: #fff; }
+    .area-mem { margin-top: 9px; border-top: 1px solid var(--line); padding-top: 8px; }
   </style>
 </head>
 <body>
@@ -213,6 +236,130 @@
     if (end && prev) { const d = km(prev, end); if (d != null) { dist += d; drive += driveMin(d); } }
     const dwell = stops.length * (day.dwell_min || 45);
     return { drive, dwell, total: drive + dwell, dist, unknown, count: stops.length };
+  }
+
+  /* ---------- areas: cluster the approved pool, and cost each one honestly ----------
+     Sorting the picker by distance-from-the-day's-start collapses direction: two shops
+     ten miles out in opposite directions look identical, so picking becomes guesswork.
+     What actually matters is DETOUR — how much further you drive by working this area,
+     given you have to get from the day's start to its end anyway. An area sitting on
+     that line is nearly free; one behind you costs double its distance. */
+  const CLUSTER_KM = 12;          // ~7.5 mi: an area you can work in short hops
+  const COMPASS = ['N','NE','E','SE','S','SW','W','NW'];
+
+  function ptOf(p) { return (p && p.latitude != null) ? { lat: p.latitude, lng: p.longitude } : null; }
+  function dayStartPt() { return (S.day && S.day.start_lat != null) ? { lat: S.day.start_lat, lng: S.day.start_lng } : null; }
+  function dayEndPt() { return (S.day && S.day.end_lat != null) ? { lat: S.day.end_lat, lng: S.day.end_lng } : null; }
+  function bearingOf(a, b) {
+    if (!a || !b) return '';
+    const rad = x => x * Math.PI / 180;
+    const y = Math.sin(rad(b.lng - a.lng)) * Math.cos(rad(b.lat));
+    const x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) -
+              Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
+    const deg = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    return COMPASS[Math.round(deg / 45) % 8];
+  }
+  const miles = k => k * 0.621371;
+  function fmtMi(k) { const m = miles(k); return (m < 10 ? m.toFixed(1) : Math.round(m)) + ' mi'; }
+
+  // Greedy: seed on the densest shop, absorb everything within CLUSTER_KM, repeat.
+  // The pool is a few hundred rows at most, so the O(n^2) pass is immaterial.
+  function makeClusters(rows) {
+    const pinned = rows.filter(r => r.p.latitude != null);
+    const nopin = rows.filter(r => r.p.latitude == null);
+    const N = pinned.length, pts = pinned.map(r => ptOf(r.p));
+    const deg = new Array(N).fill(0);
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+      if (km(pts[i], pts[j]) <= CLUSTER_KM) { deg[i]++; deg[j]++; }
+    }
+    const taken = new Array(N).fill(false), out = [];
+    const order = pinned.map((_, i) => i).sort((a, b) => deg[b] - deg[a]);
+    for (const i of order) {
+      if (taken[i]) continue;
+      const mem = [];
+      for (let j = 0; j < N; j++) if (!taken[j] && km(pts[i], pts[j]) <= CLUSTER_KM) { taken[j] = true; mem.push(pinned[j]); }
+      out.push(buildCluster(mem));
+    }
+    if (nopin.length) out.push({ id: 'nopin', name: 'No map pin yet', members: nopin,
+      centre: null, p5: nopin.filter(r => (r.p.priority || 0) >= 5).length, detour: null, dir: '' });
+    return out;
+  }
+  function buildCluster(mem) {
+    const lat = mem.reduce((a, r) => a + r.p.latitude, 0) / mem.length;
+    const lng = mem.reduce((a, r) => a + r.p.longitude, 0) / mem.length;
+    const centre = { lat, lng };
+    const byCity = {};
+    mem.forEach(r => { const c = r.p.city || r.p.region || '?'; byCity[c] = (byCity[c] || 0) + 1; });
+    const cities = Object.keys(byCity).sort((a, b) => byCity[b] - byCity[a]);
+    const name = cities.length > 1 ? cities[0] + ' + ' + (cities.length - 1) + ' more' : cities[0];
+    return { id: 'c' + mem[0].p.id, name, cities, members: mem, centre,
+             p5: mem.filter(r => (r.p.priority || 0) >= 5).length,
+             detour: detourKm(centre), dir: bearingOf(dayStartPt(), centre),
+             fromStart: km(dayStartPt(), centre) };
+  }
+  // Extra ROAD km added to the day by working this area.
+  function detourKm(centre) {
+    const A = dayStartPt(), B = dayEndPt();
+    if (!A || !centre) return null;
+    if (!B) return 2 * km(A, centre) * ROAD_FACTOR;          // out and back
+    return Math.max(0, (km(A, centre) + km(centre, B) - km(A, B))) * ROAD_FACTOR;
+  }
+  // Time ON THE GROUND once you are there: dwell plus the hops between the shops.
+  // Deliberately excludes the drive to the area — that is what the detour figure says —
+  // so the estimates for two areas can be added together without double counting.
+  function clusterWorkMin(c, take) {
+    const n = Math.min(take || c.members.length, MAX_STOPS);
+    let left = c.members.slice(0, n).map(r => ptOf(r.p)).filter(Boolean);
+    let prev = c.centre, dist = 0;
+    while (left.length) {
+      let bi = 0, bd = Infinity;
+      left.forEach((q, i) => { const d = km(prev, q); if (d != null && d < bd) { bd = d; bi = i; } });
+      dist += (bd === Infinity ? 3 : bd); prev = left[bi]; left.splice(bi, 1);
+    }
+    return n * ((S.day && S.day.dwell_min) || 45) + (driveMin(dist) || 0);
+  }
+  function detourClass(k) { return k == null ? '' : (miles(k) <= 8 ? 'near' : miles(k) <= 35 ? 'mid' : 'far'); }
+  function detourText(c) {
+    if (c.detour == null) return dayStartPt() ? 'no map pin' : 'set the day’s start to see how far off your line this is';
+    const add = miles(c.detour);
+    const where = c.dir ? fmtMi(c.fromStart) + ' ' + c.dir : '';
+    const cost = add < 2 ? 'on your line' : 'adds ' + fmtMi(c.detour) + ' to your day';
+    return (where ? where + ' · ' : '') + cost;
+  }
+
+  /* A tiny inline map per card: the day's start, its end, the line between them, and
+     this area's shops. No tiles, no network, so it renders instantly and works offline.
+     Its whole job is to answer "which way is this?" at the moment of deciding. */
+  function miniMap(c) {
+    const A = dayStartPt(), B = dayEndPt();
+    const pts = [];
+    if (A) pts.push({ lat: A.lat, lng: A.lng, k: 'a' });
+    if (B) pts.push({ lat: B.lat, lng: B.lng, k: 'b' });
+    c.members.slice(0, 40).forEach(r => { const q = ptOf(r.p); if (q) pts.push({ lat: q.lat, lng: q.lng, k: 'm' }); });
+    if (pts.length < 2) return '';
+    const W = 116, H = 72, P = 9;
+    const latm = pts.reduce((a, q) => a + q.lat, 0) / pts.length;
+    const kx = Math.cos(latm * Math.PI / 180);
+    const X = q => q.lng * kx, Y = q => q.lat;
+    const xs = pts.map(X), ys = pts.map(Y);
+    const x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    const y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    const sx = (x1 - x0) || 1e-9, sy = (y1 - y0) || 1e-9;
+    const sc = Math.min((W - 2 * P) / sx, (H - 2 * P) / sy);
+    const ox = P + ((W - 2 * P) - sx * sc) / 2, oy = P + ((H - 2 * P) - sy * sc) / 2;
+    const cx = q => (ox + (X(q) - x0) * sc).toFixed(1);
+    const cy = q => (H - oy - (Y(q) - y0) * sc).toFixed(1);
+    let g = '';
+    if (A && B) g += `<line x1="${cx(pts[0])}" y1="${cy(pts[0])}" x2="${cx(pts[1])}" y2="${cy(pts[1])}"
+      stroke="#b9aeb8" stroke-width="1.4" stroke-dasharray="3 2"/>`;
+    pts.filter(q => q.k === 'm').forEach(q => {
+      g += `<circle cx="${cx(q)}" cy="${cy(q)}" r="2.7" fill="#7b1e3c" opacity=".85"/>`;
+    });
+    if (A) g += `<circle cx="${cx(pts[0])}" cy="${cy(pts[0])}" r="3.6" fill="#16663c" stroke="#fff" stroke-width="1.2"/>`;
+    if (B) g += `<rect x="${cx(pts[A ? 1 : 0]) - 3.2}" y="${cy(pts[A ? 1 : 0]) - 3.2}" width="6.4" height="6.4"
+      fill="#a12b24" stroke="#fff" stroke-width="1.2"/>`;
+    return `<svg class="area-mini" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+      role="img" aria-label="${esc(c.name)} relative to the day's start and end">${g}</svg>`;
   }
 
   /* ---------- links ---------- */
@@ -967,37 +1114,106 @@
       return { p, d, used: used[p.id], retry: !!retry[p.id] };
     });
     rows.sort((a, b) => (b.retry - a.retry) || ((a.d == null) - (b.d == null)) || ((a.d || 0) - (b.d || 0)) || ((b.p.priority || 0) - (a.p.priority || 0)));
-    S.pick = { rows, sel: {}, q: '' };
+    const clusters = makeClusters(rows);
+    // Areas that add least to the day come first. Ones with no pin sink to the bottom.
+    clusters.sort((a, b) => ((a.detour == null) - (b.detour == null)) ||
+                            ((a.detour || 0) - (b.detour || 0)) ||
+                            (b.members.length - a.members.length));
+    S.pick = { rows, sel: {}, q: '', clusters, open: null, mode: 'areas', waiting: null };
     renderPicker();
+    // An empty picker is a dead end unless it says what to do next. Approving happens
+    // on its own screen, so count what is sitting there ready and point at it.
+    if (!rows.length) {
+      let wq = sb.from('lf_places').select('id', { count: 'exact', head: true })
+        .eq('hidden', false).eq('verdict', 'fit').is('skip_reason', null).is('approved', null)
+        .not('approach_msg', 'is', null).not('latitude', 'is', null);
+      if (region) wq = wq.eq('region', region);
+      const { count } = await wq;
+      S.pick.waiting = count || 0;
+      renderPicker();
+    }
+  }
+  function shopRow(r) {
+    const p = r.p, on = !!S.pick.sel[p.id];
+    const dist = r.d != null ? fmtMi(r.d) + ' from start' : 'no map pin';
+    return `<div class="pick-item ${on ? 'on' : ''} ${r.used ? 'used' : ''}" onclick="togglePick('${p.id}')">
+      <div class="pk-tick">${on ? '☑' : r.used ? '•' : '☐'}</div>
+      <div class="pk-main">
+        <div class="pk-nm">${esc(p.name)}${p.priority >= 5 ? ' ⭐' : ''}${r.retry ? ' ↻' : ''}</div>
+        <div class="pk-sub">${esc(p.city || p.region || '')} · ${dist}${r.used === 'here' ? ' · already on this day' : r.used === 'other' ? ' · on another day' : ''}${r.retry ? ' · buyer was out — retry' : ''}</div>
+      </div>
+    </div>`;
+  }
+  function areaCard(c) {
+    const open = S.pick.open === c.id;
+    const free = c.members.filter(r => r.used !== 'here');
+    const nSel = c.members.filter(r => S.pick.sel[r.p.id]).length;
+    const take = Math.min(free.length, SOFT_STOPS);
+    const est = c.centre ? clusterWorkMin(c, take) : null;
+    return `<div class="area ${nSel ? 'pickedsome' : ''}">
+      <div class="area-top" onclick="toggleArea('${c.id}')">
+        <div class="area-txt">
+          <div class="area-nm">${esc(c.name)}</div>
+          <div class="area-ct">${c.members.length} shop${c.members.length === 1 ? '' : 's'}${c.p5 ? ' · ⭐ ' + c.p5 + (c.p5 === 1 ? ' sells' : ' sell') + ' lab-grown' : ''}${nSel ? ' · ' + nSel + ' ticked' : ''}</div>
+          <div class="area-det ${detourClass(c.detour)}">${detourText(c)}</div>
+          ${est != null ? `<div class="area-est">≈ ${hrs(est)} on the ground for ${take} stop${take === 1 ? '' : 's'}</div>` : ''}
+        </div>
+        ${miniMap(c)}
+      </div>
+      <div class="area-acts">
+        <button class="solid" onclick="event.stopPropagation();addArea('${c.id}')">Add ${Math.min(free.length, SOFT_STOPS)} best</button>
+        <button onclick="event.stopPropagation();toggleArea('${c.id}')">${open ? 'Hide the list' : 'Pick from these'}</button>
+      </div>
+      ${open ? `<div class="area-mem">${c.members.map(shopRow).join('')}</div>` : ''}
+    </div>`;
   }
   function renderPicker() {
-    const term = (S.pick.q || '').toLowerCase();
-    const list = S.pick.rows.filter(r => !term || (r.p.name + ' ' + (r.p.city || '')).toLowerCase().includes(term));
     const nSel = Object.keys(S.pick.sel).length;
-    const items = list.slice(0, 200).map(r => {
-      const p = r.p, on = !!S.pick.sel[p.id];
-      const dist = r.d != null ? `${(r.d * 0.621371).toFixed(r.d < 16 ? 1 : 0)} mi away` : 'no map pin';
-      return `<div class="pick-item ${on ? 'on' : ''} ${r.used ? 'used' : ''}" onclick="togglePick('${p.id}')">
-        <div class="pk-tick">${on ? '☑' : r.used ? '•' : '☐'}</div>
-        <div class="pk-main">
-          <div class="pk-nm">${esc(p.name)}${p.priority >= 5 ? ' ⭐' : ''}${r.retry ? ' ↻' : ''}</div>
-          <div class="pk-sub">${esc(p.city || p.region || '')} · ${dist}${r.used === 'here' ? ' · already on this day' : r.used === 'other' ? ' · on another day' : ''}${r.retry ? ' · buyer was out — retry' : ''}</div>
-        </div>
-      </div>`;
-    }).join('');
+    const A = dayStartPt(), B = dayEndPt();
+    const where = !A ? 'Set the day’s start and end first — without them nothing can be ranked by how far off your route it sits.'
+      : (S.day.start_label || 'start') + ' → ' + (B ? (S.day.end_label || 'end') : 'no end set yet');
+    let body;
+    if (!S.pick.rows.length) {
+      const w = S.pick.waiting;
+      body = `<div class="empty">Nothing approved${(S.trip && S.trip.region) ? ' in ' + esc(S.trip.region) : ''} yet.` +
+        (w ? `<br><br><b>${w} jeweller${w === 1 ? '' : 's'}</b> here already have a written opener and are waiting for your yes or no.
+              <br><a href="approve.html" style="color:var(--maroon);font-weight:650">Open the Approve screen →</a>` : '') + '</div>';
+    } else if (S.pick.mode === 'areas') {
+      body = S.pick.clusters.map(areaCard).join('');
+    } else {
+      const term = (S.pick.q || '').toLowerCase();
+      const list = S.pick.rows.filter(r => !term || (r.p.name + ' ' + (r.p.city || '')).toLowerCase().includes(term));
+      body = `<div class="field"><input id="pk-q" type="text" placeholder="Search by name or city" value="${esc(S.pick.q)}" oninput="pickSearch(this.value)"></div>` +
+        (list.slice(0, 200).map(shopRow).join('') || '<div class="empty">Nothing matches.</div>');
+    }
     document.getElementById('modal').innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
         <div class="modal" style="max-height:88vh;overflow-y:auto">
           <h3>Add stops</h3>
-          <p>Your approved jewellers${(S.trip && S.trip.region) ? ' in ' + esc(S.trip.region) : ''}, nearest to the day's start first. ↻ means the buyer was out last time.</p>
-          <div class="field"><input id="pk-q" type="text" placeholder="Search by name or city" value="${esc(S.pick.q)}" oninput="pickSearch(this.value)"></div>
-          ${items || '<div class="empty">Nothing matches.</div>'}
+          <div class="pk-line">${esc(where)}</div>
+          ${S.pick.rows.length ? `<div class="pk-tabs">
+            <button class="${S.pick.mode === 'areas' ? 'on' : ''}" onclick="pickMode('areas')">By area</button>
+            <button class="${S.pick.mode === 'all' ? 'on' : ''}" onclick="pickMode('all')">All shops</button>
+          </div>` : ''}
+          ${body}
           <div class="modal-actions" style="position:sticky;bottom:0;background:var(--card);padding-top:10px">
             <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
             <button class="btn btn-primary" onclick="addPicked()">Add ${nSel || ''}</button>
           </div>
         </div>
       </div>`;
+  }
+  function pickMode(m) { S.pick.mode = m; renderPicker(); }
+  function toggleArea(id) { S.pick.open = (S.pick.open === id ? null : id); renderPicker(); }
+  // "Add N best" takes the strongest of the area — lab-grown sellers first — rather
+  // than whatever happens to sit at the top of an alphabetical list.
+  function addArea(id) {
+    const c = S.pick.clusters.find(x => x.id === id); if (!c) return;
+    const free = c.members.filter(r => r.used !== 'here')
+      .sort((a, b) => ((b.p.priority || 0) - (a.p.priority || 0)) || ((a.d || 0) - (b.d || 0)));
+    free.slice(0, SOFT_STOPS).forEach(r => { S.pick.sel[r.p.id] = true; });
+    renderPicker();
+    toast(Math.min(free.length, SOFT_STOPS) + ' ticked in ' + c.name);
   }
   function pickSearch(v) { S.pick.q = v; renderPicker(); const el = document.getElementById('pk-q'); if (el) { el.focus(); el.setSelectionRange(v.length, v.length); } }
   function togglePick(id) { if (S.pick.sel[id]) delete S.pick.sel[id]; else S.pick.sel[id] = true; renderPicker(); }
@@ -1151,6 +1367,7 @@
   window.editEnd = editEnd; window.epType = epType; window.epPick = epPick;
   window.epRecent = epRecent; window.epHere = epHere; window.epSave = epSave; window.openPicker = openPicker; window.pickSearch = pickSearch;
   window.togglePick = togglePick; window.addPicked = addPicked; window.removeStop = removeStop;
+  window.pickMode = pickMode; window.toggleArea = toggleArea; window.addArea = addArea;
   window.optimise = optimise; window.setOutcome = setOutcome; window.openReport = openReport; window.copyReport = copyReport;
   init();
   </script>

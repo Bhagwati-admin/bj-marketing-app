@@ -559,7 +559,9 @@
       outcome: '', interest: '', met_name: '', met_role: '', met_mobile: '', met_email: '',
       save_contact: true, asked: [], asked_notes: '', objections: [], objection_notes: '',
       order_type: '', order_value: '', feedback: '',
-      next_step: '', next_due: tripEnd ? addDaysISO(tripEnd, 3) : addDaysISO(todayISO(), 7)
+      next_step: '', next_due: tripEnd ? addDaysISO(tripEnd, 3) : addDaysISO(todayISO(), 7),
+      card: null, card_used: false,
+      cardFrontB64: null, cardBackB64: null, cardFrontPath: null, cardBackPath: null
     };
     push('form');
   }
@@ -600,9 +602,10 @@
         '" onclick="setInterest(\'' + v + '\')">' + esc(l) + '</button>').join('') + '</div>' +
 
       '<div class="sec-t">Who did you meet?</div>' +
-      '<button type="button" class="btn ghost" style="margin-bottom:12px" onclick="scanCard()">' +
-        (f.card ? '📇 Scan another card' : '📇 Scan their card') + '</button>' +
-      '<input type="file" id="card-file" accept="image/*" style="display:none" onchange="cardChosen(this)">' +
+      '<button type="button" class="btn ghost" style="margin-bottom:12px" onclick="scanCard(\'front\')">' +
+        (f.card ? '📇 Scan a different card' : '📇 Scan their card') + '</button>' +
+      '<input type="file" id="card-front" accept="image/*" style="display:none" onchange="cardChosen(this,\'front\')">' +
+      '<input type="file" id="card-back" accept="image/*" style="display:none" onchange="cardChosen(this,\'back\')">' +
       (f.card ? cardPanel(f.card) : '') +
       '<div class="field"><label>Name</label><input type="text" value="' + esc(f.met_name) +
         '" oninput="fraw(\'met_name\',this.value)" placeholder="e.g. Daniel Alvarez"></div>' +
@@ -683,11 +686,12 @@
 
   /* ---------- business-card scanning ---------- */
   // Their card is the truth. Everything else in this database was scraped off the web.
-  function scanCard() {
+  function scanCard(side) {
     if (!navigator.onLine) {
       return toast('Scanning needs signal. Type what you can — you can scan the card later.', 'err');
     }
-    const el = $('card-file'); if (el) { el.value = ''; el.click(); }
+    const el = $(side === 'back' ? 'card-back' : 'card-front');
+    if (el) { el.value = ''; el.click(); }
   }
 
   async function fileToB64(file, maxPx) {
@@ -715,29 +719,76 @@
     }
   }
 
-  async function cardChosen(input) {
+  function b64ToBlob(b64, mime) {
+    const bin = atob(b64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    return new Blob([u8], { type: mime || 'image/jpeg' });
+  }
+
+  // The photo is filed under the VISIT: at scan time there is no contact row yet.
+  // lf_log_visit copies the path onto the contact when the visit is saved.
+  async function uploadSide(side, b64) {
+    const f = S.form, vid = f.id;
+    const path = 'us/' + vid + '/' + side + '-' + Date.now() + '.jpg';
+    try {
+      const { error } = await sb.storage.from('cards')
+        .upload(path, b64ToBlob(b64, 'image/jpeg'), { contentType: 'image/jpeg', upsert: true });
+      if (error) throw error;
+      if (S.form && S.form.id !== vid) return;     // he moved on to another visit meanwhile
+      if (side === 'back') S.form.cardBackPath = path; else S.form.cardFrontPath = path;
+    } catch (e) {
+      // The words off the card are the point. A failed upload must never cost him the scan.
+      console.warn('card photo upload failed', e);
+    }
+  }
+
+  async function cardChosen(input, side) {
     const file = input && input.files && input.files[0];
     if (!file) return;
-    toast('Reading the card…');
+    const back = side === 'back';
+    const f = S.form;
+    toast(back ? 'Reading the back…' : 'Reading the card…');
     try {
       const b64 = await fileToB64(file, 1600);
-      const r = await sb.auth.getSession();
-      const tok = r && r.data && r.data.session ? r.data.session.access_token : null;
-      if (!tok) return toast('Sign in again to scan a card', 'err');
-      const res = await fetch(BJ_CONFIG.SUPABASE_URL + '/functions/v1/scan-card-us', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: BJ_CONFIG.SUPABASE_KEY,
-                   Authorization: 'Bearer ' + tok },
-        body: JSON.stringify({ image_base64: b64, mime_type: 'image/jpeg' })
-      });
-      const j = await res.json();
-      if (j.error === 'quota') return toast('Free scanning quota is used up for now — type the details.', 'err');
-      if (j.error === 'not_configured') return toast('No scanning key set up yet.', 'err');
-      if (!j.ok) return toast(j.error || 'Could not read that card', 'err');
-      applyCard(j.fields);
+      if (back) {
+        f.cardBackB64 = b64;
+      } else {
+        // A different card altogether — whatever back we had does not belong to it.
+        f.cardFrontB64 = b64;
+        f.cardBackB64 = null; f.cardFrontPath = null; f.cardBackPath = null;
+      }
+      // In the background: the reading is what he waits for, not the upload.
+      (f.cardUploads = f.cardUploads || []).push(uploadSide(back ? 'back' : 'front', b64));
+      await runScan();
     } catch (e) {
       toast('Could not read that card: ' + String(e.message || e), 'err');
+    } finally {
+      render();
     }
+  }
+
+  // Both sides go to the reader together, so it sees the card whole — a name on
+  // the front and a cell scribbled on the back belong to the same person.
+  async function runScan() {
+    const f = S.form;
+    if (!f.cardFrontB64) return;
+    const r = await sb.auth.getSession();
+    const tok = r && r.data && r.data.session ? r.data.session.access_token : null;
+    if (!tok) return toast('Sign in again to scan a card', 'err');
+    const body = { image_base64: f.cardFrontB64, mime_type: 'image/jpeg' };
+    if (f.cardBackB64) { body.image_back_base64 = f.cardBackB64; body.back_mime_type = 'image/jpeg'; }
+    const res = await fetch(BJ_CONFIG.SUPABASE_URL + '/functions/v1/scan-card-us', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: BJ_CONFIG.SUPABASE_KEY,
+                 Authorization: 'Bearer ' + tok },
+      body: JSON.stringify(body)
+    });
+    const j = await res.json();
+    if (j.error === 'quota') return toast('Free scanning quota is used up for now — type the details.', 'err');
+    if (j.error === 'not_configured') return toast('No scanning key set up yet.', 'err');
+    if (!j.ok) return toast(j.error || 'Could not read that card', 'err');
+    applyCard(j.fields);
   }
 
   const prettyPhone = (d) => {
@@ -756,10 +807,11 @@
     if (c.mobile) f.met_mobile = prettyPhone(c.mobile);
     else if (c.phone_other) f.met_mobile = prettyPhone(String(c.phone_other).split(',')[0].replace(/^[^:]*:/, ''));
     if (c.email) f.met_email = String(c.email).toLowerCase();
-    render();
     const got = ['contact_person', 'designation', 'mobile', 'email', 'website', 'address', 'booth']
       .filter((k) => c[k]).length;
-    toast(got ? 'Read ' + got + ' details off the card ✓' : 'Card read, but nothing usable on it', got ? 'ok' : 'err');
+    const both = !!f.cardBackB64;
+    toast(got ? 'Read ' + got + ' details off ' + (both ? 'both sides ✓' : 'the card ✓')
+              : 'Card read, but nothing usable on it', got ? 'ok' : 'err');
   }
 
   // What on the card disagrees with what we scraped for the SHOP itself.
@@ -796,6 +848,15 @@
       '<h3 style="font-size:14px">📇 What the card says</h3>' +
       rows.map(([k, l]) => '<div class="sub" style="margin-top:3px"><b>' + esc(l) + ':</b> ' +
         esc(k === 'mobile' ? prettyPhone(c[k]) : c[k]) + '</div>').join('') +
+      '<div style="margin-top:11px;padding-top:10px;border-top:1px solid #eee">' +
+        '<div class="sub" style="margin-bottom:7px">' +
+          (S.form.cardBackB64
+            ? '✓ Read from both sides of the card.'
+            : 'Read from the front only. A cell number, a branch address or a WhatsApp is often printed on the back.') +
+        '</div>' +
+        '<button type="button" class="btn ghost" onclick="scanCard(\'back\')">' +
+          (S.form.cardBackB64 ? '🔄 Re-take the back' : '➕ Add the back of the card') + '</button>' +
+      '</div>' +
       (d.length
         ? '<div style="margin-top:11px;padding-top:10px;border-top:1px solid #eee">' +
           '<div class="sub" style="margin-bottom:7px"><b>This disagrees with what we found online:</b></div>' +
@@ -837,6 +898,14 @@
       return;
     }
     const b = $('save-b'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
+    // Give a card photo a moment to land in storage — but a save must never wait
+    // on a slow upload in a shop with one bar of signal.
+    if (f.cardUploads && f.cardUploads.length) {
+      await Promise.race([
+        Promise.all(f.cardUploads).catch(() => {}),
+        new Promise((r) => setTimeout(r, 6000))
+      ]);
+    }
     const payload = {
       id: f.id, place_id: f.place_id, stop_id: f.stop_id || '', trip_id: f.trip_id || '',
       visited_at: f.visited_at, channel: f.channel, outcome: f.outcome, interest: f.interest || '',
@@ -849,7 +918,8 @@
       next_step: f.next_step === 'Nothing for now' ? '' : f.next_step,
       next_step_due: (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE)
         ? f.next_due : '',
-      contact_source: f.card_used ? 'card_scan' : 'typed'
+      contact_source: f.card_used ? 'card_scan' : 'typed',
+      card_front: f.cardFrontPath || '', card_back: f.cardBackPath || ''
     };
     if (payload.next_step === NO_DATE) {
       payload.followup = { kind: 'next_city_visit',

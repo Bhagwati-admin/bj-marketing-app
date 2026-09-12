@@ -373,6 +373,9 @@
 
   /* ---------------- option lists ---------------- */
   const ROLES = ['Owner', 'Buyer', 'Manager', 'Staff', 'Other'];
+  // Same A/B/C the India app grades its clients with. Unset means not graded yet —
+  // the US side keeps that as NULL rather than the India app's literal 'Undefined'.
+  const GRADES = ['A', 'B', 'C'];
   const OUTCOMES = [['met', '✓ Met the buyer'], ['order', '🧾 Placed an order'],
     ['buyer_out', '↻ Buyer was out'], ['not_interested', '✗ Not interested'],
     ['no_answer', '— Closed / no answer'], ['other', 'Other']];
@@ -588,7 +591,10 @@
       next_step: '', next_due: tripEnd ? addDaysISO(tripEnd, 3) : addDaysISO(todayISO(), 7),
       card: null, card_used: false,
       cardFrontB64: null, cardBackB64: null, cardFrontPath: null, cardBackPath: null,
-      is_new_place: !!a.isNew
+      is_new_place: !!a.isNew,
+      category: a.place.category || '',            // grade lives on the shop; this is its current value
+      shop_phone_other: a.place.phone_other || '',
+      met_mobile_other: ''
     };
     push('form');
   }
@@ -630,6 +636,13 @@
         '<button type="button" class="chip ' + v + (f.interest === v ? ' on' : '') +
         '" onclick="setInterest(\'' + v + '\')">' + esc(l) + '</button>').join('') + '</div>' +
 
+      '<div class="sec-t">About this shop</div>' +
+      '<div class="sub" style="margin:-3px 0 7px">The grade stays on the shop — change it on any visit.</div>' +
+      chipRow(GRADES, f.category, 'setGrade') +
+      '<div class="field" style="margin-top:11px"><label>Shop\'s other phone line</label>' +
+        '<input type="tel" inputmode="tel" value="' + esc(f.shop_phone_other) +
+        '" oninput="fraw(\'shop_phone_other\',this.value)" placeholder="showroom or second line"></div>' +
+
       '<div class="sec-t">Who did you meet?</div>' +
       '<button type="button" class="btn ghost" style="margin-bottom:12px" onclick="scanCard(\'front\')">' +
         (f.card ? '📇 Scan a different card' : '📇 Scan their card') + '</button>' +
@@ -644,6 +657,9 @@
           '" oninput="fraw(\'met_mobile\',this.value)" placeholder="direct number"></div>' +
         '<div class="field"><label>Their email</label><input type="text" inputmode="email" value="' + esc(f.met_email) +
           '" oninput="fraw(\'met_email\',this.value)"></div></div>' +
+      '<div class="field" style="margin-top:11px"><label>Their other number</label>' +
+        '<input type="tel" inputmode="tel" value="' + esc(f.met_mobile_other) +
+        '" oninput="fraw(\'met_mobile_other\',this.value)" placeholder="WhatsApp, desk line, second cell"></div>' +
 
       '<div class="sec-t">What did they ask about?</div>' +
       chipRow(ASKED, f.asked, 'toggleAsked') +
@@ -699,6 +715,7 @@
   function setOutcomeF(v) { fset('outcome', S.form.outcome === v ? '' : v); }
   function setInterest(v) { fset('interest', S.form.interest === v ? '' : v); }
   function setRole(v) { fset('met_role', S.form.met_role === v ? '' : v); }
+  function setGrade(v) { fset('category', S.form.category === v ? '' : v); }
   function setOrderType(v) { fset('order_type', S.form.order_type === v ? '' : v); }
   function setNext(v) { fset('next_step', S.form.next_step === v ? '' : v); }
   function toggleAsked(v) { ftoggle('asked', v); }
@@ -836,6 +853,9 @@
     if (c.mobile) f.met_mobile = prettyPhone(c.mobile);
     else if (c.phone_other) f.met_mobile = prettyPhone(String(c.phone_other).split(',')[0].replace(/^[^:]*:/, ''));
     if (c.email) f.met_email = String(c.email).toLowerCase();
+    // Everything else printed on the card is the SHOP's — store, showroom, toll free.
+    // Only fill a blank box: never paint over a number already on file or typed.
+    if (c.phone_other && !String(f.shop_phone_other || '').trim()) f.shop_phone_other = String(c.phone_other);
     const got = ['contact_person', 'designation', 'mobile', 'email', 'website', 'address', 'booth']
       .filter((k) => c[k]).length;
     const both = !!f.cardBackB64;
@@ -928,9 +948,14 @@
   // wins — it is what he will search for — and the card fills every blank around it.
   function newPlacePayload() {
     const p = S.place || {}, c = S.form.card || {};
-    let shopPhone = '';
-    if (c.phone_other) shopPhone = String(c.phone_other).split(',')[0].replace(/^[^:]*:/, '').trim();
-    else if (c.mobile) shopPhone = String(c.mobile);
+    // First number printed becomes the shop's line; the rest stay as the other lines,
+    // labels and all, so nothing on the card is thrown away or counted twice.
+    let shopPhone = '', shopOther = '';
+    if (c.phone_other) {
+      const parts = String(c.phone_other).split(',');
+      shopPhone = parts[0].replace(/^[^:]*:/, '').trim();
+      shopOther = parts.slice(1).join(',').trim();
+    } else if (c.mobile) shopPhone = String(c.mobile);
     const printed = String(c.business_name || '').trim();
     const typed = String(p.name || '').trim();
     const alias = printed && printed.toLowerCase() !== typed.toLowerCase()
@@ -942,6 +967,8 @@
       region: c.state || p.region || '',
       postcode: c.zip || '',
       phone: shopPhone,
+      phone_other: shopOther || String(S.form.shop_phone_other || '').trim(),
+      category: S.form.category || '',
       website: c.website || '',
       notes: alias + 'Met in person, added from the visit log.'
     };
@@ -978,7 +1005,11 @@
       next_step_due: (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE)
         ? f.next_due : '',
       contact_source: f.card_used ? 'card_scan' : 'typed',
-      card_front: f.cardFrontPath || '', card_back: f.cardBackPath || ''
+      card_front: f.cardFrontPath || '', card_back: f.cardBackPath || '',
+      met_mobile_other: f.met_mobile_other.trim(),
+      // Sent even when empty: the key being present is what tells the server he
+      // looked at these and left them blank, so clearing one actually clears it.
+      category: f.category || '', shop_phone_other: f.shop_phone_other.trim()
     };
     if (f.is_new_place) payload.new_place = newPlacePayload();
     if (payload.next_step === NO_DATE) {
@@ -1179,7 +1210,7 @@
   }
 
   Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
-    setOutcomeF, setInterest, setRole, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
+    setOutcomeF, setInterest, setRole, setGrade, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
     onPick, newLead, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });

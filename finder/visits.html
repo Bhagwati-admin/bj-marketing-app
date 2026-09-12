@@ -161,7 +161,7 @@
   const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
 
   const S = { tab: 'today', view: null, stack: [], queue: [], work: [], pack: null,
-              engaged: [], place: null, form: null, client: null, busy: false,
+              engaged: [], recent: [], place: null, form: null, client: null, busy: false,
               backDay: '', backTrip: '' };
 
   /* ---------------- small helpers ---------------- */
@@ -191,6 +191,25 @@
     const d = new Date(iso + 'T12:00:00Z');
     return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   }
+  // Local-day key, same shape as todayISO(), so a visit logged at 6pm New York time
+  // is filed under that evening and not pushed into tomorrow by UTC.
+  function dayKey(ts) {
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function dayLabel(key) {
+    const t = todayISO();
+    if (key === t) return 'Today';
+    if (key === addDaysISO(t, -1)) return 'Yesterday';
+    return new Date(key + 'T12:00:00').toLocaleDateString(undefined,
+      { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+  function timeOf(ts) {
+    return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  const OUT_SHORT = { met: 'met the buyer', order: 'placed an order', buyer_out: 'buyer was out',
+    not_interested: 'not interested', closed: 'closed', no_answer: 'no answer' };
+
   function fmtWhen(ts) {
     if (!ts) return '';
     const d = new Date(ts);
@@ -324,7 +343,7 @@
       if (done && manual) toast(done + (done === 1 ? ' visit synced' : ' visits synced'), 'ok');
       else if (done) toast(done + (done === 1 ? ' visit synced ✓' : ' visits synced ✓'), 'ok');
       if (failed && manual) showStuck();
-      if (done) { loadWork().then(() => { if (S.tab === 'today' && !S.stack.length) render(); }); }
+      if (done) refreshAll();
     } finally { flushing = false; }
   }
   function showStuck() {
@@ -358,6 +377,20 @@
           status: s.status, visited_at: s.visited_at, place: s.lf_places })) };
       try { localStorage.setItem(PACK, JSON.stringify(S.pack)); } catch (e) {}
     } catch (e) { /* keep whatever pack we already had */ }
+  }
+
+  // THE BUG this fixes: bringing the app back to the foreground called flush(), and
+  // flush() only reloads the lists when it actually syncs something. Once the queue had
+  // drained, nothing was ever re-read — so the screen kept showing the lists as they
+  // stood when the FIRST visit of the evening synced, and ten later ones were invisible.
+  let refreshing = false;
+  async function refreshAll() {
+    if (refreshing || !navigator.onLine) return;
+    refreshing = true;
+    try {
+      await Promise.all([loadWork(), loadEngaged(), loadRecent(), refreshPack()]);
+      if (!S.stack.length) render();      // never redraw over a form he is filling in
+    } finally { refreshing = false; }
   }
 
   async function loadWork() {
@@ -447,6 +480,8 @@
         '<b>Log a visit</b> tab and search for the shop.</div></div>';
     }
 
+    h += loggedHtml();
+
     const groups = [['overdue', 'Overdue'], ['today', 'Due today'], ['next7', 'Next 7 days']];
     const cityOnes = S.work.filter((w) => w.kind === 'next_city_visit' || !w.due_date);
     const open = S.work.filter((w) => w.due_date && w.kind !== 'next_city_visit');
@@ -477,6 +512,42 @@
     }
     return h;
   }
+  function loggedHtml() {
+    const shops = new Map((S.engaged || []).map((r) => [r.id, r]));
+    const pend = (S.queue || []).slice().sort((a, b) => (b.created || 0) - (a.created || 0));
+    const rows = (S.recent || []).slice(0, 30);
+    if (!rows.length && !pend.length) {
+      return '<div class="sec-t">Visits you have logged</div>' +
+        '<div class="empty">Nothing yet. Every visit you log shows up here.</div>';
+    }
+    let h = '<div class="sec-t">Visits you have logged</div>';
+    if (pend.length) {
+      h += '<div style="margin:0 2px 6px"><span class="pill later">⏳ ' + pend.length +
+        ' saved on this phone, waiting for signal</span></div>' +
+        pend.map((q) => '<div class="q"><div class="body"><div class="nm">' +
+          esc(String(q.label || 'Visit').split(' · ')[0]) + '</div>' +
+          '<div class="mt">on this phone — syncs the moment you have a bar</div></div></div>').join('');
+    }
+    let lastKey = '';
+    for (const v of rows) {
+      const key = dayKey(v.visited_at);
+      if (key !== lastKey) {
+        lastKey = key;
+        const cnt = rows.filter((x) => dayKey(x.visited_at) === key).length;
+        h += '<div style="margin:10px 2px 6px"><span class="pill next7">' + esc(dayLabel(key)) +
+          ' · ' + cnt + (cnt === 1 ? ' visit' : ' visits') + '</span></div>';
+      }
+      const p = shops.get(v.place_id) || {};
+      h += '<div class="q"><div class="body"><div class="nm">' + esc(p.name || 'Shop') +
+        (v.interest ? ' <span class="pill ' + esc(v.interest) + '">' + esc(v.interest) + '</span>' : '') +
+        '</div><div class="mt">' +
+        esc([p.city, OUT_SHORT[v.outcome] || v.outcome || '', timeOf(v.visited_at)].filter(Boolean).join(' · ')) +
+        '</div></div>' +
+        '<button class="go" onclick="openClient(\'' + v.place_id + '\')">Open</button></div>';
+    }
+    return h;
+  }
+
   function workRow(w) {
     return '<div class="q"><div class="body"><div class="nm">' + esc(w.name || 'Shop') +
       (w.interest ? ' <span class="pill ' + esc(w.interest) + '">' + esc(w.interest) + '</span>' : '') + '</div>' +
@@ -1061,6 +1132,21 @@
       '<button class="go" onclick="openClient(\'' + r.id + '\')">Open</button></div>').join('');
   }
   function onCSearch(v) { S.cterm = v; const b = $('c-res'); if (b) b.innerHTML = engagedList(); }
+  // What he has actually logged. The Today screen showed trip stops and follow-ups
+  // but never the visits themselves, so an evening of work left no trace on the screen.
+  async function loadRecent() {
+    if (!navigator.onLine) return;
+    try {
+      const { data } = await sb.from('lf_visits')
+        .select('id,place_id,visited_at,outcome,interest,met_name')
+        .order('visited_at', { ascending: false }).limit(60);
+      S.recent = data || [];
+      try { localStorage.setItem('bj_us_recent', JSON.stringify(S.recent)); } catch (e) {}
+    } catch (e) {
+      try { S.recent = JSON.parse(localStorage.getItem('bj_us_recent') || '[]'); } catch (e2) { S.recent = []; }
+    }
+  }
+
   async function loadEngaged() {
     if (!navigator.onLine) return;
     try {
@@ -1166,7 +1252,7 @@
     try { S.work = JSON.parse(localStorage.getItem('bj_us_work') || '[]'); } catch (e) { S.work = []; }
     await refreshQueue();
     render();
-    await Promise.all([refreshPack(), loadWork(), loadEngaged()]);
+    await Promise.all([refreshPack(), loadWork(), loadEngaged(), loadRecent()]);
     render();
     flush();
     const url = new URL(location.href);
@@ -1199,11 +1285,15 @@
       try { const r = await sb.auth.getSession(); if (r && r.data && r.data.session) S.degraded = false; }
       catch (e) { /* still not reachable; stay in the safe mode */ }
     }
-    renderSync(); flush(); refreshPack();
+    renderSync(); flush(); refreshAll();
   });
   window.addEventListener('offline', renderSync);
   setInterval(() => { if (S.queue.length && navigator.onLine) flush(); }, 25000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) flush(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    flush();
+    refreshAll();          // he has been away; the lists are almost certainly stale
+  });
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});

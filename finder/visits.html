@@ -409,6 +409,9 @@
   // Same A/B/C the India app grades its clients with. Unset means not graded yet —
   // the US side keeps that as NULL rather than the India app's literal 'Undefined'.
   const GRADES = ['A', 'B', 'C'];
+  // Asked face to face. Different thing from priority 5, which came off a website.
+  const BUYS_LAB = [['yes', 'Yes'], ['no', 'No']];
+  const LAB_STOCK = [['stock', 'Keeps stock'], ['on_demand', 'Only on demand']];
   const OUTCOMES = [['met', '✓ Met the buyer'], ['order', '🧾 Placed an order'],
     ['buyer_out', '↻ Buyer was out'], ['not_interested', '✗ Not interested'],
     ['no_answer', '— Closed / no answer'], ['other', 'Other']];
@@ -422,9 +425,10 @@
     'Wants to see quality first', 'Worried about resale', 'Must ask a partner', 'Other'];
   const ORDER_TYPES = [['none', 'No order yet'], ['memo', 'On memo'], ['trial', 'Trial order'],
     ['outright', 'Outright order'], ['custom', 'Custom order']];
-  const NEXT = ['Send price list', 'Send samples', 'Send on memo', 'Call back',
+  const NEXT = ['Appointment', 'Send price list', 'Send samples', 'Send on memo', 'Call back',
     'Visit again', 'Visit next trip', 'Send IGI certificates', 'Nothing for now'];
   const NO_DATE = 'Visit next trip';   // no date: surfaces whenever a day is planned in that city
+  const APPT = 'Appointment';          // the one next step that carries a time of day
 
   /* ---------------- navigation ---------------- */
   function tab(t) { S.tab = t; S.stack = []; S.client = null;
@@ -482,19 +486,26 @@
 
     h += loggedHtml();
 
+    // An appointment is a promise made to someone at a time. It leads its day.
+    const apptFirst = (a, b) => {
+      const aa = a.kind === 'appointment', bb = b.kind === 'appointment';
+      if (aa !== bb) return aa ? -1 : 1;
+      if (aa && bb) return String(a.due_time || '').localeCompare(String(b.due_time || ''));
+      return 0;
+    };
     const groups = [['overdue', 'Overdue'], ['today', 'Due today'], ['next7', 'Next 7 days']];
     const cityOnes = S.work.filter((w) => w.kind === 'next_city_visit' || !w.due_date);
     const open = S.work.filter((w) => w.due_date && w.kind !== 'next_city_visit');
     h += '<div class="sec-t">Follow-ups to work on' + (open.length ? ' (' + open.length + ')' : '') + '</div>';
     let any = false;
     for (const [k, label] of groups) {
-      const rows = open.filter((w) => bucketOf(w.due_date) === k);
+      const rows = open.filter((w) => bucketOf(w.due_date) === k).sort(apptFirst);
       if (!rows.length) continue;
       any = true;
       h += '<div style="margin:0 2px 6px"><span class="pill ' + k + '">' + label + ' · ' + rows.length + '</span></div>';
       h += rows.map(workRow).join('');
     }
-    const later = open.filter((w) => bucketOf(w.due_date) === 'later');
+    const later = open.filter((w) => bucketOf(w.due_date) === 'later').sort(apptFirst);
     if (later.length) { any = true;
       h += '<div style="margin:10px 2px 6px"><span class="pill later">Later · ' + later.length + '</span></div>' +
            later.slice(0, 20).map(workRow).join(''); }
@@ -548,12 +559,23 @@
     return h;
   }
 
+  // "10:00" -> "10:00 am", without dragging a date into it
+  function prettyTime(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+    if (!m) return String(hhmm || '');
+    const d = new Date(); d.setHours(+m[1], +m[2], 0, 0);
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+
   function workRow(w) {
-    return '<div class="q"><div class="body"><div class="nm">' + esc(w.name || 'Shop') +
+    const appt = w.kind === 'appointment';
+    return '<div class="q"' + (appt ? ' style="border-left:3px solid var(--mar)"' : '') +
+      '><div class="body"><div class="nm">' + (appt ? '📅 ' : '') + esc(w.name || 'Shop') +
       (w.interest ? ' <span class="pill ' + esc(w.interest) + '">' + esc(w.interest) + '</span>' : '') + '</div>' +
       '<div class="mt">' + esc(w.what) +
       (w.kind === 'next_city_visit' ? ' · no date, next time you are there'
-                                    : ' · due ' + esc(fmtDate(w.due_date))) +
+                                    : ' · ' + (appt ? '' : 'due ') + esc(fmtDate(w.due_date)) +
+                                      (appt && w.due_time ? ' at ' + esc(prettyTime(w.due_time)) : '')) +
       (w.city ? ' · ' + esc(w.city) : '') + '</div></div>' +
       (w.phone ? '<a class="go" href="tel:' + esc(digits(w.phone)) + '">Call</a>' : '') +
       '<button class="go" onclick="doneFollowup(\'' + w.id + '\')">Done</button></div>';
@@ -665,7 +687,9 @@
       is_new_place: !!a.isNew,
       category: a.place.category || '',            // grade lives on the shop; this is its current value
       shop_phone_other: a.place.phone_other || '',
-      met_mobile_other: ''
+      met_mobile_other: '',
+      buys_lab: a.place.buys_lab || '', lab_stock: a.place.lab_stock || '',
+      next_time: ''
     };
     push('form');
   }
@@ -710,6 +734,14 @@
       '<div class="sec-t">About this shop</div>' +
       '<div class="sub" style="margin:-3px 0 7px">The grade stays on the shop — change it on any visit.</div>' +
       chipRow(GRADES, f.category, 'setGrade') +
+
+      '<div class="sub" style="margin:13px 0 6px">Do they buy lab-grown jewellery?</div>' +
+      chipRow(BUYS_LAB, f.buys_lab, 'setBuysLab') +
+      (f.buys_lab === 'yes'
+        ? '<div class="sub" style="margin:11px 0 6px">Do they keep it in stock?</div>' +
+          chipRow(LAB_STOCK, f.lab_stock, 'setLabStock')
+        : '') +
+
       '<div class="field" style="margin-top:11px"><label>Shop\'s other phone line</label>' +
         '<input type="tel" inputmode="tel" value="' + esc(f.shop_phone_other) +
         '" oninput="fraw(\'shop_phone_other\',this.value)" placeholder="showroom or second line"></div>' +
@@ -762,8 +794,15 @@
           esc(p.city || 'this city') + '.</div></div>' : '') +
       (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE
         ? '<div style="margin-top:11px">' + chipRow(dueChips, f.due_pick || '', 'setDue') +
-          '<div class="field" style="margin-top:9px"><label>Due on</label><input type="date" value="' +
-          esc(f.next_due) + '" oninput="dueTyped(this.value)"></div></div>' : '') +
+          '<div class="row" style="margin-top:9px">' +
+          '<div class="field"><label>' + (f.next_step === APPT ? 'Appointment on' : 'Due on') +
+            '</label><input type="date" value="' + esc(f.next_due) +
+            '" oninput="dueTyped(this.value)"></div>' +
+          (f.next_step === APPT
+            ? '<div class="field"><label>At what time</label><input type="time" value="' +
+              esc(f.next_time) + '" oninput="fraw(\'next_time\',this.value)"></div>'
+            : '') +
+          '</div></div>' : '') +
 
       (nudging
         ? '<div class="banner" style="border-radius:10px;margin:18px 0 8px;text-align:left">' +
@@ -787,6 +826,14 @@
   function setInterest(v) { fset('interest', S.form.interest === v ? '' : v); }
   function setRole(v) { fset('met_role', S.form.met_role === v ? '' : v); }
   function setGrade(v) { fset('category', S.form.category === v ? '' : v); }
+  function setBuysLab(v) {
+    const f = S.form;
+    f.buys_lab = f.buys_lab === v ? '' : v;
+    // "keeps stock" only means anything alongside a yes
+    if (f.buys_lab !== 'yes') f.lab_stock = '';
+    render();
+  }
+  function setLabStock(v) { fset('lab_stock', S.form.lab_stock === v ? '' : v); }
   function setOrderType(v) { fset('order_type', S.form.order_type === v ? '' : v); }
   function setNext(v) { fset('next_step', S.form.next_step === v ? '' : v); }
   function toggleAsked(v) { ftoggle('asked', v); }
@@ -1080,12 +1127,18 @@
       met_mobile_other: f.met_mobile_other.trim(),
       // Sent even when empty: the key being present is what tells the server he
       // looked at these and left them blank, so clearing one actually clears it.
-      category: f.category || '', shop_phone_other: f.shop_phone_other.trim()
+      category: f.category || '', shop_phone_other: f.shop_phone_other.trim(),
+      buys_lab: f.buys_lab || '', lab_stock: f.lab_stock || '',
+      next_step_time: f.next_step === APPT ? (f.next_time || '') : ''
     };
     if (f.is_new_place) payload.new_place = newPlacePayload();
     if (payload.next_step === NO_DATE) {
       payload.followup = { kind: 'next_city_visit',
         what: 'Call in again when next in ' + ((S.place && S.place.city) || 'this city') };
+    } else if (payload.next_step === APPT && payload.next_step_due) {
+      payload.followup = { kind: 'appointment', due_date: payload.next_step_due,
+        due_time: payload.next_step_time,
+        what: 'Appointment' + (payload.next_step_time ? ' at ' + prettyTime(payload.next_step_time) : '') };
     } else if (payload.next_step && payload.next_step_due) {
       payload.followup = { kind: 'date', due_date: payload.next_step_due, what: payload.next_step };
     }
@@ -1300,7 +1353,7 @@
   }
 
   Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
-    setOutcomeF, setInterest, setRole, setGrade, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
+    setOutcomeF, setInterest, setRole, setGrade, setBuysLab, setLabStock, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
     onPick, newLead, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });

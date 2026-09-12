@@ -515,8 +515,30 @@
       '<input id="pk" type="text" placeholder="Type a shop name or city" ' +
       'oninput="onPick(this.value)" autocomplete="off"></div>' +
       '<div id="pk-res"></div>' +
-      (navigator.onLine ? '' : '<div class="empty">No signal — you can only pick shops from this trip ' +
-        'while offline. Everything on your planned days is available.</div>');
+      (navigator.onLine ? '' : '<div class="empty">No signal — search only covers this trip right now, ' +
+        'but you can still type a name and log a dealer who is not in the app.</div>');
+  }
+
+  // Dealers he met who were never in the list. Typing the name is the whole entry cost —
+  // the card scan fills in the address, the phone and the website.
+  function newLeadCard(term) {
+    return '<div class="q" style="border-left:3px solid var(--mar);margin-top:12px">' +
+      '<div class="body"><div class="nm">＋ ' + esc(term) + '</div>' +
+      '<div class="mt">Not in the app — I will add them as a new lead. ' +
+      'Scan their card and the rest fills itself in.</div></div>' +
+      '<button class="go" data-nm="' + esc(term) + '" onclick="newLead(this.dataset.nm)">Log visit</button></div>';
+  }
+
+  function newLead(name) {
+    const nm = String(name || '').trim();
+    if (!nm) return;
+    const day = S.pack && (S.pack.days || []).find((d) => d.day_date === todayISO());
+    const trip = day && S.pack.trip ? S.pack.trip : null;
+    openForm({
+      place: { id: uuid(), name: nm, address: '', city: '', region: (trip && trip.region) || '',
+               postcode: '', phone: '', website: '', segment: '', priority: null, pitch_angle: '' },
+      stop_id: '', trip_id: trip ? trip.id : '', isNew: true
+    });
   }
   function onPick(q) { clearTimeout(searchT); searchT = setTimeout(() => doPick(q), 260); }
   async function doPick(q) {
@@ -538,14 +560,18 @@
     }
     const seen = new Set(); const all = [];
     for (const r of packRows.concat(rows)) { if (r && r.id && !seen.has(r.id)) { seen.add(r.id); all.push(r); } }
-    if (!all.length) { box.innerHTML = '<div class="empty">No match. Check the spelling, or try the city.</div>'; return; }
+    if (!all.length) {
+      box.innerHTML = '<div class="empty" style="padding:18px 14px 4px">Nobody by that name in the app.</div>' +
+        newLeadCard(term);
+      return;
+    }
     box.innerHTML = all.slice(0, 40).map((p) => {
       const arg = JSON.stringify(JSON.stringify({ place: p, stop_id: p._stop || '', trip_id: (S.pack && S.pack.trip && p._stop) ? S.pack.trip.id : '' })).replace(/"/g, '&quot;');
       return '<div class="q"><div class="body"><div class="nm">' + esc(p.name) +
         (p.priority >= 5 ? ' ⭐' : '') + '</div><div class="mt">' +
         esc([p.address, p.city, p.region].filter(Boolean).join(', ')) + '</div></div>' +
         '<button class="go" onclick="openForm(' + arg + ')">Log visit</button></div>';
-    }).join('');
+    }).join('') + newLeadCard(term);
   }
 
   /* ---------------- THE VISIT FORM ---------------- */
@@ -561,7 +587,8 @@
       order_type: '', order_value: '', feedback: '',
       next_step: '', next_due: tripEnd ? addDaysISO(tripEnd, 3) : addDaysISO(todayISO(), 7),
       card: null, card_used: false,
-      cardFrontB64: null, cardBackB64: null, cardFrontPath: null, cardBackPath: null
+      cardFrontB64: null, cardBackB64: null, cardFrontPath: null, cardBackPath: null,
+      is_new_place: !!a.isNew
     };
     push('form');
   }
@@ -589,7 +616,9 @@
     const dueChips = [['__t', 'Tomorrow'], ['__3', 'In 3 days']];
     if (tripEnd) dueChips.push(['__trip', 'After the trip']);
     return '<div class="card"><h3>' + esc(p.name || 'Shop') + (p.priority >= 5 ? ' ⭐' : '') + '</h3>' +
-      '<div class="sub">' + esc([p.address, p.city, p.region].filter(Boolean).join(', ') || 'no address on file') + '</div>' +
+      '<div class="sub">' + (f.is_new_place
+        ? 'New — not in the app before. Saving this visit adds them to your leads.'
+        : esc([p.address, p.city, p.region].filter(Boolean).join(', ') || 'no address on file')) + '</div>' +
       (p.pitch_angle ? '<div class="sub" style="margin-top:6px;color:var(--mar)">🎯 ' + esc(String(p.pitch_angle).split('. ')[0]) + '.</div>' : '') +
       '</div>' +
 
@@ -818,6 +847,9 @@
   function cardDiffs() {
     const c = S.form.card, p = S.place || {};
     if (!c) return [];
+    // Nothing on file to contradict, and no row to update yet — the card's details
+    // are saved WITH the new shop when the visit is saved.
+    if (S.form.is_new_place) return [];
     const out = [];
     const shopPhone = String(p.phone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
     let cardLine = '';
@@ -857,7 +889,10 @@
         '<button type="button" class="btn ghost" onclick="scanCard(\'back\')">' +
           (S.form.cardBackB64 ? '🔄 Re-take the back' : '➕ Add the back of the card') + '</button>' +
       '</div>' +
-      (d.length
+      (S.form.is_new_place
+        ? '<div class="sub" style="margin-top:9px">New shop — the address, phone and website off this ' +
+          'card are saved with it.</div>'
+        : d.length
         ? '<div style="margin-top:11px;padding-top:10px;border-top:1px solid #eee">' +
           '<div class="sub" style="margin-bottom:7px"><b>This disagrees with what we found online:</b></div>' +
           d.map((x) => '<div class="sub" style="margin-bottom:4px">' + esc(x.label) + ': <s>' +
@@ -870,6 +905,7 @@
   }
 
   async function applyShopFix() {
+    if (S.form.is_new_place) return;
     const d = cardDiffs();
     if (!d.length) return;
     if (!navigator.onLine) return toast('Needs signal to correct the shop record', 'err');
@@ -886,6 +922,29 @@
       if (e2) return toast(e2.message, 'err');
       Object.assign(S.place, before); render(); toast('Put the old details back', 'ok');
     });
+  }
+
+  // Everything we know about a shop that did not exist until he met them. His typed name
+  // wins — it is what he will search for — and the card fills every blank around it.
+  function newPlacePayload() {
+    const p = S.place || {}, c = S.form.card || {};
+    let shopPhone = '';
+    if (c.phone_other) shopPhone = String(c.phone_other).split(',')[0].replace(/^[^:]*:/, '').trim();
+    else if (c.mobile) shopPhone = String(c.mobile);
+    const printed = String(c.business_name || '').trim();
+    const typed = String(p.name || '').trim();
+    const alias = printed && printed.toLowerCase() !== typed.toLowerCase()
+      ? 'Card reads: ' + printed + '. ' : '';
+    return {
+      name: typed,
+      address: c.address || '',
+      city: c.city || p.city || '',
+      region: c.state || p.region || '',
+      postcode: c.zip || '',
+      phone: shopPhone,
+      website: c.website || '',
+      notes: alias + 'Met in person, added from the visit log.'
+    };
   }
 
   async function saveVisit() {
@@ -921,6 +980,7 @@
       contact_source: f.card_used ? 'card_scan' : 'typed',
       card_front: f.cardFrontPath || '', card_back: f.cardBackPath || ''
     };
+    if (f.is_new_place) payload.new_place = newPlacePayload();
     if (payload.next_step === NO_DATE) {
       payload.followup = { kind: 'next_city_visit',
         what: 'Call in again when next in ' + ((S.place && S.place.city) || 'this city') };
@@ -1120,7 +1180,7 @@
 
   Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
     setOutcomeF, setInterest, setRole, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
-    onPick, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
+    onPick, newLead, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
   boot();

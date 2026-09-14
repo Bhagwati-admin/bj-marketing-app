@@ -689,7 +689,9 @@
       shop_phone_other: a.place.phone_other || '',
       met_mobile_other: '',
       buys_lab: a.place.buys_lab || '', lab_stock: a.place.lab_stock || '',
-      next_time: ''
+      next_time: '',
+      booth: a.place.booth || '', social: a.place.social || '',
+      card_code: a.place.card_code || '', codes: []
     };
     push('form');
   }
@@ -742,6 +744,9 @@
           chipRow(LAB_STOCK, f.lab_stock, 'setLabStock')
         : '') +
 
+      '<div class="field" style="margin-top:11px"><label>Booth / suite number</label>' +
+        '<input type="text" value="' + esc(f.booth) +
+        '" oninput="fraw(\'booth\',this.value)" placeholder="e.g. Seybold #114"></div>' +
       '<div class="field" style="margin-top:11px"><label>Shop\'s other phone line</label>' +
         '<input type="tel" inputmode="tel" value="' + esc(f.shop_phone_other) +
         '" oninput="fraw(\'shop_phone_other\',this.value)" placeholder="showroom or second line"></div>' +
@@ -751,7 +756,7 @@
         (f.card ? '📇 Scan a different card' : '📇 Scan their card') + '</button>' +
       '<input type="file" id="card-front" accept="image/*" style="display:none" onchange="cardChosen(this,\'front\')">' +
       '<input type="file" id="card-back" accept="image/*" style="display:none" onchange="cardChosen(this,\'back\')">' +
-      (f.card ? cardPanel(f.card) : '') +
+      (f.card ? cardPanel(f.card) : '') + codePanel() +
       '<div class="field"><label>Name</label><input type="text" value="' + esc(f.met_name) +
         '" oninput="fraw(\'met_name\',this.value)" placeholder="e.g. Daniel Alvarez"></div>' +
       chipRow(ROLES, f.met_role, 'setRole') +
@@ -848,6 +853,203 @@
     render();
   }
 
+  /* ---------- QR / barcode reading ----------
+     Read off the ORIGINAL photo, before the 1600px downscale that goes to the scanner.
+     A QR on a business card is small: in the stored copy it can be ~90px across, which is
+     borderline for a decoder, but the phone's own 12MP frame has about six times the pixels
+     and reads comfortably. That is the whole reason this runs on the raw file. */
+  const SOCIAL_HOSTS = {
+    'instagram.com': 'Instagram', 'facebook.com': 'Facebook', 'fb.com': 'Facebook',
+    'linkedin.com': 'LinkedIn', 'x.com': 'X', 'twitter.com': 'X', 'youtube.com': 'YouTube',
+    'youtu.be': 'YouTube', 'pinterest.com': 'Pinterest', 't.me': 'Telegram',
+    'threads.net': 'Threads', 'snapchat.com': 'Snapchat', 'tiktok.com': 'TikTok'
+  };
+
+  // A QR that points at a redirector is NOT the shop's website. Writing one into
+  // lf_places.website would send lf-web off to read a link-shortener instead of a
+  // jeweller, so these are kept verbatim as a scanned code and nothing more.
+  // Real case: a Wheaton MD card whose only code was https://vqr.vc/F3N0WfKHv.
+  const REDIRECT_HOSTS = ['vqr.vc', 'qrco.de', 'qrs.ly', 'bit.ly', 'tinyurl.com', 't.co',
+    'goo.gl', 'rebrand.ly', 'cutt.ly', 'lnk.bio', 'linktr.ee', 'shorturl.at', 'ow.ly'];
+
+  let jsqrTried = false;
+  function loadJsQR() {
+    if (window.jsQR) return Promise.resolve(window.jsQR);
+    if (jsqrTried) return Promise.resolve(null);
+    jsqrTried = true;
+    return new Promise((res) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+      sc.onload = () => res(window.jsQR || null);
+      sc.onerror = () => res(null);
+      document.head.appendChild(sc);
+      setTimeout(() => res(window.jsQR || null), 8000);   // a dead CDN must not hold up a scan
+    });
+  }
+
+  // Draw a region of the source at up to `cap` px wide and hand back its pixels.
+  function regionData(src, sx, sy, sw, sh, cap) {
+    const w = Math.min(cap, sw), h = Math.max(1, Math.round(sh * (w / sw)));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+    return cx.getImageData(0, 0, w, h);
+  }
+
+  async function readCodes(file) {
+    const out = [];
+    let src = null;
+    try { src = await createImageBitmap(file); }
+    catch (e) {
+      try {
+        src = await new Promise((res, rej) => {
+          const im = new Image();
+          im.onload = () => res(im); im.onerror = () => rej(new Error('no image'));
+          im.src = URL.createObjectURL(file);
+        });
+      } catch (e2) { return out; }
+    }
+    const W = src.width || src.naturalWidth, H = src.height || src.naturalHeight;
+    if (!W || !H) return out;
+
+    // The phone's own detector where it exists (Android Chrome); it reads 1D barcodes too.
+    try {
+      if (window.BarcodeDetector) {
+        const det = new window.BarcodeDetector();
+        const found = await det.detect(src);
+        (found || []).forEach((f) => { if (f && f.rawValue) out.push(String(f.rawValue)); });
+        if (out.length) return out;
+      }
+    } catch (e) { /* fall through to jsQR */ }
+
+    const jsqr = await loadJsQR();
+    if (!jsqr) return out;
+    const tryOne = (d) => {
+      try {
+        const r = jsqr(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+        return r && r.data ? String(r.data) : null;
+      } catch (e) { return null; }
+    };
+
+    const whole = tryOne(regionData(src, 0, 0, W, H, 1200));
+    if (whole) { out.push(whole); return out; }
+
+    // Overlapping 3x3 tiles at NATIVE resolution — a code near a seam is cut in half by a
+    // plain quadrant split, which is exactly how the server-side pass missed things.
+    const tw = Math.floor(W / 2), th = Math.floor(H / 2);
+    const xs = [0, Math.floor((W - tw) / 2), W - tw];
+    const ys = [0, Math.floor((H - th) / 2), H - th];
+    for (const y of ys) {
+      for (const x of xs) {
+        const hit = tryOne(regionData(src, x, y, tw, th, 1200));
+        if (hit) { out.push(hit); return out; }
+      }
+    }
+    return out;
+  }
+
+  /* ---------- what a code payload actually means ---------- */
+  const usPhone = (v) => {
+    const d = String(v || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    return d.length === 10 ? d : '';
+  };
+  // Only ever http(s). A "javascript:" or "data:" payload must never become a live link.
+  function safeUrl(v) {
+    const t = String(v || '').trim();
+    if (!t) return '';
+    if (/^https?:\/\//i.test(t)) return t;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return '';        // some other scheme — not a website
+    if (/^[\w-]+(\.[\w-]+)+([\/?#].*)?$/.test(t)) return 'https://' + t;
+    return '';
+  }
+  function hostOf(u) {
+    try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch (e) { return ''; }
+  }
+  function socialOf(u) {
+    const h = hostOf(u);
+    if (!h) return '';
+    for (const k in SOCIAL_HOSTS) {
+      if (h === k || h.endsWith('.' + k)) {
+        let handle = '';
+        try { handle = new URL(u).pathname.replace(/^\/+|\/+$/g, '').split('/')[0]; } catch (e) {}
+        return SOCIAL_HOSTS[k] + ': ' + (handle ? '@' + handle.replace(/^@/, '') : u);
+      }
+    }
+    return '';
+  }
+
+  // Everything a single code payload gives us. Deliberately conservative: anything not
+  // recognised is kept verbatim rather than guessed at.
+  function classifyCode(raw) {
+    const t = String(raw || '').trim();
+    const o = { raw: t, kind: 'other' };
+    if (!t) return o;
+
+    if (/^BEGIN:VCARD/i.test(t)) {
+      o.kind = 'vcard';
+      const lines = t.replace(/\r\n[ \t]/g, '').split(/\r?\n/);
+      const tels = [];
+      for (const ln of lines) {
+        const i = ln.indexOf(':'); if (i < 0) continue;
+        const key = ln.slice(0, i).toUpperCase(), val = ln.slice(i + 1).trim();
+        if (!val) continue;
+        if (/^FN\b/.test(key)) o.name = val;
+        else if (/^N\b/.test(key) && !o.name) o.name = val.split(';').filter(Boolean).reverse().join(' ').trim();
+        else if (/^ORG\b/.test(key)) o.org = val.split(';')[0];
+        else if (/^TITLE\b/.test(key)) o.title = val;
+        else if (/^EMAIL/.test(key)) o.email = val.toLowerCase();
+        else if (/^URL/.test(key)) o.website = safeUrl(val);
+        else if (/^ADR/.test(key)) o.address = val.split(';').filter(Boolean).join(', ');
+        else if (/^TEL/.test(key)) tels.push({ v: val, cell: /CELL|MOBILE/i.test(key) });
+      }
+      const cell = tels.find((x) => x.cell && usPhone(x.v));
+      const any = tels.find((x) => usPhone(x.v));
+      if (cell) o.mobile = usPhone(cell.v);
+      else if (any) o.mobile = usPhone(any.v);
+      const others = tels.map((x) => usPhone(x.v)).filter((x) => x && x !== o.mobile);
+      if (others.length) o.phone_other = others.join(', ');
+      return o;
+    }
+
+    if (/^MECARD:/i.test(t)) {
+      o.kind = 'vcard';
+      t.slice(7).split(';').forEach((part) => {
+        const i = part.indexOf(':'); if (i < 0) return;
+        const k = part.slice(0, i).toUpperCase(), v = part.slice(i + 1).trim();
+        if (!v) return;
+        if (k === 'N') o.name = v.split(',').reverse().join(' ').trim();
+        else if (k === 'ORG') o.org = v;
+        else if (k === 'TEL') { if (!o.mobile) o.mobile = usPhone(v); }
+        else if (k === 'EMAIL') o.email = v.toLowerCase();
+        else if (k === 'URL') o.website = safeUrl(v);
+        else if (k === 'ADR') o.address = v.replace(/,+/g, ', ');
+      });
+      return o;
+    }
+
+    if (/^tel:/i.test(t)) { o.kind = 'phone'; o.mobile = usPhone(t.slice(4)); return o; }
+    if (/^(sms|smsto):/i.test(t)) { o.kind = 'phone'; o.mobile = usPhone(t.split(':')[1] || ''); return o; }
+    if (/^mailto:/i.test(t)) { o.kind = 'email'; o.email = t.slice(7).split('?')[0].toLowerCase(); return o; }
+
+    const url = safeUrl(t);
+    if (url) {
+      const h = hostOf(url);
+      if (h === 'wa.me' || h === 'api.whatsapp.com') {
+        o.kind = 'phone';
+        const m = /(?:wa\.me\/|phone=)(\+?\d+)/i.exec(url);
+        o.mobile = m ? usPhone(m[1]) : '';
+        if (!o.mobile) { o.kind = 'other'; }
+        return o;
+      }
+      const soc = socialOf(url);
+      if (soc) { o.kind = 'social'; o.social = soc; o.url = url; return o; }
+      if (REDIRECT_HOSTS.indexOf(h) >= 0) { o.kind = 'link'; o.link = url; return o; }
+      o.kind = 'website'; o.website = url; return o;
+    }
+    return o;                                   // kept verbatim, never guessed at
+  }
+
   /* ---------- business-card scanning ---------- */
   // Their card is the truth. Everything else in this database was scraped off the web.
   function scanCard(side) {
@@ -922,9 +1124,11 @@
         f.cardFrontB64 = b64;
         f.cardBackB64 = null; f.cardFrontPath = null; f.cardBackPath = null;
       }
-      // In the background: the reading is what he waits for, not the upload.
+      // Codes come off the RAW file, in parallel with the upload and the scan.
+      const codesP = readCodes(file).catch(() => []);
       (f.cardUploads = f.cardUploads || []).push(uploadSide(back ? 'back' : 'front', b64));
-      await runScan();
+      await runScan();                       // printed card first — it wins, by his rule
+      applyCodes(await codesP);              // then the code, filling only what is blank
     } catch (e) {
       toast('Could not read that card: ' + String(e.message || e), 'err');
     } finally {
@@ -974,11 +1178,97 @@
     // Everything else printed on the card is the SHOP's — store, showroom, toll free.
     // Only fill a blank box: never paint over a number already on file or typed.
     if (c.phone_other && !String(f.shop_phone_other || '').trim()) f.shop_phone_other = String(c.phone_other);
+    // Printed booth number and social handles had nowhere to go before this — they were
+    // read, shown, and dropped. Fill only a blank; never paint over what is on file.
+    if (c.booth && !String(f.booth || '').trim()) f.booth = String(c.booth);
+    if (c.social && !String(f.social || '').trim()) f.social = String(c.social);
     const got = ['contact_person', 'designation', 'mobile', 'email', 'website', 'address', 'booth']
       .filter((k) => c[k]).length;
     const both = !!f.cardBackB64;
     toast(got ? 'Read ' + got + ' details off ' + (both ? 'both sides ✓' : 'the card ✓')
               : 'Card read, but nothing usable on it', got ? 'ok' : 'err');
+  }
+
+  // His rule: the printed card wins. A code only ever fills something still blank, and
+  // anything it holds that we did not use is kept verbatim so nothing is thrown away.
+  function applyCodes(list) {
+    const f = S.form;
+    const fresh = (list || []).map(classifyCode).filter((c) => c.raw);
+    if (!fresh.length) return;
+    f.codes = (f.codes || []).concat(fresh);
+
+    const spare = [];
+    fresh.forEach((c) => {
+      let used = false;
+      if (c.name && !String(f.met_name || '').trim()) { f.met_name = c.name; used = true; }
+      if (c.title && !f.met_role) {
+        const hit = ROLES.find((r) => r.toLowerCase() === String(c.title).toLowerCase().trim());
+        if (hit) { f.met_role = hit; used = true; }
+      }
+      if (c.mobile && !String(f.met_mobile || '').trim()) { f.met_mobile = prettyPhone(c.mobile); used = true; }
+      if (c.email && !String(f.met_email || '').trim()) { f.met_email = String(c.email).toLowerCase(); used = true; }
+      if (c.phone_other && !String(f.met_mobile_other || '').trim()) { f.met_mobile_other = c.phone_other; used = true; }
+      if (c.social && !String(f.social || '').trim()) { f.social = c.social; used = true; }
+      if (c.website) { f.code_website = c.website; used = true; }
+      // a redirector is kept as a code, never as the shop's website
+      if (c.address && !f.is_new_place) { /* shop address is handled by the card panel */ }
+      if (c.kind === 'website' || c.kind === 'social' || c.kind === 'phone' ||
+          c.kind === 'email' || c.kind === 'vcard') used = true;
+      if (!used) spare.push(c.raw);
+    });
+
+    if (spare.length) {
+      const have = String(f.card_code || '');
+      const add = spare.filter((x) => have.indexOf(x) < 0);
+      if (add.length) f.card_code = (have ? have + ' | ' : '') + add.join(' | ');
+    }
+    toast(fresh.length === 1 ? 'Read a QR code off the card ✓'
+                             : 'Read ' + fresh.length + ' codes off the card ✓', 'ok');
+  }
+
+  // What the code holds, and where it disagrees with the print. The print is never
+  // overwritten — this is here so he can see the difference and decide.
+  function codePanel() {
+    const f = S.form, list = f.codes || [];
+    if (!list.length) return '';
+    const label = (c) => c.kind === 'vcard' ? 'Contact card'
+      : c.kind === 'social' ? 'Social link' : c.kind === 'website' ? 'Website'
+      : c.kind === 'link' ? 'Card link' : c.kind === 'phone' ? 'Phone'
+      : c.kind === 'email' ? 'Email' : 'Code';
+    const shown = (c) => {
+      const bits = [];
+      if (c.name) bits.push(c.name);
+      if (c.org) bits.push(c.org);
+      if (c.mobile) bits.push(prettyPhone(c.mobile));
+      if (c.email) bits.push(c.email);
+      if (c.social) bits.push(c.social);
+      if (c.website) bits.push(c.website);
+      if (c.link) bits.push(c.link);
+      if (c.address) bits.push(c.address);
+      return bits.length ? bits.join(' · ') : c.raw;
+    };
+    const card = f.card || {};
+    const clash = [];
+    list.forEach((c) => {
+      if (c.mobile && card.mobile && usPhone(card.mobile) && usPhone(card.mobile) !== c.mobile) {
+        clash.push('Cell — printed ' + prettyPhone(card.mobile) + ', code says ' + prettyPhone(c.mobile));
+      }
+      if (c.email && card.email && String(card.email).toLowerCase() !== c.email) {
+        clash.push('Email — printed ' + card.email + ', code says ' + c.email);
+      }
+    });
+    return '<div class="card" style="border-left:3px solid #3a6ea5">' +
+      '<h3 style="font-size:14px">📱 What the QR code holds</h3>' +
+      list.map((c) => '<div class="sub" style="margin-top:3px"><b>' + esc(label(c)) + ':</b> ' +
+        esc(shown(c)) + '</div>').join('') +
+      (clash.length
+        ? '<div style="margin-top:10px;padding-top:9px;border-top:1px solid #eee">' +
+          '<div class="sub" style="margin-bottom:5px"><b>The code and the print disagree — ' +
+          'the print was kept:</b></div>' +
+          clash.map((x) => '<div class="sub" style="margin-bottom:3px">' + esc(x) + '</div>').join('') +
+          '</div>'
+        : '<div class="sub" style="margin-top:8px">Used only where the card left a blank.</div>') +
+      '</div>';
   }
 
   // What on the card disagrees with what we scraped for the SHOP itself.
@@ -1087,6 +1377,9 @@
       phone: shopPhone,
       phone_other: shopOther || String(S.form.shop_phone_other || '').trim(),
       category: S.form.category || '',
+      booth: String(S.form.booth || '').trim(),
+      social: String(S.form.social || '').trim(),
+      card_code: String(S.form.card_code || '').trim(),
       website: c.website || '',
       notes: alias + 'Met in person, added from the visit log.'
     };
@@ -1129,7 +1422,10 @@
       // looked at these and left them blank, so clearing one actually clears it.
       category: f.category || '', shop_phone_other: f.shop_phone_other.trim(),
       buys_lab: f.buys_lab || '', lab_stock: f.lab_stock || '',
-      next_step_time: f.next_step === APPT ? (f.next_time || '') : ''
+      next_step_time: f.next_step === APPT ? (f.next_time || '') : '',
+      booth: f.booth.trim(),
+      // these two accumulate on the shop and are never cleared from here
+      social: String(f.social || '').trim(), card_code: String(f.card_code || '').trim()
     };
     if (f.is_new_place) payload.new_place = newPlacePayload();
     if (payload.next_step === NO_DATE) {

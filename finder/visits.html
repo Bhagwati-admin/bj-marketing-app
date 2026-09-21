@@ -1164,6 +1164,20 @@
     return n.length === 10 ? n.slice(0, 3) + '-' + n.slice(3, 6) + '-' + n.slice(6) : String(d || '');
   };
 
+  // A "social" line is only useful if a real handle/name follows the platform label.
+  // The card scanner has been seen to return "Instagram: @" when it can see the icon on
+  // the card but not read a handle next to it — that looks captured but carries no actual
+  // contact route, and once saved it silently blocks a later, better read (fill-blank-only
+  // treats it as already filled). Reject anything that leaves under 2 characters after the
+  // platform label / leading @.
+  function usableSocial(s) {
+    const t = String(s || '').trim();
+    if (!t) return false;
+    const i = t.indexOf(':');
+    const rest = (i >= 0 ? t.slice(i + 1) : t).replace(/^@+/, '').trim();
+    return rest.length >= 2;
+  }
+
   function applyCard(c) {
     const f = S.form;
     f.card = c; f.card_used = true;
@@ -1181,7 +1195,7 @@
     // Printed booth number and social handles had nowhere to go before this — they were
     // read, shown, and dropped. Fill only a blank; never paint over what is on file.
     if (c.booth && !String(f.booth || '').trim()) f.booth = String(c.booth);
-    if (c.social && !String(f.social || '').trim()) f.social = String(c.social);
+    if (usableSocial(c.social) && !String(f.social || '').trim()) f.social = String(c.social).trim();
     const got = ['contact_person', 'designation', 'mobile', 'email', 'website', 'address', 'booth']
       .filter((k) => c[k]).length;
     const both = !!f.cardBackB64;
@@ -1208,7 +1222,7 @@
       if (c.mobile && !String(f.met_mobile || '').trim()) { f.met_mobile = prettyPhone(c.mobile); used = true; }
       if (c.email && !String(f.met_email || '').trim()) { f.met_email = String(c.email).toLowerCase(); used = true; }
       if (c.phone_other && !String(f.met_mobile_other || '').trim()) { f.met_mobile_other = c.phone_other; used = true; }
-      if (c.social && !String(f.social || '').trim()) { f.social = c.social; used = true; }
+      if (usableSocial(c.social) && !String(f.social || '').trim()) { f.social = String(c.social).trim(); used = true; }
       if (c.website) { f.code_website = c.website; used = true; }
       // a redirector is kept as a code, never as the shop's website
       if (c.address && !f.is_new_place) { /* shop address is handled by the card panel */ }

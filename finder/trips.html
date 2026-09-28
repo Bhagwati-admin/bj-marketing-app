@@ -1092,8 +1092,18 @@
   async function openPicker() {
     toast('Loading your approved list…');
     const region = (S.trip && S.trip.region) || null;
+    /* Belt and braces against routing to a shop that was merged into another row. A
+       retired row should already be approved=false, and the daily health check gates on
+       exactly that, but a stop on a trip day is the most expensive place for that rule to
+       fail — it is a wasted drive and a second knock on a door already knocked.
+       walk_in stays: those are real shops with no web route left and they belong here.
+       Written as a single .or() because this query has no other one. In index.html the
+       equivalent filter is done in JS instead, because stacking a second .or() there would
+       rely on PostgREST AND-ing them, and `not.in` is a NULL trap on a nullable column. */
     let q = sb.from('lf_places').select('id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment')
-      .eq('hidden', false).eq('approved', true).order('priority', { ascending: false, nullsFirst: false }).limit(500);
+      .eq('hidden', false).eq('approved', true)
+      .or('skip_reason.is.null,skip_reason.eq.walk_in')
+      .order('priority', { ascending: false, nullsFirst: false }).limit(500);
     if (region) q = q.eq('region', region);
     const { data, error } = await q;
     if (error) { toast(error.message, 'err'); return; }

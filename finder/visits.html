@@ -578,6 +578,11 @@
                                       (appt && w.due_time ? ' at ' + esc(prettyTime(w.due_time)) : '')) +
       (w.city ? ' · ' + esc(w.city) : '') + '</div></div>' +
       (w.phone ? '<a class="go" href="tel:' + esc(digits(w.phone)) + '">Call</a>' : '') +
+      /* Done was the only action, so anything he could not do that day had nowhere to go
+         and simply sat there — 15 follow-ups were a fortnight overdue by 28 Sept 2026.
+         A follow-up you cannot move is one you learn to ignore. */
+      (w.kind === 'next_city_visit' ? ''
+        : '<button class="go" onclick="pushFollowup(\'' + w.id + '\',7)">+1wk</button>') +
       '<button class="go" onclick="doneFollowup(\'' + w.id + '\')">Done</button></div>';
   }
   function afterFollowupChange() {
@@ -593,6 +598,28 @@
     S.work = S.work.filter((w) => w.id !== id);
     afterFollowupChange();
     toastAction('Done ✓', 'Undo', () => reopenFollowup(id, row));
+  }
+  /* Push a follow-up forward. Always counted from TODAY, never from the old due date —
+     pushing an overdue item "by a week" must land next week, not in the past. */
+  async function pushFollowup(id, days) {
+    if (!navigator.onLine) return toast('Needs signal to move a follow-up', 'err');
+    const row = S.work.find((w) => w.id === id);
+    if (!row) return;
+    const was = row.due_date;
+    const to = addDaysISO(todayISO(), days);
+    const { error } = await sb.from('lf_followups').update({ due_date: to }).eq('id', id);
+    if (error) return toast(error.message, 'err');
+    row.due_date = to;
+    afterFollowupChange();
+    toastAction('Moved to ' + fmtDate(to), 'Undo', () => undoPush(id, was));
+  }
+  async function undoPush(id, was) {
+    const { error } = await sb.from('lf_followups').update({ due_date: was }).eq('id', id);
+    if (error) return toast(error.message, 'err');
+    const row = S.work.find((w) => w.id === id);
+    if (row) row.due_date = was;
+    afterFollowupChange();
+    toast('Put back to ' + fmtDate(was), 'ok');
   }
   async function reopenFollowup(id, row) {
     const { error } = await sb.from('lf_followups')
@@ -714,7 +741,7 @@
 
   function formHtml() {
     const f = S.form, p = S.place || {};
-    const nudging = !!f.nudged && visitNeedsMore(f) && visitIsBlank(f);
+    const nudging = !!f.nudged && (visitIsBlank(f) || visitNoNext(f)) && visitNeedsMore(f);
     const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
     const dueChips = [['__t', 'Tomorrow'], ['__3', 'In 3 days']];
     if (tripEnd) dueChips.push(['__trip', 'After the trip']);
@@ -811,8 +838,7 @@
 
       (nudging
         ? '<div class="banner" style="border-radius:10px;margin:18px 0 8px;text-align:left">' +
-          'Nothing recorded about what they said, and no next step — so this shop will not ' +
-          'appear in your after-trip list. Add either, or save it as it is.</div>' : '') +
+          esc(nudgeWhy(f)) + '</div>' : '') +
       '<button class="btn" style="margin:' + (nudging ? '0' : '18px') + ' 0 6px" id="save-b" ' +
         'onclick="saveVisit()">' + (nudging ? 'Save anyway' : 'Save this visit') + '</button>' +
       '<button class="btn ghost" style="margin-bottom:26px" onclick="goBack()">Cancel</button>' +
@@ -826,6 +852,18 @@
   function visitIsBlank(f) {
     return !String(f.feedback || '').trim() &&
            (!f.next_step || f.next_step === 'Nothing for now');
+  }
+  /* The gap this closes: a visit WITH feedback but NO next step passed silently, so it
+     never reached the follow-up list and nobody chased it. Measured 28 Sept 2026 — 21 of
+     the logged visits had no next step, including two that took an order. Same discipline
+     as above: prompt once, then let him save. "Nothing for now" is a real answer and
+     satisfies it, which is why that choice is now RECORDED rather than blanked. */
+  function visitNoNext(f) { return visitNeedsMore(f) && !f.next_step; }
+  function nudgeWhy(f) {
+    if (visitIsBlank(f)) return 'Nothing recorded about what they said, and no next step — so this ' +
+      'shop will not appear in your after-trip list. Add either, or save it as it is.';
+    return 'No next step on a shop you met. Nothing will chase this one — pick a step, ' +
+      'or tap “Nothing for now” if there is honestly nothing to do.';
   }
   function setOutcomeF(v) { fset('outcome', S.form.outcome === v ? '' : v); }
   function setInterest(v) { fset('interest', S.form.interest === v ? '' : v); }
@@ -1402,7 +1440,7 @@
   async function saveVisit() {
     const f = S.form;
     if (!f.outcome) return toast('Pick how it went first', 'err');
-    if (visitNeedsMore(f) && visitIsBlank(f) && !f.nudged) {
+    if (visitNeedsMore(f) && (visitIsBlank(f) || visitNoNext(f)) && !f.nudged) {
       f.nudged = true; render();
       const w = document.querySelector('.banner[style*="border-radius"]');
       if (w) w.scrollIntoView({ block: 'center' });
@@ -1426,7 +1464,11 @@
       objections: f.objections, objection_notes: f.objection_notes.trim(),
       order_type: f.order_type, order_value: f.order_value === '' ? '' : String(f.order_value),
       feedback: f.feedback.trim(),
-      next_step: f.next_step === 'Nothing for now' ? '' : f.next_step,
+      // "Nothing for now" is RECORDED, not blanked. Blanking it made a deliberate "no
+      // follow-up needed" indistinguishable from never having answered, so the gap could
+      // not be measured or chased. It creates no follow-up either way — that is driven by
+      // payload.followup below, which this value never satisfies.
+      next_step: f.next_step,
       next_step_due: (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE)
         ? f.next_due : '',
       contact_source: f.card_used ? 'card_scan' : 'typed',
@@ -1664,7 +1706,7 @@
 
   Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
     setOutcomeF, setInterest, setRole, setGrade, setBuysLab, setLabStock, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
-    onPick, newLead, onCSearch, openClient, doneFollowup, reopenFollowup, signOut });
+    onPick, newLead, onCSearch, openClient, doneFollowup, reopenFollowup, pushFollowup, undoPush, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
   boot();

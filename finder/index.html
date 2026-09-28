@@ -585,6 +585,19 @@
       if (error) { toast(error.message, 'err'); return; }
       if (rows === null || (data && data.length > rows.length)) rows = data || [];
     }
+    /* A row retired as a duplicate or a branch must not be browsable, approvable or
+       routable: another row is the keeper and holds the opener. Until now the flag existed
+       only in the database, so 417 retired rows were still live in here — the exact
+       double-approach the flag was created to prevent.
+       walk_in is NOT a retirement. Those are real shops with no web route left; they keep
+       their openers and they belong on the route, so they stay visible.
+       Filtered in JS rather than in the query, deliberately: `.not('skip_reason','in',...)`
+       is a trap, because `skip_reason not in (...)` evaluates to NULL — not true — for the
+       twelve thousand rows whose skip_reason is NULL, and would silently hide almost the
+       whole table. That exact NULL trap has already cost this project a queue once. */
+    const retiredHidden = rows.filter((p) => p.skip_reason === 'duplicate' || p.skip_reason === 'branch').length;
+    rows = rows.filter((p) => p.skip_reason !== 'duplicate' && p.skip_reason !== 'branch');
+    S.retiredHidden = retiredHidden;
     S.results = rows; S.areaLabel = label; S.view = 'list';
     S.filter = rows.some(r => r.approved == null) ? 'pending' : 'all';
     renderResults();
@@ -722,7 +735,8 @@
         <button class="${S.view==='list'?'on':''}" onclick="setView('list')">List</button>
         <button class="${S.view==='map'?'on':''}" onclick="setView('map')">Map</button>
       </div>
-      <div class="lf-count">${esc(S.areaLabel)} — ${cc.all} jewellers found</div>
+      <div class="lf-count">${esc(S.areaLabel)} — ${cc.all} jewellers found${
+        S.retiredHidden ? ` · ${S.retiredHidden} merged into another row and hidden` : ''}</div>
       <div class="notice">⚠️ Seed list (OpenStreetMap) — this area hasn't been deep-scanned yet, so it's incomplete. Before working an area, ask Claude to <b>deep scan</b> it: missing stores get added, each one screened with evidence and pitch notes. Approve after the scan — except stores you already know.</div>
       <div id="lf-list" style="${S.view==='map'?'display:none':''}">
         ${list.length ? list.map(card).join('') : '<div class="empty"><div class="big">🔍</div>Nothing here for this filter.</div>'}

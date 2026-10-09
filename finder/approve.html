@@ -48,6 +48,14 @@
     .p4 { background: #fcefd2; color: #7a4a02; }
     .p3 { background: #eee9f2; color: #5b4a6b; }
     .warn { background: #fbe1df; color: #a12b24; }
+    .mb { background: #f1edf3; color: #5b4a6b; }
+    .maybe-why { font-size: 12.5px; margin-top: 6px; color: #5b4a6b; background: #f6f2f8;
+                 border-radius: 8px; padding: 6px 9px; }
+    .maybe-link { display: block; width: 100%; text-align: left; background: #fff; border: 1.5px dashed #cdbfd6;
+                  border-radius: var(--rd); padding: 12px 14px; margin: 6px 0 9px; font-size: 13.5px;
+                  color: #5b4a6b; cursor: pointer; font-family: inherit; }
+    .note { font-size: 13px; color: var(--mu); background: #fff; border-radius: var(--rd);
+            padding: 11px 13px; margin-bottom: 11px; box-shadow: var(--sh); }
     .mini { display: flex; gap: 12px; margin-top: 8px; font-size: 12.5px; flex-wrap: wrap; }
     .mini a, .mini button { color: var(--mar); background: none; border: 0; padding: 0;
                             font-size: 12.5px; text-decoration: none; cursor: pointer; font-family: inherit; }
@@ -143,7 +151,7 @@
   const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
 
   const S = { region: 'FL', cities: [], city: null, rows: [], picks: new Set(),
-              done: 0, totals: null, busy: false, filter: 'p4' };
+              done: 0, totals: null, busy: false, filter: 'p4', mode: 'feed', prevFilter: 'p4' };
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -187,15 +195,19 @@
     const { count } = await sb.from('lf_places').select('id', { count: 'exact', head: true })
       .eq('hidden', false).eq('region', S.region).eq('approved', true);
     S.totals = { approved: count || 0,
-                 ready: S.cities.reduce((a, c) => a + c.ready, 0) };
+                 ready: S.cities.reduce((a, c) => a + c.ready, 0),
+                 maybe: S.cities.reduce((a, c) => a + (c.maybe || 0), 0) };
   }
-  async function loadCity(city) {
-    S.city = city; S.rows = []; S.picks = new Set();
-    const { data, error } = await sb.from('lf_places')
-      .select('id,name,city,region,address,postcode,phone,website,priority,summary,pitch_angle,good_at,opening_hours,latitude,longitude')
-      .eq('hidden', false).eq('verdict', 'fit').is('skip_reason', null).is('approved', null)
+  /* What counts as "waiting on your yes or no" is defined ONCE, in SQL: the view lf_ready,
+     split by a Claude grade into lf_feed and lf_feed_maybe. This page, the city counts and the
+     health check all read those views, so they can never disagree. A MAYBE shop is not
+     rejected: it keeps its verdict and opener, and sits one tap away. Ungraded shops show in
+     the feed (fail open), so new fits are never hidden if grading ever stops. */
+  async function loadCity(city, mode) {
+    S.city = city; S.mode = mode === 'maybe' ? 'maybe' : 'feed'; S.rows = []; S.picks = new Set();
+    const { data, error } = await sb.from(S.mode === 'maybe' ? 'lf_feed_maybe' : 'lf_feed')
+      .select('id,name,city,region,address,postcode,phone,website,priority,summary,pitch_angle,good_at,opening_hours,latitude,longitude,feed_reason,feed_model')
       .eq('region', S.region).eq('city', city)
-      .not('approach_msg', 'is', null).not('latitude', 'is', null)
       .order('priority', { ascending: false, nullsFirst: false }).order('name');
     if (error) { toast(error.message, 'err'); return; }
     S.rows = data || [];
@@ -216,10 +228,11 @@
   function render() {
     const v = $('view');
     $('hd-back').style.display = S.city ? '' : 'none';
-    $('hd-title').textContent = S.city ? S.city : 'Approve stores';
+    $('hd-title').textContent = S.city ? S.city + (S.mode === 'maybe' ? ' · Maybe' : '') : 'Approve stores';
     if (S.totals) {
       $('prog').textContent = S.region + ': ' + S.totals.approved + ' approved · ' +
-        S.totals.ready + ' waiting on your yes or no';
+        S.totals.ready + ' waiting on your yes or no' +
+        (S.totals.maybe ? ' · ' + S.totals.maybe + ' in maybe' : '');
     }
     if (!S.city) { $('bar').style.display = 'none'; v.innerHTML = citiesHtml(); return; }
     v.innerHTML = rowsHtml();
@@ -236,21 +249,48 @@
         '<button class="chip' + (r === S.region ? ' on' : '') + '" onclick="setRegion(\'' + r + '\')">' +
         esc(r) + '</button>').join('') + '</div>';
     }
-    if (!S.cities.length) return h + '<div class="empty">Nothing waiting in ' + esc(S.region) +
+    const feedCities = S.cities.filter((c) => c.ready > 0);
+    const maybeOnly = S.cities.filter((c) => c.ready === 0 && (c.maybe || 0) > 0);
+    if (!feedCities.length && !maybeOnly.length) return h + '<div class="empty">Nothing waiting in ' + esc(S.region) +
       '. Every store with an opener and a map pin has had your decision.</div>';
-    h += '<div class="sec-t">Work a city at a time — these are the ones the trip planner can route</div>';
-    h += S.cities.map((c) =>
-      '<div class="city" onclick="openCity(' + JSON.stringify(JSON.stringify(c.city)).replace(/"/g, '&quot;') + ')">' +
-      '<div class="nm">' + esc(c.city) + '</div><div class="ct">' + c.ready + ' ready' +
-      (c.p5 ? ' · <b style="color:#16663c">' + c.p5 + ' sell lab-grown</b>' : '') +
-      (c.p4 ? ' · ' + c.p4 + ' strong' : '') + '</div><div style="color:#bbb">›</div></div>').join('');
+    const cityArg = (c) => JSON.stringify(JSON.stringify(c.city)).replace(/"/g, '&quot;');
+    if (feedCities.length) {
+      h += '<div class="sec-t">Work a city at a time — these are the ones the trip planner can route</div>';
+      h += feedCities.map((c) =>
+        '<div class="city" onclick="openCity(' + cityArg(c) + ')">' +
+        '<div class="nm">' + esc(c.city) + '</div><div class="ct">' + c.ready + ' ready' +
+        (c.p5 ? ' · <b style="color:#16663c">' + c.p5 + ' sell lab-grown</b>' : '') +
+        (c.p4 ? ' · ' + c.p4 + ' strong' : '') +
+        (c.maybe ? ' · <span style="color:#8a7b94">' + c.maybe + ' maybe</span>' : '') +
+        '</div><div style="color:#bbb">›</div></div>').join('');
+    } else {
+      h += '<div class="empty">Nothing in your feed for ' + esc(S.region) + '.</div>';
+    }
+    if (maybeOnly.length) {
+      h += '<div class="sec-t">Only maybes left — thin evidence, not rejected</div>';
+      h += maybeOnly.map((c) =>
+        '<div class="city" onclick="openCity(' + cityArg(c) + ',\'maybe\')">' +
+        '<div class="nm" style="color:#5b4a6b">' + esc(c.city) + '</div><div class="ct">' + c.maybe + ' maybe' +
+        '</div><div style="color:#bbb">›</div></div>').join('');
+    }
     return h;
   }
+  function maybeLinkHtml() {
+    const c = S.cities.find((x) => x.city === S.city);
+    const n = c ? (c.maybe || 0) : 0;
+    if (S.mode !== 'feed' || !n) return '';
+    return '<button class="maybe-link" onclick="openMaybe()">' + n + (n === 1 ? ' more shop' : ' more shops') +
+      ' in Maybe — thin evidence, kept out of your feed ›</button>';
+  }
   function rowsHtml() {
-    if (!S.rows.length) return '<div class="empty">Nothing left here.</div>';
+    const isMaybe = S.mode === 'maybe';
+    const banner = isMaybe ? '<div class="note">These were graded <b>maybe</b>: the evidence on file is thin — ' +
+      'no confirmed storefront, or no sign of what they sell. Nothing here is rejected. ' +
+      'Move one to your feed if you know better, or approve it straight from here.</div>' : '';
+    if (!S.rows.length) return banner + '<div class="empty">Nothing left here.</div>' + maybeLinkHtml();
     const counts = { p5: 0, p4: 0, all: S.rows.length };
     for (const r of S.rows) { const p = r.priority || 0; if (p === 5) counts.p5++; if (p >= 4) counts.p4++; }
-    let h = '<div class="quick">' +
+    let h = banner + '<div class="quick">' +
       '<button class="chip' + (S.filter === 'p5' ? ' on' : '') + '" onclick="setFilter(\'p5\')">Tick the ' + counts.p5 + ' lab-grown</button>' +
       '<button class="chip' + (S.filter === 'p4' ? ' on' : '') + '" onclick="setFilter(\'p4\')">Tick the ' + counts.p4 + ' strongest</button>' +
       '<button class="chip' + (S.filter === 'all' ? ' on' : '') + '" onclick="setFilter(\'all\')">Tick all ' + counts.all + '</button>' +
@@ -268,25 +308,72 @@
            p === 4 ? '<span class="pill p4">strong</span>' : '<span class="pill p3">worth a look</span>') +
           (tight ? '<span class="pill warn">tight hours</span>' : '') + '</div>' +
         '<div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ') || 'no address') + '</div>' +
+        (isMaybe && r.feed_reason ? '<div class="maybe-why"><b>Why maybe:</b> ' + esc(r.feed_reason) + '</div>' : '') +
         (why ? '<div class="why">' + esc(why) + '</div>' : '') +
         (tight ? '<div class="why"><b>Hours:</b> ' + esc(String(r.opening_hours).slice(0, 110)) + '</div>' : '') +
         '<div class="mini">' +
           '<a target="_blank" rel="noopener" href="' + esc(mapsLink(r)) + '">🗺️ Map</a>' +
           (r.website ? '<a target="_blank" rel="noopener" href="' + esc(r.website) + '">🌐 Site</a>' : '') +
           (r.phone ? '<a href="tel:' + esc(digits(r.phone)) + '">📞 ' + esc(r.phone) + '</a>' : '') +
+          (isMaybe ? '<button onclick="moveToFeed(\'' + r.id + '\')">Move to feed</button>' : '') +
           '<button onclick="askReject(\'' + r.id + '\')">Not a fit</button>' +
         '</div></div></div>';
     }).join('');
-    return h;
+    return h + maybeLinkHtml();
   }
 
   /* ---------- actions ---------- */
   function setRegion(r) { S.region = r; S.city = null; loadCities().then(render); }
-  function openCity(json) { loadCity(typeof json === 'string' ? JSON.parse(json) : json); }
-  function back() { S.city = null; S.rows = []; S.picks = new Set(); loadCities().then(render); }
+  function openCity(json, mode) {
+    const city = typeof json === 'string' ? JSON.parse(json) : json;
+    if (mode === 'maybe') { S.prevFilter = S.filter; S.filter = 'none'; }
+    loadCity(city, mode);
+  }
+  // Maybes are never pre-ticked: opening the list must not arm a bulk approve.
+  function openMaybe() { S.prevFilter = S.filter; S.filter = 'none'; loadCity(S.city, 'maybe'); }
+  function back() {
+    if (S.mode === 'maybe') {
+      S.filter = S.prevFilter || 'p4';
+      const c = S.cities.find((x) => x.city === S.city);
+      if (S.city && c && c.ready > 0) { loadCity(S.city, 'feed'); return; }
+    }
+    S.city = null; S.mode = 'feed'; S.rows = []; S.picks = new Set(); loadCities().then(render);
+  }
   function setFilter(f) { S.filter = f; applyFilter(); }
   function toggle(id) { if (S.picks.has(id)) S.picks.delete(id); else S.picks.add(id); render(); }
   function clearPicks() { S.picks = new Set(); render(); }
+
+  // Adjust the counts of whichever list the shops just left.
+  function bump(d) {
+    const key = S.mode === 'maybe' ? 'maybe' : 'ready';
+    if (S.totals) S.totals[key] = Math.max(0, (S.totals[key] || 0) + d);
+    const c = S.cities.find((x) => x.city === S.city); if (c) c[key] = Math.max(0, (c[key] || 0) + d);
+  }
+
+  /* Ravi overrides the grader. feed_model = 'manual' makes it final: the grader's write
+     function refuses to touch a row he moved by hand. */
+  async function moveToFeed(id) {
+    const r = S.rows.find((x) => x.id === id); if (!r) return;
+    const { error } = await sb.from('lf_places')
+      .update({ feed_tier: 'feed', feed_model: 'manual', feed_reason: 'Moved to the feed by Ravi' })
+      .eq('id', id).eq('feed_tier', 'maybe').is('approved', null);
+    if (error) return toast(error.message, 'err');
+    S.rows = S.rows.filter((x) => x.id !== id); S.picks.delete(id);
+    bump(-1);
+    if (S.totals) S.totals.ready += 1;
+    const c = S.cities.find((x) => x.city === S.city); if (c) c.ready += 1;
+    render();
+    toast(r.name + ' moved to your feed', 'ok', 'Undo', () => undoMove(r));
+  }
+  async function undoMove(r) {
+    const { error } = await sb.from('lf_places')
+      .update({ feed_tier: 'maybe', feed_model: r.feed_model || null, feed_reason: r.feed_reason || null })
+      .eq('id', r.id).eq('feed_model', 'manual').is('approved', null);
+    if (error) return toast(error.message, 'err');
+    toast('Put ' + r.name + ' back in maybe', 'ok');
+    await loadCities();
+    if (S.city) await loadCity(S.city, S.mode); else render();
+  }
 
   // PostgREST puts the id list in the URL, so send it in chunks rather than one huge request.
   async function chunked(ids, patch) {
@@ -310,8 +397,7 @@
       const n = await chunked(ids, { approved: true, verdict: 'fit', verdict_source: 'manual' });
       S.rows = S.rows.filter((r) => !S.picks.has(r.id));
       S.picks = new Set();
-      if (S.totals) { S.totals.approved += n; S.totals.ready -= n; }
-      const c = S.cities.find((x) => x.city === S.city); if (c) c.ready = Math.max(0, c.ready - n);
+      bump(-n); if (S.totals) S.totals.approved += n;
       S.busy = false;
       applyFilter();
       toast(n + (n === 1 ? ' store approved' : ' stores approved') + ' — routable in the trip planner now',
@@ -332,7 +418,7 @@
       }
       toast('Put ' + n + ' back for review', 'ok');
       await loadCities();
-      if (S.city) await loadCity(S.city); else render();
+      if (S.city) await loadCity(S.city, S.mode); else render();
     } catch (e) { toast(String(e.message || e), 'err'); }
   }
 
@@ -359,8 +445,7 @@
     if (error) return toast(error.message, 'err');
     S.rows = S.rows.filter((r) => r.id !== id);
     S.picks.delete(id);
-    if (S.totals) S.totals.ready = Math.max(0, S.totals.ready - 1);
-    const c = S.cities.find((x) => x.city === S.city); if (c) c.ready = Math.max(0, c.ready - 1);
+    bump(-1);
     render();
     toast('Rejected — ' + reason, 'ok');
   }
@@ -384,8 +469,8 @@
     render();
   }
 
-  Object.assign(window, { setRegion, openCity, back, setFilter, toggle, clearPicks,
-    approvePicked, undoApprove, askReject, closeSheet, doReject, signOut });
+  Object.assign(window, { setRegion, openCity, openMaybe, back, setFilter, toggle, clearPicks,
+    approvePicked, undoApprove, askReject, closeSheet, doReject, moveToFeed, undoMove, signOut });
   $('g-go').onclick = doSignIn;
   $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
   boot();

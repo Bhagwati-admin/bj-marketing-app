@@ -46,7 +46,14 @@
     .lf-viewtabs { display: flex; gap: 8px; margin-bottom: 12px; }
     .lf-viewtabs button { flex: 1; border: 1.5px solid var(--line); background: #fff; border-radius: 11px; padding: 9px; font-size: 14px; font-weight: 650; color: #5d5765; cursor: pointer; }
     .lf-viewtabs button.on { background: var(--maroon); border-color: var(--maroon); color: #fff; }
-    .lf-home-stats { display: flex; gap: 10px; margin-bottom: 14px; }
+    /* State tiles: a swipeable row of their own. Before 18 Oct the row was a plain flex line, so with
+       6+ states the tiles pushed the PAGE wider than the phone and a swipe dragged the whole page. */
+    html, body { overflow-x: clip; }   /* clip, not hidden: hidden would break the sticky top bar */
+    .lf-home-stats { display: flex; gap: 10px; margin: 0 -16px 14px; padding: 4px 16px 10px;
+      overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+      scroll-snap-type: x proximity; scroll-padding: 0 16px; scrollbar-width: none; touch-action: pan-x pan-y; }
+    .lf-home-stats::-webkit-scrollbar { display: none; }
+    .lf-home-stats .stat { flex: 0 0 auto; min-width: 96px; scroll-snap-align: start; }
     .lf-pipe { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px; margin-bottom: 14px; }
     .lf-pipe h4 { margin: 0 0 9px; font-size: 14px; }
     .lf-bar { height: 10px; background: #f0e9dc; border-radius: 999px; overflow: hidden; }

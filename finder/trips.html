@@ -25,6 +25,12 @@
     .chip-out { background: #fcefd2; color: #92600a; }
     .chip-no { background: #fbe1df; color: #a12b24; }
     .chip-warn { background: #fbe1df; color: #a12b24; }
+    .hrs { display: inline-block; font-size: 12px; font-weight: 650; border-radius: 999px; padding: 2px 9px; margin-top: 5px; }
+    .hrs-open { background: #e3f2e7; color: #16663c; }
+    .hrs-closed { background: #fbe1df; color: #a12b24; }
+    .hrs-appt { background: #fcefd2; color: #92600a; }
+    .hrs-unk { background: #eee9f2; color: #5b4a6b; font-weight: 550; }
+    .pick-item.closed { opacity: .55; }
     .tp-row2 { display: flex; gap: 10px; }
     .tp-row2 .field { flex: 1; }
     .tp-ends { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 15px; margin-bottom: 13px; }
@@ -172,6 +178,139 @@
     if (!d) return '';
     const dt = new Date(d + 'T00:00:00');
     return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+  /* ---------- opening hours (28 Oct) ----------
+     Ravi: not every area is closed at the weekend — some shut on a weekday to work the weekend
+     rush — so a day must show, per stop, whether that shop is open on THAT date.
+     opening_hours is free text written by research runs ("Mon-Fri 10:00-18:00; Sat 10-4; Sun closed",
+     OSM "Mo-Sa 10:00-19:30", "closed Sun and Mon"). parseHours turns it into seven days, each an
+     [open, close] in minutes, 'closed', 'appt' or null (not stated). A day missing from a listing of
+     three or more days counts as closed (that is what "Mo-Fr 09:30-18:00" means). When a shop has
+     no hours, other approved shops at the same street address (a building), then in the same city,
+     give a hint — labelled as a hint, never shown as a fact. */
+  const DAYN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const DAYTOK = [['su','sun','sunday','sundays'],['mo','mon','monday','mondays'],['tu','tue','tues','tuesday','tuesdays'],
+    ['we','wed','weds','wednesday','wednesdays'],['th','thu','thur','thurs','thursday','thursdays'],['fr','fri','friday','fridays'],
+    ['sa','sat','saturday','saturdays']];
+  function dayIdx(tok) { tok = String(tok || '').toLowerCase().replace(/\.$/, ''); for (let i = 0; i < 7; i++) if (DAYTOK[i].includes(tok)) return i; return -1; }
+  const DAYRE = '(sundays?|sun|su|mondays?|mon|mo|tuesdays?|tues|tue|tu|wednesdays?|weds|wed|we|thursdays?|thurs|thur|thu|th|fridays?|fri|fr|saturdays?|sat|sa)\\.?';
+  function hm(h, m, ap) {
+    h = +h; m = +(m || 0);
+    if (ap) { ap = ap.toLowerCase(); if (ap[0] === 'p' && h < 12) h += 12; if (ap[0] === 'a' && h === 12) h = 0; }
+    return h * 60 + m;
+  }
+  function parseHours(txt) {
+    const H = { days: [null, null, null, null, null, null, null], appt: /appoint/i.test(txt || ''), raw: txt || '' };
+    if (!txt) return H;
+    const t = String(txt).replace(/\([^)]*\)/g, ' ').replace(/[–—]/g, '-').replace(/\s+to\s+/gi, '-')
+      .replace(/\bwe\s+(?=[a-z]{2,})/gi, ' ').replace(/\s*-\s*/g, '-').replace(/&/g, ' and ');
+    const reRange = new RegExp('\\b' + DAYRE + '-' + DAYRE + '(?![a-z])', 'gi');
+    const reDay = new RegExp('\\b' + DAYRE + '(?![a-z])', 'gi');
+    const reTime = /(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?-(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?/i;
+    const segs = t.split(/[;\n]|,(?=\s*(?:closed|(?:su|mo|tu|we|th|fr|sa)[a-z]*\b))/i);
+    let lastVal = null, pending = [];
+    for (const seg of segs) {
+      const sg = seg.trim(); if (!sg) continue;
+      const days = new Set();
+      const rest = sg.replace(reRange, (m, a, b) => {
+        const i = dayIdx(a), j = dayIdx(b); if (i < 0 || j < 0) return m;
+        for (let k = i, n = 0; n < 7; k = (k + 1) % 7, n++) { days.add(k); if (k === j) break; }
+        return ' ';
+      });
+      rest.replace(reDay, (m, a) => { const i = dayIdx(a); if (i >= 0) days.add(i); return ' '; });
+      if (/\b(daily|every ?day|7 days)\b/i.test(sg)) for (let k = 0; k < 7; k++) days.add(k);
+      const closed = /\b(closed|off)\b/i.test(sg);
+      const tm = sg.match(reTime);
+      const apptOnly = /appointment/i.test(sg) && !tm;
+      let val = null;
+      if (closed && !tm) val = 'closed';
+      else if (tm) {
+        const a = hm(tm[1], tm[2], tm[3]);
+        let b = hm(tm[4], tm[5], tm[6]);
+        if (!tm[6] && b <= a) b += 12 * 60;   // "10-5" or "9:30am-5:30" means an afternoon close
+        val = [a, b];
+      } else if (apptOnly) val = 'appt';
+      if (val === null) {
+        // a bare list of days split off by a comma: "closed Sun, Mon, Tue" carries the closed
+        // forward; "Mon, Wed 10-5" waits for the time that follows.
+        if (days.size && lastVal === 'closed') days.forEach(k => { H.days[k] = 'closed'; });
+        else days.forEach(k => pending.push(k));
+        continue;
+      }
+      if (days.size && pending.length) { pending.forEach(k => days.add(k)); pending = []; }
+      lastVal = val;
+      if (!days.size) { if (segs.length === 1 && Array.isArray(val)) { for (let k = 0; k < 7; k++) days.add(k); } else continue; }
+      days.forEach(k => { H.days[k] = val; });
+    }
+    return H;
+  }
+  function fmtMin(x) { const h = Math.floor(x / 60) % 24, m = x % 60; return ((h % 12) || 12) + (m ? ':' + String(m).padStart(2, '0') : '') + (h >= 12 ? 'pm' : 'am'); }
+  function dowOf(dateStr) { return dateStr ? new Date(dateStr + 'T12:00:00').getDay() : null; }
+  // one shop on one date: {st:'open'|'closed'|'appt'|'unknown'|'raw', txt}
+  function hoursOn(p, dateStr) {
+    if (!p) return null;
+    const H = p._h || (p._h = parseHours(p.opening_hours));
+    const dow = dowOf(dateStr);
+    if (dow == null) return p.opening_hours ? { st: 'raw', txt: p.opening_hours } : null;
+    const v = H.days[dow], known = H.days.filter(x => x !== null).length;
+    if (v === 'closed') return { st: 'closed', txt: 'Closed ' + DAYN[dow] + 's' };
+    if (v === 'appt') return { st: 'appt', txt: DAYN[dow] + ' by appointment' };
+    if (Array.isArray(v)) return { st: H.appt ? 'appt' : 'open', txt: DAYN[dow].slice(0, 3) + ' ' + fmtMin(v[0]) + '–' + fmtMin(v[1]) + (H.appt ? ' · appointment' : '') };
+    if (H.appt) return { st: 'appt', txt: 'By appointment — call first' };
+    if (known >= 3) return { st: 'closed', txt: 'Not open ' + DAYN[dow] + 's (not in its listed hours)' };
+    const hint = neighbourHint(p, dow);
+    return { st: 'unknown', txt: 'Hours not on file' + (hint ? ' · ' + hint : '') };
+  }
+  // what nearby approved shops with known hours do on that weekday
+  function neighbourHint(p, dow) {
+    const pool = S.hpool || [];
+    const street = x => String(x || '').toLowerCase().replace(/\b(suite|ste|unit|booth|space|fl|floor)\b.*$/, '').replace(/#.*$/, '').replace(/[^a-z0-9]/g, '');
+    const tally = rows => {
+      let open = 0, shut = 0;
+      rows.forEach(r => {
+        const H = r._h || (r._h = parseHours(r.opening_hours)); const v = H.days[dow];
+        const known = H.days.filter(x => x !== null).length;
+        if (Array.isArray(v) || v === 'appt') open++; else if (v === 'closed' || known >= 3) shut++;
+      });
+      return { open, shut, n: open + shut };
+    };
+    if (p.address) {
+      const k = street(p.address);
+      const t = tally(pool.filter(r => r.id !== p.id && r.address && street(r.address) === k));
+      if (t.n >= 2) return t.shut > t.open ? `this building is usually closed ${DAYN[dow]}s (${t.shut} of ${t.n} shops)` : `this building is open ${DAYN[dow]}s (${t.open} of ${t.n} shops)`;
+    }
+    if (p.city) {
+      const t = tally(pool.filter(r => r.id !== p.id && r.city === p.city));
+      if (t.n >= 4 && t.shut / t.n >= 0.5) return `${t.shut} of ${t.n} ${p.city} shops with known hours close on ${DAYN[dow]}s`;
+    }
+    return '';
+  }
+  function hoursChip(h) {
+    if (!h) return '';
+    const cls = h.st === 'open' ? 'hrs-open' : h.st === 'closed' ? 'hrs-closed' : h.st === 'appt' ? 'hrs-appt' : 'hrs-unk';
+    const ic = h.st === 'open' ? '🕘 ' : h.st === 'closed' ? '⛔ ' : h.st === 'appt' ? '📅 ' : '';
+    return `<div><span class="hrs ${cls}">${ic}${esc(h.txt)}</span></div>`;
+  }
+  // approved shops in the trip's state with hours on file: the neighbours for hints
+  async function loadHoursPool() {
+    const region = (S.trip && S.trip.region) || null;
+    if (S.hpool && S.hpoolRegion === region) return;
+    let q = sb.from('lf_places').select('id,address,city,opening_hours')
+      .eq('hidden', false).eq('approved', true).not('opening_hours', 'is', null).limit(1000);
+    if (region) q = q.eq('region', region);
+    const { data } = await q;
+    S.hpool = data || []; S.hpoolRegion = region;
+  }
+  // Ravi 23 Oct: an online-only seller has no shop floor to walk into, so it is not a trip
+  // stop. Same rule as the database view lf_pitch_route.
+  function onlineOnly(p) {
+    if (p.lead_kind !== 'online_seller') return false;
+    if (p.premises === 'retail_store') return false;
+    const addr = !!(p.address && String(p.address).trim());
+    if (p.online_kind === 'appointment' && addr) return false;
+    if (!p.online_kind && p.premises === 'office_suite' && addr) return false;
+    if (!p.online_kind && !p.premises) return false;
+    return true;
   }
   function km(a, b) {
     if (!a || !b || a.lat == null || b.lat == null) return null;
@@ -599,9 +738,10 @@
       S.days = ds || [];
     }
     const { data: st } = await sb.from('lf_stops')
-      .select('*, place:lf_places(id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment,pitch_angle)')
+      .select('*, place:lf_places(id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment,pitch_angle,opening_hours)')
       .eq('day_id', id).order('seq');
     S.stops = (st || []).map(withPt);
+    await loadHoursPool();
     renderDay();
   }
   function renderDay() {
@@ -631,6 +771,7 @@
         <div class="tp-body">
           <div class="nm">${esc(p.name || 'Unknown')}${p.priority >= 5 ? ' ⭐' : ''}</div>
           ${addr ? `<div class="ad">${esc(addr)}</div>` : '<div class="ad">no address on file</div>'}
+          ${hoursChip(hoursOn(p, d.day_date))}
           ${p.pitch_angle ? `<div class="ad" style="margin-top:5px;color:var(--maroon)">🎯 ${esc(p.pitch_angle.split('. ')[0])}.</div>` : ''}
           <div class="tp-mini">
             ${p.phone ? `<a href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>` : ''}
@@ -646,6 +787,10 @@
     const legs = navLegs(d, stops);
     const over = m.count > MAX_STOPS || m.total > MAX_HOURS * 60;
     const light = m.count && m.count < SOFT_STOPS;
+    const hs = d.day_date ? stops.filter(s => s.status === 'planned').map(s => hoursOn(s.place || {}, d.day_date)) : [];
+    const nClosed = hs.filter(h => h && h.st === 'closed').length;
+    const nAppt = hs.filter(h => h && h.st === 'appt').length;
+    const nUnk = hs.filter(h => !h || h.st === 'unknown').length;
     $app.innerHTML = shell(`
       <div class="tp-ends">
         <div class="lbl">Start and end</div>
@@ -664,6 +809,10 @@
       <div class="tp-sum">
         <div class="big">${m.count} stop${m.count === 1 ? '' : 's'} · ≈ ${hrs(m.total)} on the clock</div>
         <div class="det">About ${hrs(m.drive)} driving${m.dist ? ' (' + Math.round(m.dist * 0.621371) + ' mi)' : ''} plus ${hrs(m.dwell)} in the shops at ${d.dwell_min} min each.${m.unknown ? ` ${m.unknown} stop${m.unknown === 1 ? ' has' : 's have'} no map pin — not counted in the drive time.` : ''}</div>
+        ${!d.day_date && m.count ? '<div class="tp-warn" style="background:#fcefd2;color:#92600a">Set this day’s date to check which shops are open that day.</div>' : ''}
+        ${nClosed ? `<div class="tp-warn">⛔ ${nClosed} stop${nClosed === 1 ? ' is' : 's are'} closed on ${DAYN[dowOf(d.day_date)]} — move ${nClosed === 1 ? 'it' : 'them'} to another day.</div>` : ''}
+        ${nAppt ? `<div class="tp-warn" style="background:#fcefd2;color:#92600a">📅 ${nAppt} stop${nAppt === 1 ? ' is' : 's are'} by appointment — call ahead.</div>` : ''}
+        ${nUnk && d.day_date ? `<div class="det" style="margin-top:8px">${nUnk} stop${nUnk === 1 ? ' has' : 's have'} no hours on file — worth a call before you drive.</div>` : ''}
         ${over ? `<div class="tp-warn">⚠️ This day is overloaded — ${m.count > MAX_STOPS ? `${m.count} stops is past the 12 you can realistically make` : 'over 9 hours'}. Move a couple to another day.</div>` : ''}
         ${light ? `<div class="tp-good">Room for ${SOFT_STOPS - m.count} more — a packed day is 8–12 stops.</div>` : ''}
         ${!over && !light && m.count ? '<div class="tp-good">Well packed ✓</div>' : ''}
@@ -1100,13 +1249,23 @@
        Written as a single .or() because this query has no other one. In index.html the
        equivalent filter is done in JS instead, because stacking a second .or() there would
        rely on PostgREST AND-ing them, and `not.in` is a NULL trap on a nullable column. */
-    let q = sb.from('lf_places').select('id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment')
-      .eq('hidden', false).eq('approved', true)
-      .or('skip_reason.is.null,skip_reason.eq.walk_in')
-      .order('priority', { ascending: false, nullsFirst: false }).limit(500);
-    if (region) q = q.eq('region', region);
-    const { data, error } = await q;
+    // Paged: one response is capped at 1,000 rows, and Florida alone has more approved shops.
+    let data = [], error = null;
+    for (let from = 0; from < 6000; from += 1000) {
+      let q = sb.from('lf_places').select('id,name,address,city,region,postcode,phone,latitude,longitude,priority,segment,opening_hours,lead_kind,online_kind,premises')
+        .eq('hidden', false).eq('approved', true)
+        .or('skip_reason.is.null,skip_reason.eq.walk_in')
+        .order('priority', { ascending: false, nullsFirst: false }).order('id').range(from, from + 999);
+      if (region) q = q.eq('region', region);
+      const r = await q;
+      if (r.error) { error = r.error; break; }
+      data = data.concat(r.data || []);
+      if (!r.data || r.data.length < 1000) break;
+    }
     if (error) { toast(error.message, 'err'); return; }
+    const nOnline = data.filter(onlineOnly).length;
+    data = data.filter(p => !onlineOnly(p));
+    await loadHoursPool();
     const dayIds = S.days.map(d => d.id);
     let used = {}, retry = {};
     if (dayIds.length) {
@@ -1121,15 +1280,16 @@
     const rows = (data || []).map(p => {
       const pt = (p.latitude != null) ? { lat: p.latitude, lng: p.longitude } : null;
       const d = anchor && pt ? km(anchor, pt) : null;
-      return { p, d, used: used[p.id], retry: !!retry[p.id] };
+      const h = hoursOn(p, S.day.day_date);
+      return { p, d, used: used[p.id], retry: !!retry[p.id], h, closed: !!(h && h.st === 'closed') };
     });
-    rows.sort((a, b) => (b.retry - a.retry) || ((a.d == null) - (b.d == null)) || ((a.d || 0) - (b.d || 0)) || ((b.p.priority || 0) - (a.p.priority || 0)));
+    rows.sort((a, b) => (a.closed - b.closed) || (b.retry - a.retry) || ((a.d == null) - (b.d == null)) || ((a.d || 0) - (b.d || 0)) || ((b.p.priority || 0) - (a.p.priority || 0)));
     const clusters = makeClusters(rows);
     // Areas that add least to the day come first. Ones with no pin sink to the bottom.
     clusters.sort((a, b) => ((a.detour == null) - (b.detour == null)) ||
                             ((a.detour || 0) - (b.detour || 0)) ||
                             (b.members.length - a.members.length));
-    S.pick = { rows, sel: {}, q: '', clusters, open: null, mode: 'areas', waiting: null };
+    S.pick = { rows, sel: {}, q: '', clusters, open: null, mode: 'areas', waiting: null, nOnline };
     renderPicker();
     // An empty picker is a dead end unless it says what to do next. Approving happens
     // on its own screen, so count what is sitting there ready and point at it.
@@ -1146,11 +1306,12 @@
   function shopRow(r) {
     const p = r.p, on = !!S.pick.sel[p.id];
     const dist = r.d != null ? fmtMi(r.d) + ' from start' : 'no map pin';
-    return `<div class="pick-item ${on ? 'on' : ''} ${r.used ? 'used' : ''}" onclick="togglePick('${p.id}')">
+    return `<div class="pick-item ${on ? 'on' : ''} ${r.used ? 'used' : ''} ${r.closed ? 'closed' : ''}" onclick="togglePick('${p.id}')">
       <div class="pk-tick">${on ? '☑' : r.used ? '•' : '☐'}</div>
       <div class="pk-main">
         <div class="pk-nm">${esc(p.name)}${p.priority >= 5 ? ' ⭐' : ''}${r.retry ? ' ↻' : ''}</div>
         <div class="pk-sub">${esc(p.city || p.region || '')} · ${dist}${r.used === 'here' ? ' · already on this day' : r.used === 'other' ? ' · on another day' : ''}${r.retry ? ' · buyer was out — retry' : ''}</div>
+        ${r.h && r.h.st !== 'raw' ? hoursChip(r.h) : ''}
       </div>
     </div>`;
   }
@@ -1158,20 +1319,22 @@
     const open = S.pick.open === c.id;
     const free = c.members.filter(r => r.used !== 'here');
     const nSel = c.members.filter(r => S.pick.sel[r.p.id]).length;
-    const take = Math.min(free.length, SOFT_STOPS);
+    const openFree = free.filter(r => !r.closed);
+    const nShut = free.length - openFree.length;
+    const take = Math.min(openFree.length, SOFT_STOPS);
     const est = c.centre ? clusterWorkMin(c, take) : null;
     return `<div class="area ${nSel ? 'pickedsome' : ''}">
       <div class="area-top" onclick="toggleArea('${c.id}')">
         <div class="area-txt">
           <div class="area-nm">${esc(c.name)}</div>
-          <div class="area-ct">${c.members.length} shop${c.members.length === 1 ? '' : 's'}${c.p5 ? ' · ⭐ ' + c.p5 + (c.p5 === 1 ? ' sells' : ' sell') + ' lab-grown' : ''}${nSel ? ' · ' + nSel + ' ticked' : ''}</div>
+          <div class="area-ct">${c.members.length} shop${c.members.length === 1 ? '' : 's'}${c.p5 ? ' · ⭐ ' + c.p5 + (c.p5 === 1 ? ' sells' : ' sell') + ' lab-grown' : ''}${nSel ? ' · ' + nSel + ' ticked' : ''}${nShut ? ` · <span style="color:#a12b24">${nShut} closed ${DAYN[dowOf(S.day.day_date)]}</span>` : ''}</div>
           <div class="area-det ${detourClass(c.detour)}">${detourText(c)}</div>
           ${est != null ? `<div class="area-est">≈ ${hrs(est)} on the ground for ${take} stop${take === 1 ? '' : 's'}</div>` : ''}
         </div>
         ${miniMap(c)}
       </div>
       <div class="area-acts">
-        <button class="solid" onclick="event.stopPropagation();addArea('${c.id}')">Add ${Math.min(free.length, SOFT_STOPS)} best</button>
+        <button class="solid" onclick="event.stopPropagation();addArea('${c.id}')">Add ${take} best</button>
         <button onclick="event.stopPropagation();toggleArea('${c.id}')">${open ? 'Hide the list' : 'Pick from these'}</button>
       </div>
       ${open ? `<div class="area-mem">${c.members.map(shopRow).join('')}</div>` : ''}
@@ -1201,6 +1364,8 @@
         <div class="modal" style="max-height:88vh;overflow-y:auto">
           <h3>Add stops</h3>
           <div class="pk-line">${esc(where)}</div>
+          ${S.day.day_date ? `<div class="pk-line">${esc(fmtDate(S.day.day_date))}: shops closed that day are marked ⛔, sorted last and left out of “Add best”.</div>` : '<div class="pk-line">Set the day’s date to see which shops are open that day.</div>'}
+          ${S.pick.nOnline ? `<div class="pk-line">${S.pick.nOnline} online-only seller${S.pick.nOnline === 1 ? ' is' : 's are'} left out — no shop floor to visit.</div>` : ''}
           ${S.pick.rows.length ? `<div class="pk-tabs">
             <button class="${S.pick.mode === 'areas' ? 'on' : ''}" onclick="pickMode('areas')">By area</button>
             <button class="${S.pick.mode === 'all' ? 'on' : ''}" onclick="pickMode('all')">All shops</button>
@@ -1219,7 +1384,7 @@
   // than whatever happens to sit at the top of an alphabetical list.
   function addArea(id) {
     const c = S.pick.clusters.find(x => x.id === id); if (!c) return;
-    const free = c.members.filter(r => r.used !== 'here')
+    const free = c.members.filter(r => r.used !== 'here' && !r.closed)
       .sort((a, b) => ((b.p.priority || 0) - (a.p.priority || 0)) || ((a.d || 0) - (b.d || 0)));
     free.slice(0, SOFT_STOPS).forEach(r => { S.pick.sel[r.p.id] = true; });
     renderPicker();

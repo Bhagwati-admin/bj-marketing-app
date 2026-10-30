@@ -1,32 +1,7 @@
-/* BJ Marketing service worker — network-first, cache as offline fallback for the app shell */
-const CACHE = 'bj-shell-v1';
-const SHELL = ['index.html', 'styles.css', 'app.js', 'config.js', 'manifest.json', 'icon.svg'];
-
-self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  const url = new URL(e.request.url);
-  // Never intercept API traffic — only same-origin GETs inside the app's own folder
-  const appDir = new URL('./', self.location.href).pathname;
-  if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (!url.pathname.startsWith(appDir)) return;
-  e.respondWith(
-    fetch(e.request)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-        return res;
-      })
-      .catch(() => caches.match(e.request).then((m) => m || caches.match('index.html')))
-  );
-});
+const CACHE="bj-shell-v2",SHELL=["index.html","styles.css","app.js","config.js","manifest.json","icon.svg"],SUPABASE_JS="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js"
+;self.addEventListener("install",(e=>{e.waitUntil(caches.open(CACHE).then((e=>e.addAll(SHELL.map((e=>new Request(e,{cache:"reload"})))))).catch((()=>{}))),self.skipWaiting()})),self.addEventListener("activate",(e=>{
+e.waitUntil(caches.keys().then((e=>Promise.all(e.filter((e=>e!==CACHE)).map((e=>caches.delete(e)))))).then((()=>self.clients.claim())))})),self.addEventListener("fetch",(e=>{if("GET"!==e.request.method)return;const t=new URL(e.request.url)
+;if(t.href===SUPABASE_JS)return void e.respondWith(caches.match(e.request).then((t=>t||fetch(e.request).then((t=>{if(t.ok){const s=t.clone();caches.open(CACHE).then((t=>t.put(e.request,s))).catch((()=>{}))}return t})))))
+;const s=new URL("./",self.location.href).pathname;if(t.origin!==self.location.origin)return;if(!t.pathname.startsWith(s))return;const n="navigate"===e.request.mode,c=n?e.request:new Request(e.request,{cache:"no-cache"})
+;e.respondWith(fetch(c).then((t=>{if(t.ok&&"basic"===t.type){const s=t.clone();caches.open(CACHE).then((t=>t.put(e.request,s))).catch((()=>{}))}return t})).catch((()=>caches.match(e.request,{ignoreSearch:n
+}).then((e=>e||(n?caches.match("index.html"):void 0))).then((e=>e||Response.error())))))}));

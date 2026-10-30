@@ -1,932 +1,418 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#7b1e3c">
-  <title>Bhagwati Jewels — Lead Finder</title>
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="https://njikksnabvdmzynepdgw.supabase.co/storage/v1/object/public/web/finder-icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Lead Finder">
-  <link rel="stylesheet" href="../styles.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <style>
-    /* Lead Finder additions (matches main app design language) */
-    .lf-searchbar { display: flex; gap: 8px; margin-bottom: 10px; }
-    .lf-add { flex: 0 0 auto; width: 46px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; font-size: 22px; color: var(--maroon); cursor: pointer; box-shadow: var(--shadow); }
-    .lf-searchbar input { flex: 1; border: 1.5px solid var(--line); border-radius: 999px; padding: 12px 18px; font-size: 16px; outline: none; background: #fff; box-shadow: var(--shadow); min-width: 0; }
-    .lf-searchbar input:focus { border-color: var(--maroon); }
-    .lf-controls { display: flex; gap: 8px; margin-bottom: 12px; }
-    .lf-controls select { border: 1.5px solid var(--line); border-radius: 11px; padding: 9px 10px; background: #fff; font-size: 14px; }
-    .lf-controls .btn { flex: 0 0 auto; }
-    .lf-count { font-size: 13.5px; color: var(--muted); margin: 2px 2px 10px; }
-    .lf-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 15px; margin-bottom: 11px; cursor: pointer; }
-    .lf-card:active { background: #fdfaf6; }
-    .lf-name { font-weight: 700; font-size: 16px; }
-    .lf-addr { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
-    .lf-chiprow { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
-    .chip-pending { background: #fcefd2; color: #92600a; }
-    .chip-approved { background: #e3f2e7; color: #16663c; }
-    .chip-rejected { background: #fbe1df; color: #a12b24; }
-    .chip-src { background: #eee9f2; color: #5b4a6b; }
-    .lf-contacts { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
-    .lf-cbtn { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--line); background: #fff;
-      border-radius: 999px; padding: 8px 13px; font-size: 13.5px; font-weight: 650; color: var(--maroon); text-decoration: none; }
-    .lf-cbtn:active { background: var(--maroon-soft); }
-    .lf-actions { display: flex; gap: 8px; margin-top: 11px; }
-    .lf-actions .btn { flex: 1; }
-    .btn-approve { background: #e3f2e7; color: #16663c; }
-    .btn-reject { background: #fbe1df; color: #a12b24; }
-    .btn-research { background: #ede7f6; color: #4a3a7a; }
-    .lf-reset { background: none; border: 0; color: var(--muted); font-size: 12.5px; margin-top: 8px; cursor: pointer; padding: 4px 2px; text-decoration: underline; }
-    #lf-map { height: 62vh; border-radius: var(--radius); box-shadow: var(--shadow); display: none; }
-    .lf-viewtabs { display: flex; gap: 8px; margin-bottom: 12px; }
-    .lf-viewtabs button { flex: 1; border: 1.5px solid var(--line); background: #fff; border-radius: 11px; padding: 9px; font-size: 14px; font-weight: 650; color: #5d5765; cursor: pointer; }
-    .lf-viewtabs button.on { background: var(--maroon); border-color: var(--maroon); color: #fff; }
-    /* State tiles: a swipeable row of their own. Before 18 Oct the row was a plain flex line, so with
-       6+ states the tiles pushed the PAGE wider than the phone and a swipe dragged the whole page. */
-    html, body { overflow-x: clip; }   /* clip, not hidden: hidden would break the sticky top bar */
-    .lf-home-stats { display: flex; gap: 10px; margin: 0 -16px 14px; padding: 4px 16px 10px;
-      overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
-      scroll-snap-type: x proximity; scroll-padding: 0 16px; scrollbar-width: none; touch-action: pan-x pan-y; }
-    .lf-home-stats::-webkit-scrollbar { display: none; }
-    .lf-home-stats .stat { flex: 0 0 auto; min-width: 96px; scroll-snap-align: start; }
-    .lf-pipe { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 15px; margin-bottom: 14px; }
-    .lf-pipe h4 { margin: 0 0 9px; font-size: 14px; }
-    .lf-bar { height: 10px; background: #f0e9dc; border-radius: 999px; overflow: hidden; }
-    .lf-bar-fill { height: 100%; background: linear-gradient(90deg, var(--maroon), #c9a14a); border-radius: 999px; transition: width .4s; }
-    .lf-pipe .nums { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
-    .lf-res { margin-top: 12px; }
-    .lf-res .res-sum { margin: 0 0 10px; font-size: 14.5px; line-height: 1.5; }
-    .lf-res .res-sec { border-left: 3px solid var(--line); padding: 0 0 0 11px; margin-bottom: 11px; }
-    .lf-res .res-sec.good { border-left-color: #1a7f4e; }
-    .lf-res .res-sec.gap { border-left-color: #c9922a; }
-    .lf-res .res-sec.pitch { border-left-color: var(--maroon); background: var(--maroon-soft); border-radius: 0 10px 10px 0; padding: 9px 12px; }
-    .lf-res h5 { margin: 0 0 3px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
-    .lf-res .res-sec.pitch h5 { color: var(--maroon); }
-    .lf-res .res-sec p { margin: 0; font-size: 13.8px; line-height: 1.5; }
-    .lf-res details { margin-top: 4px; }
-    .lf-res summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
-    .lf-res .ev { margin: 7px 0 0; padding-left: 17px; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
-    .lf-draft textarea { width: 100%; min-height: 168px; border: 1.5px solid var(--line); border-radius: 12px;
-      padding: 12px 13px; font-size: 15px; line-height: 1.5; resize: vertical; background: #fff; outline: none; font-family: inherit; }
-    .lf-draft textarea:focus { border-color: var(--maroon); }
-    .lf-draft .why { font-size: 12px; color: var(--muted); margin: 8px 2px 0; line-height: 1.5; }
-    .lf-draft .send { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-    .lf-draft .send a, .lf-draft .send button { flex: 1; min-width: 104px; text-align: center; border: 1.5px solid var(--line);
-      background: #fff; border-radius: 999px; padding: 11px 12px; font-size: 14px; font-weight: 650; color: var(--maroon);
-      text-decoration: none; cursor: pointer; }
-    .lf-draft .send a:active, .lf-draft .send button:active { background: var(--maroon-soft); }
-    .lf-searchbar .combo { flex: 1; min-width: 0; }
-    .lf-searchbar .combo input { width: 100%; }
-    .lf-combo-count { float: right; color: var(--muted); font-size: 13px; font-weight: 600; }
-    .lf-arearow { display: flex; align-items: center; gap: 10px; background: var(--card); border-radius: 12px;
-      box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
-    .lf-arearow:active { background: #fdfaf6; }
-    .lf-arearow .ar-main { flex: 1; min-width: 0; }
-    .lf-arearow .ar-city { font-weight: 650; font-size: 15px; }
-    .lf-arearow .ar-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-    .lf-arearow .ar-num { font-size: 20px; font-weight: 800; color: var(--maroon); line-height: 1; text-align: right; }
-    .lf-arearow .ar-num span { display: block; font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .3px; }
-    .lf-morebtn { background: none; border: 0; color: var(--maroon); font-weight: 650; font-size: 13.5px;
-      padding: 8px 2px; cursor: pointer; text-decoration: underline; }
-    .btn-draft { background: var(--gold-soft); color: #7a5a12; }
-    .chip-res { background: #e3f2e7; color: #16663c; }
-    .chip-p5 { background: #f6e7c4; color: #7a5410; }
-    .lf-pipe .hint { font-size: 12px; color: var(--muted); margin-top: 7px; line-height: 1.45; }
-    .lf-signout { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 10px; }
-    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: var(--card, #fff);
-      border-bottom: 1px solid var(--line, #e7e0e6); overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
-      color: var(--muted, #7a7280); background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
-    .bjnav a.on { background: var(--maroon, #7b1e3c); color: #fff; }
-    .lf-back { background: none; border: 0; color: #fff; font-size: 20px; padding: 4px 10px 4px 0;
-      margin-left: -4px; cursor: pointer; }
-    .leaflet-container { font: inherit; }
-  </style>
-</head>
-<body>
-  <div id="app">
-    <div class="splash">
-      <div class="logo-badge">BJ</div>
-      <p>Bhagwati Jewels · Lead Finder</p>
-    </div>
-  </div>
-  <div id="toast"></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script src="../config.js"></script>
-  <script>
-  'use strict';
-  const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
-  const $app = document.getElementById('app');
-  const S = {
-    user: null,
-    results: [],
-    filter: 'all',        // all | pending | approved | rejected
-    view: 'list',         // list | map
-    state: '',            // chosen state filter
-    buf: '10',            // chosen buffer km
-    areaLabel: '',
-    lastQueryDesc: '',
-    map: null, markers: [],
-    homeCounts: null,
-    rejectTarget: null,
-    areas: [], sug: [], areaView: [], areaAll: false, screen: 'home',
-  };
-  const REJECT_REASONS = ['Natural only', 'Gold with CZ / moissanite only', 'Silver / fashion only', 'Indian vendor / supplier', 'Pawn shop', 'Chain store', 'Repair / watch only', 'Closed', 'Not a jeweller', 'Other'];
-  // Derived from whatever is actually in the database (see loadAreas), so loading a new
-  // state needs no code change. The literals are only a fallback for a cold/failed load.
-  let STATES = ['FL', 'NY', 'NJ'];
-
-  /* ---------- utils ---------- */
-  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function toast(msg, cls) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.className = 'show' + (cls ? ' ' + cls : '');
-    clearTimeout(toast._h); toast._h = setTimeout(() => { t.className = ''; }, 2600);
-  }
-  function digitsOnly(p) { return (p || '').replace(/[^0-9+]/g, ''); }
-  function waLink(p) {
-    let d = digitsOnly(p).replace(/^\+/, '');
-    if (!d) return null;
-    if (d.length === 10) d = '1' + d;           // US default
-    return 'https://wa.me/' + d;
-  }
-  function smsLink(p) {
-    let d = digitsOnly(p).replace(/^\+/, '');
-    if (!d) return null;
-    if (d.length === 10) d = '1' + d;           // US default
-    return 'sms:+' + d;
-  }
-  function igLink(v) {
-    if (!v) return null;
-    if (/^https?:/i.test(v)) return v;
-    return 'https://www.instagram.com/' + v.replace(/^@/, '');
-  }
-  function fbLink(v) {
-    if (!v) return null;
-    if (/^https?:/i.test(v)) return v;
-    return 'https://www.facebook.com/' + v;
-  }
-  function webLink(v) {
-    if (!v) return null;
-    return /^https?:/i.test(v) ? v : 'https://' + v;
-  }
-  /* Google Maps links. The /maps/search/<name>/@lat,lng form looks right but runs a
-     TEXT SEARCH anchored at those coordinates — so a generic name like "ABC Jewelry"
-     lands on a list of candidates instead of the shop. Verified in the browser.
-     A full street address as the query opens the business card directly (name, hours,
-     reviews, Directions), and falls back to the address itself if Google does not know
-     the business. Bare coordinates are correct but nameless, so they are the middle
-     option: used only when there is no usable address. */
-  function mapsLink(p) {
-    const base = 'https://www.google.com/maps/search/?api=1&query=';
-    if (p.address && p.city && p.region) {
-      const state = p.region + (p.postcode ? ' ' + p.postcode : '');
-      return base + encodeURIComponent([p.name, p.address, p.city, state].filter(Boolean).join(', '));
-    }
-    if (p.latitude != null && p.longitude != null) return base + p.latitude + ',' + p.longitude;
-    return base + encodeURIComponent([p.name, p.city, p.region, 'USA'].filter(Boolean).join(', '));
-  }
-  function statusOf(p) { return p.approved === true ? 'approved' : p.approved === false ? 'rejected' : 'pending'; }
-  function relTime(ts) {
-    if (!ts) return null;
-    const s = (Date.now() - new Date(ts).getTime()) / 1000;
-    if (s < 3600) return Math.max(1, Math.round(s / 60)) + ' min ago';
-    if (s < 86400) return Math.round(s / 3600) + ' h ago';
-    return Math.round(s / 86400) + ' days ago';
-  }
-
-  const PRIO_LABEL = { 5: 'Sells lab-grown', 4: 'Bridal / custom focus', 3: 'Solid independent', 2: 'Needs verifying', 1: 'Weak fit' };
-  function researchHtml(p) {
-    const reasons = Array.isArray(p.verdict_reasons) ? p.verdict_reasons : [];
-    const narrative = p.summary || p.good_at || p.struggling_with || p.pitch_angle;
-    // A rule-based reject has a reason but no write-up. It must still say WHY,
-    // otherwise the card reads as a verdict with nothing behind it.
-    if (!narrative && !reasons.length) return '';
-    const sec = (cls, label, val) => val
-      ? `<div class="res-sec ${cls}"><h5>${label}</h5><p>${esc(val)}</p></div>` : '';
-    const li = reasons.map(r =>
-      `<li>${esc(r.signal || '')}${r.src ? ' <i>— ' + esc(r.src) + '</i>' : ''}</li>`).join('');
-    let ev = '';
-    if (reasons.length) {
-      ev = narrative
-        ? `<details><summary>Evidence (${reasons.length})</summary><ul class="ev">${li}</ul></details>`
-        : `<div class="res-sec ${p.verdict === 'not_fit' ? 'gap' : 'good'}">
-             <h5>${p.verdict === 'not_fit' ? 'Why this was ruled out' : 'What we found'}</h5>
-             <ul class="ev" style="margin-top:2px">${li}</ul></div>`;
-    }
-    return `<div class="lf-res">
-      ${p.summary ? `<p class="res-sum">${esc(p.summary)}</p>` : ''}
-      ${sec('good', '💪 What they’re good at', p.good_at)}
-      ${sec('gap', '⚠️ Where they struggle', p.struggling_with)}
-      ${sec('pitch', '🎯 How we pitch them', p.pitch_angle)}
-      ${ev}
-    </div>`;
-  }
-
-  /* ---------- approach drafts (M3) ----------
-     Short opener whose only job is to get 15 minutes. Never auto-sends: Ravi copies it
-     or it opens WhatsApp/SMS pre-filled and he presses send himself. A store-specific
-     message written during research (approach_msg) always beats this template. */
-  const REGION_NAME = { FL: 'Florida', NY: 'New York', NJ: 'New Jersey', TX: 'Texas' };
-  const OUTREACH = {
-    signoff: 'Ravi\nBhagwati Jewels',
-    place(p) { return p.city || REGION_NAME[p.region] || p.region || 'your area'; },
-    hook(p) {
-      const seg = (p.segment || '').toLowerCase();
-      if (p.priority >= 5)
-        return 'I saw you already carry lab-grown — that is exactly what we make, so you would be buying straight from the factory.';
-      if (seg === 'wholesaler')
-        return 'We supply wholesalers direct at manufacturer prices, with credit terms and memo available.';
-      if (seg === 'exchange')
-        return 'We supply the independent dealers in exchanges like yours — certified lab-grown, ready stock or made to order.';
-      return 'We supply independent jewellers with certified lab-grown pieces — ready stock, or made to order in 4 to 10 days.';
-    },
-    compose(p, dateStr) {
-      if (p.approach_msg) return OUTREACH.fill(p.approach_msg, p, dateStr);
-      const where = OUTREACH.place(p);
-      const when = dateStr || '{date}';
-      return OUTREACH.fill(
-        `Hello — Ravi here from Bhagwati Jewels. We manufacture lab-grown diamond jewellery in India and hold stock in our New York office.\n\n` +
-        `{hook}\n\n` +
-        `I am in ${where} on ${when} and would like 15 minutes to show you a few pieces — IGI certified, overnight from New York, memo available.\n\n` +
-        `Would that suit you?\n\n${OUTREACH.signoff}`, p, dateStr);
-    },
-    fill(t, p, dateStr) {
-      return String(t)
-        .replace(/\{hook\}/g, OUTREACH.hook(p))
-        .replace(/\{store\}/g, p.name || '')
-        .replace(/\{city\}/g, OUTREACH.place(p))
-        .replace(/\{date\}/g, dateStr || '{date}');
-    }
-  };
-  function openDraft(id) {
-    const p = findP(id); if (!p) return;
-    const text = OUTREACH.compose(p, null);
-    const why = p.approach_msg
-      ? 'Written for this store during research.'
-      : (p.good_at ? 'Built from the template. What they are good at: ' + esc(p.good_at.split('. ')[0]) + '.'
-                   : 'Built from the template — this store has not been deep-researched yet.');
-    document.getElementById('draft-modal').innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)closeDraft()">
-        <div class="modal lf-draft" style="max-height:88vh;overflow-y:auto">
-          <h3 style="margin-bottom:2px">Message ${esc(p.name)}</h3>
-          <p style="margin:4px 0 12px">Edit it however you like — nothing sends until you press send yourself.</p>
-          <textarea id="dr-text">${esc(text)}</textarea>
-          <div class="why">${why}${text.indexOf('{date}') > -1 ? '<br><b>Put the date in</b> where it says {date} — or open this store from a trip day and the date fills itself.' : ''}</div>
-          <div class="send">
-            <button onclick="copyDraft()">📋 Copy</button>
-            ${waLink(p.phone) ? `<a href="#" onclick="return openWa('${p.id}')">🟢 WhatsApp</a>` : ''}
-            ${smsLink(p.phone) ? `<a href="#" onclick="return openSms('${p.id}')">💬 SMS</a>` : ''}
-            ${p.email ? `<a href="#" onclick="return openMail('${p.id}')">✉️ Email</a>` : ''}
-          </div>
-          <div class="modal-actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="closeDraft()">Close</button></div>
-        </div>
-      </div>`;
-  }
-  function closeDraft() { const el = document.getElementById('draft-modal'); if (el) el.innerHTML = ''; }
-  function draftText() { const el = document.getElementById('dr-text'); return el ? el.value : ''; }
-  function copyDraft() {
-    const t = draftText();
-    if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => toast('Copied ✓', 'ok'), () => toast('Could not copy', 'err'));
-    else toast('Copy not supported here', 'err');
-  }
-  function openWa(id) {
-    const p = findP(id); if (!p) return false;
-    const w = waLink(p.phone); if (!w) return false;
-    window.open(w + '?text=' + encodeURIComponent(draftText()), '_blank', 'noopener');
-    return false;
-  }
-  function openSms(id) {
-    const p = findP(id); if (!p) return false;
-    const sm = smsLink(p.phone); if (!sm) return false;
-    window.location.href = sm + '?body=' + encodeURIComponent(draftText());
-    return false;
-  }
-  function openMail(id) {
-    const p = findP(id); if (!p) return false;
-    if (!p.email) return false;
-    window.location.href = 'mailto:' + encodeURIComponent(p.email)
-      + '?subject=' + encodeURIComponent('Lab-grown diamond jewellery — Bhagwati Jewels')
-      + '&body=' + encodeURIComponent(draftText());
-    return false;
-  }
-
-  /* ---------- area picker ----------
-     Ravi does not know Florida geography, so the app has to offer the areas rather than
-     expect him to type one. `area` on lf_places is a derived grouping (city when known,
-     otherwise the nearest known city centre within 30 km of the pin) — browsing only,
-     never an address. */
-  async function loadAreas() {
-    try {
-      // Supabase caps ANY single response at 1,000 rows however large a limit you
-      // pass, so raising .limit() from 600 to 3000 changed nothing beyond 1,000 —
-      // 145 of the 1,145 towns were still missing. Page through with .range().
-      let all = [], from = 0;
-      for (let page = 0; page < 12; page++) {
-        const { data, error } = await sb.from('lf_areas').select('*')
-          .order('total', { ascending: false }).range(from, from + 999);
-        if (error || !data || !data.length) break;
-        all = all.concat(data);
-        if (data.length < 1000) break;
-        from += 1000;
-      }
-      S.areas = all;
-      // one row per state, so no cap can hide a state from the dropdown
-      const { data: h } = await sb.from('lf_health').select('region');
-      const found = [...new Set((h || []).map(r => r.region).filter(Boolean))].sort();
-      if (found.length) STATES = found;
-    } catch (e) { S.areas = []; }
-  }
-  function areaSub(a) {
-    const bits = [];
-    if (a.to_review) bits.push(a.to_review + ' to review');
-    if (a.approved) bits.push(a.approved + ' approved');
-    if (a.lgd) bits.push('⭐ ' + a.lgd + ' lab-grown');
-    if (!bits.length) bits.push(a.fits ? a.fits + ' worth a look' : 'not screened yet');
-    return bits.join(' · ');
-  }
-  function areaSuggest(v) {
-    const box = document.getElementById('lf-areadrop'); if (!box) return;
-    const t = (v || '').trim().toLowerCase();
-    if (!t) { closeSug(); return; }
-    let list = S.areas.filter(a => !S.state || a.region === S.state);
-    const starts = list.filter(a => a.city.toLowerCase().startsWith(t));
-    const has = list.filter(a => !a.city.toLowerCase().startsWith(t) && a.city.toLowerCase().includes(t));
-    S.sug = starts.concat(has).slice(0, 8);
-    if (!S.sug.length) { closeSug(); return; }
-    box.innerHTML = S.sug.map((a, i) =>
-      `<button type="button" onmousedown="pickSug(${i})">${esc(a.city)} <span class="lf-combo-count">${a.total}</span></button>`
-    ).join('');
-    box.className = 'combo-list open';
-  }
-  function closeSug() { const box = document.getElementById('lf-areadrop'); if (box) { box.className = 'combo-list'; box.innerHTML = ''; } }
-  function pickSug(i) { const a = S.sug[i]; if (a) goArea(a); }
-  function pickAreaRow(i) { const a = S.areaView[i]; if (a) goArea(a); }
-  function goArea(a) {
-    closeSug();
-    S.state = a.region;
-    const q = document.getElementById('lf-q'); if (q) q.value = a.city;
-    const sel = document.getElementById('lf-state'); if (sel) sel.value = a.region;
-    doSearch();
-  }
-  function toggleAllAreas() { S.areaAll = !S.areaAll; renderHome(); }
-  function onStateChange(v) {
-    S.state = v; S.areaAll = false; closeSug();
-    if (S.screen === 'home') renderHome();
-  }
-  function areasHtml() {
-    if (!S.areas.length) return '';
-    S.areaView = S.areas.filter(a => !S.state || a.region === S.state);
-    if (!S.areaView.length) return '';
-    const limit = S.areaAll ? S.areaView.length : 10;
-    const rows = S.areaView.slice(0, limit).map((a, i) =>
-      `<div class="lf-arearow" onclick="pickAreaRow(${i})">
-         <div class="ar-main">
-           <div class="ar-city">${esc(a.city)}${S.state ? '' : ' <span style="color:var(--muted);font-weight:600">· ' + esc(a.region) + '</span>'}</div>
-           <div class="ar-sub">${areaSub(a)}</div>
-         </div>
-         <div class="ar-num">${a.total}<span>JEWELLERS</span></div>
-       </div>`).join('');
-    const more = S.areaView.length > 10
-      ? `<button class="lf-morebtn" onclick="toggleAllAreas()">${S.areaAll ? 'Show fewer' : 'Show all ' + S.areaView.length + ' areas'}</button>`
-      : '';
-    return `<div class="section-label">Areas with the most jewellers${S.state ? ' — ' + esc(S.state) : ''}</div>
-      <p style="font-size:12.5px;color:var(--muted);margin:0 2px 10px">Tap an area to see its jewellers. Grouped by the nearest town, so a tap covers the surrounding shops too.</p>
-      ${rows}${more}`;
-  }
-
-  /* ---------- shell ---------- */
-  // The four Finder screens are separate pages, so every one of them carries the same
-  // row of links. Without it a screen can only be reached by typing its URL.
-  function navHtml(here) {
-    const items = [['./', '🔎 Leads', 'leads'], ['trips.html', '🗺️ Trips', 'trips'],
-                   ['visits.html', '📝 Visits', 'visits'], ['approve.html', '✅ Approve', 'approve']];
-    return '<nav class="bjnav">' + items.map(([href, label, key]) =>
-      `<a href="${href}"${key === here ? ' class="on" aria-current="page"' : ''}>${label}</a>`).join('') + '</nav>';
-  }
-  function shell(inner, opts) {
-    opts = opts || {};
-    // On the results screen the badge becomes a back chevron: searching used to be a
-    // one-way door, with the area picker and pipeline card unreachable without a reload.
-    const onResults = S.screen === 'results';
-    return `
-    <div id="appbar">
-      ${onResults ? '<button class="lf-back" title="Back to home" onclick="goHome()">‹</button>'
-                  : '<div class="mini-badge">BJ</div>'}
-      <div class="titles">
-        <div class="app-name">Bhagwati Jewels</div>
-        <div class="screen-name">Lead Finder${opts.sub ? ' · ' + esc(opts.sub) : ''}</div>
-      </div>
-      <div style="margin-left:auto"></div>
-      <button class="lf-signout" onclick="doSignOut()">Sign out</button>
-    </div>
-    ${navHtml('leads')}
-    <div id="content">${inner}</div>`;
-  }
-  function goHome() { S.screen = 'home'; renderHome(); }
-
-  /* ---------- auth ---------- */
-  function renderLogin(msg) {
-    $app.innerHTML = `
-    <div class="auth-wrap">
-      <div class="auth-head">
-        <div class="logo-badge" style="margin:0 auto">BJ</div>
-        <h1>Lead Finder</h1>
-        <p>Sign in with your marketing app account</p>
-      </div>
-      <div class="auth-card">
-        ${msg ? `<div class="notice">${esc(msg)}</div>` : ''}
-        <div class="field"><label>Email</label><input type="email" id="li-email" autocomplete="username"></div>
-        <div class="field"><label>Password</label><input type="password" id="li-pass" autocomplete="current-password"></div>
-        <button class="btn btn-primary" onclick="doLogin()">Sign in</button>
-      </div>
-    </div>`;
-  }
-  async function doLogin() {
-    const email = document.getElementById('li-email').value.trim();
-    const pass = document.getElementById('li-pass').value;
-    if (!email || !pass) { toast('Enter email and password', 'err'); return; }
-    const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-    if (error) { toast(error.message, 'err'); return; }
-    init();
-  }
-  async function doSignOut() { await sb.auth.signOut(); renderLogin(); }
-
-  /* ---------- home ---------- */
-  async function loadHomeCounts() {
-    const out = [];
-    for (const st of STATES) {
-      const { count } = await sb.from('lf_places').select('id', { count: 'exact', head: true }).eq('region', st);
-      out.push({ st, count: count || 0 });
-    }
-    S.homeCounts = out;
-    try {
-      const base = () => sb.from('lf_places').select('id', { count: 'exact', head: true }).eq('hidden', false);
-      const [w, d, u] = await Promise.all([
-        base().eq('research', true).is('verdict', null),
-        base().eq('research', true).not('verdict', 'is', null),
-        base().is('verdict', null).is('verdict_source', null).not('website', 'is', null),
-      ]);
-      const ap = await base().eq('approved', true);
-      S.approved = ap.count || 0;
-      const { data: lastRow } = await sb.from('lf_places').select('updated_at')
-        .eq('hidden', false).eq('research', true).not('verdict', 'is', null)
-        .order('updated_at', { ascending: false }).limit(1);
-      S.pipe = { waiting: w.count || 0, done: d.count || 0, unscreened: u.count || 0,
-        last: lastRow && lastRow.length ? lastRow[0].updated_at : null };
-    } catch (e) { S.pipe = null; }
-  }
-  function renderHome() {
-    S.screen = 'home';
-    const stats = (S.homeCounts || []).map(s =>
-      `<div class="stat"><div class="st-num">${s.count}</div><div class="st-label">${s.st} jewellers</div></div>`).join('');
-    let pipeHtml = '';
-    const p = S.pipe;
-    if (p && (p.waiting + p.done) > 0) {
-      const total = p.waiting + p.done;
-      const pct = Math.round(100 * p.done / total);
-      const scr = p.unscreened > 0 ? `Auto-screen: ${p.unscreened} website${p.unscreened === 1 ? '' : 's'} in queue` : 'Auto-screen: caught up ✓';
-      pipeHtml = `<div class="lf-pipe">
-        <h4>🔍 Research pipeline</h4>
-        <div class="lf-bar"><div class="lf-bar-fill" style="width:${pct}%"></div></div>
-        <div class="nums"><span>${p.done} of ${total} researched (${pct}%)</span><span>${p.waiting} waiting</span></div>
-        <div class="hint">${scr}${p.last ? ' · last research ' + relTime(p.last) : ''}<br>A batch is researched automatically every night — or say “research the flagged list” any time.</div>
-      </div>`;
-    }
-    const days = Math.max(1, Math.ceil((S.approved || 0) / 10));
-    const tripHtml = S.approved ? `<a class="lf-pipe" href="trips.html" style="display:block;text-decoration:none;color:inherit">
-        <h4>🗺️ Trip planner</h4>
-        <div style="font-size:13px;color:var(--muted);line-height:1.5">${S.approved} approved jeweller${S.approved === 1 ? '' : 's'} ready to visit — about ${days} packed day${days === 1 ? '' : 's'} on the road.<br><b style="color:var(--maroon)">Plan a trip →</b></div>
-      </a>` : '';
-    $app.innerHTML = shell(`
-      <div class="section-label">Search an area</div>
-      <div class="lf-searchbar">
-        <div class="combo">
-          <input id="lf-q" type="text" placeholder="Start typing an area — or pick one below" autocomplete="off"
-                 oninput="areaSuggest(this.value)" onblur="setTimeout(closeSug,180)"
-                 onkeydown="if(event.key==='Enter'){closeSug();doSearch();} if(event.key==='Escape')closeSug();">
-          <div id="lf-areadrop" class="combo-list"></div>
-        </div>
-        <button class="lf-add" title="Add a jeweller" onclick="openAddLead()">＋</button>
-      </div>
-      <div class="lf-controls">${controlsHtml()}
-        <button class="btn btn-primary btn-small" style="width:auto" onclick="doSearch()">Search</button>
-      </div>
-      <div class="lf-home-stats">${stats || ''}</div>
-      ${tripHtml}
-      ${pipeHtml}
-      ${areasHtml()}
-      <div class="empty" style="padding:22px 18px">Approve the good ones — they become your trip list.<br>Spotted a jeweller on Instagram or on the road? Tap ＋ to add it.</div>
-      <div id="addlead-modal"></div>
-    `);
-  }
-
-  function controlsHtml() {
-    return `
-        <select id="lf-state" onchange="onStateChange(this.value)">
-          <option value=""${S.state===''?' selected':''}>Any state</option>
-          ${STATES.map(s=>`<option${S.state===s?' selected':''}>${s}</option>`).join('')}
-        </select>
-        <select id="lf-buf">
-          <option value="0"${S.buf==='0'?' selected':''}>City only</option>
-          <option value="10"${S.buf==='10'?' selected':''}>+10 km around</option>
-          <option value="25"${S.buf==='25'?' selected':''}>+25 km around</option>
-        </select>`;
-  }
-
-  /* ---------- search ---------- */
-  async function geocode(q, state) {
-    const query = q + (state ? ', ' + state : '') + ', USA';
-    const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(query);
-    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) return null;
-    const j = await r.json();
-    if (!j.length) return null;
-    return j[0]; // has boundingbox [s, n, w, e] and display_name
-  }
-  async function doSearch() {
-    const q = document.getElementById('lf-q').value.trim();
-    S.state = document.getElementById('lf-state') ? document.getElementById('lf-state').value : S.state;
-    S.buf = document.getElementById('lf-buf') ? document.getElementById('lf-buf').value : S.buf;
-    const state = S.state;
-    const bufKm = parseFloat(S.buf) || 0;
-    if (!q) { toast('Type a city or area name', 'err'); return; }
-    toast('Searching…');
-    let rows = null, label = q;
-    try {
-      const g = await geocode(q, state);
-      if (g && g.boundingbox) {
-        let s = parseFloat(g.boundingbox[0]), n = parseFloat(g.boundingbox[1]),
-            w = parseFloat(g.boundingbox[2]), e = parseFloat(g.boundingbox[3]);
-        const dLat = bufKm / 111;
-        const midLat = (s + n) / 2;
-        const dLon = bufKm / (111 * Math.max(0.3, Math.cos(midLat * Math.PI / 180)));
-        s -= dLat; n += dLat; w -= dLon; e += dLon;
-        let qy = sb.from('lf_places').select('*')
-          .eq('hidden', false)
-          .gte('latitude', s).lte('latitude', n)
-          .gte('longitude', w).lte('longitude', e)
-          .order('name').limit(1000);
-        if (state) qy = qy.eq('region', state);
-        const { data, error } = await qy;
-        if (error) throw error;
-        rows = data || [];
-        label = (g.display_name || q).split(',').slice(0, 2).join(',');
-      }
-    } catch (e) { /* fall through to text search */ }
-    if (rows === null || rows.length === 0) {
-      const qq = q.replace(/[,()%.]/g, ' ').replace(/\s+/g, ' ').trim();
-      let qy = sb.from('lf_places').select('*')
-        .eq('hidden', false)
-        .or(`city.ilike.%${qq}%,name.ilike.%${qq}%,address.ilike.%${qq}%,area.ilike.%${qq}%`)
-        .order('name').limit(1000);
-      if (state) qy = qy.eq('region', state);
-      const { data, error } = await qy;
-      if (error) { toast(error.message, 'err'); return; }
-      if (rows === null || (data && data.length > rows.length)) rows = data || [];
-    }
-    /* A row retired as a duplicate or a branch must not be browsable, approvable or
-       routable: another row is the keeper and holds the opener. Until now the flag existed
-       only in the database, so 417 retired rows were still live in here — the exact
-       double-approach the flag was created to prevent.
-       walk_in is NOT a retirement. Those are real shops with no web route left; they keep
-       their openers and they belong on the route, so they stay visible.
-       Filtered in JS rather than in the query, deliberately: `.not('skip_reason','in',...)`
-       is a trap, because `skip_reason not in (...)` evaluates to NULL — not true — for the
-       twelve thousand rows whose skip_reason is NULL, and would silently hide almost the
-       whole table. That exact NULL trap has already cost this project a queue once. */
-    const retiredHidden = rows.filter((p) => p.skip_reason === 'duplicate' || p.skip_reason === 'branch').length;
-    rows = rows.filter((p) => p.skip_reason !== 'duplicate' && p.skip_reason !== 'branch');
-    S.retiredHidden = retiredHidden;
-    S.results = rows; S.areaLabel = label; S.view = 'list';
-    S.filter = rows.some(r => r.approved == null) ? 'pending' : 'all';
-    renderResults();
-  }
-
-  /* ---------- results ---------- */
-  function filtered() {
-    if (S.filter === 'all') return S.results;
-    if (S.filter === 'research') return S.results.filter(p => p.research && statusOf(p) === 'pending');
-    return S.results.filter(p => statusOf(p) === S.filter);
-  }
-  function chipCounts() {
-    const c = { all: S.results.length, pending: 0, approved: 0, rejected: 0, research: 0 };
-    for (const p of S.results) { c[statusOf(p)]++; if (p.research && statusOf(p) === 'pending') c.research++; }
-    return c;
-  }
-  function card(p) {
-    const st = statusOf(p);
-    const chips = [
-      st === 'pending' ? '<span class="chip chip-pending">To review</span>' :
-      st === 'approved' ? '<span class="chip chip-approved">Approved ✓</span>' :
-      '<span class="chip chip-rejected">Rejected</span>'
-    ];
-    if (p.verdict_reasons && p.verdict_reasons.length) chips.push(`<span class="chip chip-src">${esc(p.verdict_reasons[0].signal || '')}</span>`);
-    if (p.locations_count && p.locations_count > 1) chips.push(`<span class="chip chip-src">🏢 ${p.locations_count} locations — main branch</span>`);
-    if (p.segment === 'exchange') chips.push('<span class="chip chip-src">🏬 Multi-vendor exchange</span>');
-    if (p.pitch_angle) chips.push('<span class="chip chip-res">Researched ✓</span>');
-    else if (p.research && st === 'pending') chips.push('<span class="chip chip-pending">🔍 Research listed</span>');
-    if (p.priority) chips.push(`<span class="chip ${p.priority >= 5 ? 'chip-p5' : 'chip-src'}">${p.priority >= 5 ? '⭐ ' : ''}P${p.priority} · ${esc(PRIO_LABEL[p.priority] || '')}</span>`);
-    if (p.source && p.source !== 'osm') chips.push(`<span class="chip chip-src">${esc(p.source)}</span>`);
-    const addr = [p.address, p.city, p.postcode].filter(Boolean).join(', ');
-    const c = contactBtns(p);
-    const actions = st === 'pending'
-      ? `<div class="lf-actions">
-           <button class="btn btn-small btn-approve" onclick="event.stopPropagation();approve('${p.id}')">✓ Approve</button>
-           <button class="btn btn-small btn-reject" onclick="event.stopPropagation();openReject('${p.id}')">✗ Reject</button>
-           <button class="btn btn-small btn-research" onclick="event.stopPropagation();markResearch('${p.id}')">${p.research ? '🔍 Listed ✓' : '🔍 Research'}</button>
-         </div>`
-      : `<button class="lf-reset" onclick="event.stopPropagation();resetVerdict('${p.id}')">Undo — back to review</button>`;
-    return `<div class="lf-card" id="card-${p.id}" onclick="openDetail('${p.id}')">
-      <div class="lf-name">${esc(p.name)}</div>
-      ${addr ? `<div class="lf-addr">${esc(addr)}</div>` : ''}
-      <div class="lf-chiprow">${chips.join('')}</div>
-      <div class="lf-contacts">${c.join('')}</div>
-      ${actions}
-    </div>`;
-  }
-  function contactBtns(p, full) {
-    const c = [];
-    const sp = 'onclick="event.stopPropagation()"';
-    if (p.phone) c.push(`<a class="lf-cbtn" ${sp} href="tel:${esc(digitsOnly(p.phone))}">📞 Call</a>`);
-    const sms = smsLink(p.phone); if (sms) c.push(`<a class="lf-cbtn" ${sp} href="${esc(sms)}">💬 SMS</a>`);
-    if (full) { const wa = waLink(p.phone); if (wa) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(wa)}">🟢 WhatsApp</a>`); }
-    if (p.email) c.push(`<a class="lf-cbtn" ${sp} href="mailto:${esc(p.email)}">✉️ Email</a>`);
-    const wl = webLink(p.website); if (wl) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(wl)}">🌐 Website</a>`);
-    const ig = igLink(p.instagram); if (ig) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(ig)}">📸 Instagram</a>`);
-    const fb = fbLink(p.facebook); if (fb) c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(fb)}">📘 Facebook</a>`);
-    c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="${esc(mapsLink(p))}">🗺️ Map</a>`);
-    // Exact-coordinates fallback. "Map" searches by name and address, which opens the
-    // business card when Google knows the shop — but some shops publish no address at
-    // all (delivery-only, home studios), and then the search drifts. Pin never drifts.
-    if (p.latitude != null && p.longitude != null)
-      c.push(`<a class="lf-cbtn" ${sp} target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}">📍 Pin</a>`);
-    return c;
-  }
-  function openDetail(id) {
-    const p = findP(id); if (!p) return;
-    const st = statusOf(p);
-    const chip = st === 'pending' ? '<span class="chip chip-pending">To review</span>'
-      : st === 'approved' ? '<span class="chip chip-approved">Approved ✓</span>'
-      : `<span class="chip chip-rejected">Rejected${p.verdict_reasons && p.verdict_reasons.length ? ' — ' + esc(p.verdict_reasons[0].signal || '') : ''}</span>`;
-    const chip2 = (p.pitch_angle ? '<span class="chip chip-res">Researched ✓</span>' : '')
-      + (p.priority ? `<span class="chip ${p.priority >= 5 ? 'chip-p5' : 'chip-src'}">${p.priority >= 5 ? '⭐ ' : ''}P${p.priority} · ${esc(PRIO_LABEL[p.priority] || '')}</span>` : '');
-    const rows = [];
-    const addRow = (k, v) => { if (v) rows.push(`<div class="detail-row"><div class="dk">${k}</div><div class="dv">${v}</div></div>`); };
-    addRow('Address', esc([p.address, p.city, p.region, p.postcode].filter(Boolean).join(', ')));
-    addRow('Phone', p.phone ? esc(p.phone) : null);
-    addRow('Email', p.email ? esc(p.email) : null);
-    addRow('Website', p.website ? esc(p.website) : null);
-    addRow('Hours', p.opening_hours ? esc(p.opening_hours) : null);
-    addRow('Segment', p.segment ? esc(p.segment) : null);
-    addRow('Locations', p.locations_count && p.locations_count > 1 ? esc(p.locations_count + ' in this state — buying usually happens at the head office') : null);
-    addRow('Source', p.source === 'osm' ? 'OpenStreetMap seed list' : esc(p.source));
-    const research = researchHtml(p);
-    const notes = p.notes ? `<p style="margin:10px 0 0;font-size:12.5px;color:var(--muted)">${esc(p.notes)}</p>` : '';
-    const actions = st === 'pending'
-      ? `<div class="lf-actions" style="margin-top:14px">
-           <button class="btn btn-approve" onclick="approve('${p.id}')">✓ Approve</button>
-           <button class="btn btn-reject" onclick="closeDetail();openReject('${p.id}')">✗ Reject</button>
-         </div>
-         <button class="btn btn-research" style="width:100%;margin-top:8px" onclick="closeDetail();markResearch('${p.id}')">${p.research ? '🔍 Listed for Claude research ✓ (tap to remove)' : '🔍 List for Claude deep research'}</button>`
-      : `<button class="lf-reset" onclick="resetVerdict('${p.id}')">Undo — back to review</button>`;
-    const draftBtn = `<button class="btn btn-draft" style="width:100%;margin-top:8px" onclick="closeDetail();openDraft('${p.id}')">✉️ Draft a message</button>`;
-    document.getElementById('detail-modal').innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)closeDetail()">
-        <div class="modal" style="max-height:86vh;overflow-y:auto">
-          <h3 style="margin-bottom:2px">${esc(p.name)}</h3>
-          <div class="lf-chiprow" style="margin:6px 0 10px">${chip}${chip2}</div>
-          ${rows.join('')}
-          ${research}${notes}
-          <div class="lf-contacts" style="margin-top:14px">${contactBtns(p, true).join('')}</div>
-          ${p.phone ? '<p style="margin:8px 0 0;font-size:12px;color:var(--muted)">WhatsApp opens only if that number is registered on WhatsApp — SMS always works.</p>' : ''}
-          ${actions}
-          ${draftBtn}
-          <div class="modal-actions" style="margin-top:14px"><button class="btn btn-secondary" onclick="closeDetail()">Close</button></div>
-        </div>
-      </div>`;
-  }
-  function closeDetail() { const el = document.getElementById('detail-modal'); if (el) el.innerHTML = ''; }
-  function renderResults() {
-    S.screen = 'results';
-    const cc = chipCounts();
-    const list = filtered();
-    $app.innerHTML = shell(`
-      <div class="lf-searchbar">
-        <div class="combo">
-          <input id="lf-q" type="text" value="${esc(S.areaLabel)}" autocomplete="off"
-                 oninput="areaSuggest(this.value)" onblur="setTimeout(closeSug,180)"
-                 onkeydown="if(event.key==='Enter'){closeSug();doSearch();} if(event.key==='Escape')closeSug();">
-          <div id="lf-areadrop" class="combo-list"></div>
-        </div>
-        <button class="lf-add" title="Add a jeweller" onclick="openAddLead()">＋</button>
-      </div>
-      <div class="lf-controls">${controlsHtml()}
-        <button class="btn btn-primary btn-small" style="width:auto" onclick="doSearch()">Search</button>
-      </div>
-      <div class="filter-chips">
-        <button class="${S.filter==='all'?'on':''}" onclick="setFilter('all')">All ${cc.all}</button>
-        <button class="${S.filter==='pending'?'on':''}" onclick="setFilter('pending')">To review ${cc.pending}</button>
-        <button class="${S.filter==='approved'?'on':''}" onclick="setFilter('approved')">Approved ${cc.approved}</button>
-        <button class="${S.filter==='research'?'on':''}" onclick="setFilter('research')">🔍 ${cc.research}</button>
-        <button class="${S.filter==='rejected'?'on':''}" onclick="setFilter('rejected')">Rejected ${cc.rejected}</button>
-      </div>
-      <div class="lf-viewtabs">
-        <button class="${S.view==='list'?'on':''}" onclick="setView('list')">List</button>
-        <button class="${S.view==='map'?'on':''}" onclick="setView('map')">Map</button>
-      </div>
-      <div class="lf-count">${esc(S.areaLabel)} — ${cc.all} jewellers found${
-        S.retiredHidden ? ` · ${S.retiredHidden} merged into another row and hidden` : ''}</div>
-      <div class="notice">⚠️ Seed list (OpenStreetMap) — this area hasn't been deep-scanned yet, so it's incomplete. Before working an area, ask Claude to <b>deep scan</b> it: missing stores get added, each one screened with evidence and pitch notes. Approve after the scan — except stores you already know.</div>
-      <div id="lf-list" style="${S.view==='map'?'display:none':''}">
-        ${list.length ? list.map(card).join('') : '<div class="empty"><div class="big">🔍</div>Nothing here for this filter.</div>'}
-      </div>
-      <div id="lf-map" style="${S.view==='map'?'display:block':''}"></div>
-      <div id="reject-modal"></div>
-      <div id="detail-modal"></div>
-      <div id="draft-modal"></div>
-      <div id="addlead-modal"></div>
-    `, { sub: S.areaLabel ? S.areaLabel.split(',')[0] : '' });
-    if (S.view === 'map') mountMap();
-  }
-  function setFilter(f) { S.filter = f; renderResults(); }
-  function setView(v) { S.view = v; renderResults(); }
-
-  /* ---------- map ---------- */
-  function mountMap() {
-    const el = document.getElementById('lf-map');
-    if (!el) return;
-    el.style.display = 'block';
-    S.map = L.map('lf-map');
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; OpenStreetMap'
-    }).addTo(S.map);
-    const pts = [];
-    for (const p of filtered()) {
-      if (p.latitude == null || p.longitude == null) continue;
-      const st = statusOf(p);
-      const color = st === 'approved' ? '#1a7f4e' : st === 'rejected' ? '#b3372f' : '#7b1e3c';
-      const m = L.circleMarker([p.latitude, p.longitude], { radius: 8, color, fillColor: color, fillOpacity: .85, weight: 1.5 }).addTo(S.map);
-      m.bindPopup(`<b>${esc(p.name)}</b><br>${esc([p.address, p.city].filter(Boolean).join(', '))}<br><a href="#" onclick="jumpTo('${p.id}');return false;">Open card</a>`);
-      pts.push([p.latitude, p.longitude]);
-    }
-    if (pts.length) S.map.fitBounds(pts, { padding: [30, 30] });
-    setTimeout(() => S.map && S.map.invalidateSize(), 120);
-  }
-  function jumpTo(id) {
-    S.view = 'list'; renderResults();
-    const el = document.getElementById('card-' + id);
-    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.outline = '2px solid var(--gold)'; setTimeout(() => el.style.outline = '', 1800); }
-  }
-
-  /* ---------- verdicts ---------- */
-  function findP(id) { return S.results.find(x => x.id === id); }
-  async function approve(id) {
-    const p = findP(id); if (!p) return;
-    const patch = { approved: true, verdict: p.verdict || 'fit', verdict_source: 'manual' };
-    const { error } = await sb.from('lf_places').update(patch).eq('id', id);
-    if (error) { toast(error.message, 'err'); return; }
-    Object.assign(p, patch); toast('Approved ✓', 'ok'); renderResults();
-  }
-  function openReject(id) {
-    S.rejectTarget = id;
-    const p = findP(id); if (!p) return;
-    document.getElementById('reject-modal').innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)closeReject()">
-        <div class="modal">
-          <h3>Reject ${esc(p.name)}</h3>
-          <p>Why is this store not a fit?</p>
-          <div class="seg" style="margin-bottom:16px">
-            ${REJECT_REASONS.map((r, i) => `<button onclick="doReject(${i})">${esc(r)}</button>`).join('')}
-          </div>
-          <div class="modal-actions"><button class="btn btn-secondary" onclick="closeReject()">Cancel</button></div>
-        </div>
-      </div>`;
-  }
-  function closeReject() { document.getElementById('reject-modal').innerHTML = ''; S.rejectTarget = null; }
-  async function doReject(ri) {
-    const reason = REJECT_REASONS[ri] || 'Other';
-    if (reason === 'Other') { openOtherReason(); return; }
-    applyReject(reason);
-  }
-  function openOtherReason() {
-    const p = findP(S.rejectTarget); if (!p) return;
-    document.getElementById('reject-modal').innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)closeReject()">
-        <div class="modal">
-          <h3>Reject ${esc(p.name)}</h3>
-          <p>In your own words — why is this one not a fit? What you type shows on the card.</p>
-          <div class="field">
-            <input id="rj-other" type="text" maxlength="160" placeholder="e.g. only sells antique estate pieces"
-                   onkeydown="if(event.key==='Enter')saveOtherReason()">
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="openReject('${p.id}')">Back</button>
-            <button class="btn btn-primary" onclick="saveOtherReason()">Reject</button>
-          </div>
-        </div>
-      </div>`;
-    setTimeout(() => { const el = document.getElementById('rj-other'); if (el) el.focus(); }, 60);
-  }
-  function saveOtherReason() {
-    const el = document.getElementById('rj-other');
-    const text = (el ? el.value : '').trim();
-    if (!text) { toast('Type a short reason, or tap Back to pick one', 'err'); return; }
-    applyReject(text.slice(0, 160));
-  }
-  async function applyReject(reason) {
-    const id = S.rejectTarget; const p = findP(id); if (!p) return;
-    const patch = { approved: false, verdict: 'not_fit', verdict_source: 'manual', verdict_reasons: [{ signal: reason, src: 'manual' }] };
-    const { error } = await sb.from('lf_places').update(patch).eq('id', id);
-    if (error) { toast(error.message, 'err'); return; }
-    Object.assign(p, patch); closeReject(); toast('Rejected', 'ok'); renderResults();
-  }
-  function openAddLead() {
-    const el = document.getElementById('addlead-modal'); if (!el) return;
-    el.innerHTML = `
-      <div class="modal-overlay" onclick="if(event.target===this)closeAddLead()">
-        <div class="modal">
-          <h3>Add a jeweller</h3>
-          <p class="sub" style="margin-bottom:10px">Spotted one on Instagram or on the road? Add it — Claude researches it on the next run.</p>
-          <div class="field"><label>Store name *</label><input id="al-name" type="text"></div>
-          <div class="field"><label>Instagram handle</label><input id="al-ig" type="text" placeholder="e.g. boca_treasures" autocapitalize="none"></div>
-          <div class="field"><label>City</label><input id="al-city" type="text"></div>
-          <div class="field"><label>State</label><select id="al-state">${STATES.map(s=>`<option${(S.state||'FL')===s?' selected':''}>${s}</option>`).join('')}</select></div>
-          <div class="field"><label>Phone (optional)</label><input id="al-phone" type="tel"></div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeAddLead()">Cancel</button>
-            <button class="btn btn-primary" onclick="saveLead()">Add 🔍</button>
-          </div>
-        </div>
-      </div>`;
-  }
-  function closeAddLead() { const el = document.getElementById('addlead-modal'); if (el) el.innerHTML = ''; }
-  async function saveLead() {
-    const name = document.getElementById('al-name').value.trim();
-    if (!name) { toast('Store name is needed', 'err'); return; }
-    const ig = document.getElementById('al-ig').value.trim().replace(/^@/, '');
-    const city = document.getElementById('al-city').value.trim();
-    const region = document.getElementById('al-state').value;
-    const phone = document.getElementById('al-phone').value.trim();
-    const row = { source: 'manual', source_id: 'manual-' + Date.now(), name,
-      instagram: ig || null, city: city || null, area: city || null, region, phone: phone || null, research: true };
-    const { data, error } = await sb.from('lf_places').insert(row).select().single();
-    if (error) { toast(error.message, 'err'); return; }
-    closeAddLead(); toast('Added — flagged for Claude research 🔍', 'ok');
-    if (S.areaLabel && Array.isArray(S.results)) { S.results.unshift(data); renderResults(); }
-  }
-  async function markResearch(id) {
-    const p = findP(id); if (!p) return;
-    const val = !p.research;
-    const { error } = await sb.from('lf_places').update({ research: val }).eq('id', id);
-    if (error) { toast(error.message, 'err'); return; }
-    p.research = val;
-    toast(val ? 'Listed for Claude deep research 🔍' : 'Removed from research list');
-    renderResults();
-  }
-  async function resetVerdict(id) {
-    const p = findP(id); if (!p) return;
-    const patch = { approved: null, verdict: null, verdict_source: null, verdict_reasons: null };
-    const { error } = await sb.from('lf_places').update(patch).eq('id', id);
-    if (error) { toast(error.message, 'err'); return; }
-    Object.assign(p, patch); toast('Back to review'); renderResults();
-  }
-
-  /* ---------- boot ---------- */
-  async function init() {
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) { renderLogin(); return; }
-    S.user = session.user;
-    const { data: prof, error } = await sb.from('profiles').select('role, active').eq('id', S.user.id).single();
-    if (error || !prof || prof.role !== 'owner' || !prof.active) {
-      $app.innerHTML = `<div class="auth-wrap"><div class="auth-card" style="text-align:center">
-        <h2>Owner only</h2><p class="sub">The Lead Finder is currently available only to the owner account.</p>
-        <button class="btn btn-secondary" onclick="doSignOut()">Sign out</button></div></div>`;
-      return;
-    }
-    await loadAreas();          // sets STATES from the data
-    await loadHomeCounts();     // per-state counts iterate STATES
-    renderHome();
-  }
-  window.doLogin = doLogin; window.doSignOut = doSignOut; window.doSearch = doSearch; window.goHome = goHome;
-  window.setFilter = setFilter; window.setView = setView; window.approve = approve;
-  window.openReject = openReject; window.closeReject = closeReject; window.doReject = doReject;
-  window.saveOtherReason = saveOtherReason;
-  window.resetVerdict = resetVerdict; window.jumpTo = jumpTo; window.markResearch = markResearch;
-  window.openDetail = openDetail; window.closeDetail = closeDetail;
-  window.openDraft = openDraft; window.closeDraft = closeDraft; window.copyDraft = copyDraft;
-  window.openWa = openWa; window.openSms = openSms; window.openMail = openMail;
-  window.openAddLead = openAddLead; window.closeAddLead = closeAddLead; window.saveLead = saveLead;
-  window.areaSuggest = areaSuggest; window.closeSug = closeSug; window.pickSug = pickSug;
-  window.pickAreaRow = pickAreaRow; window.toggleAllAreas = toggleAllAreas; window.onStateChange = onStateChange;
-  init();
-  </script>
-</body>
-</html>
+<!doctype html> <html lang="en"> <head> <meta charset="utf-8"> <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"> <meta name="theme-color" content="#1A2641"> <title>Aaryam · Leads</title> <link 
+rel="icon" type="image/svg+xml" href="icon.svg"> <link rel="manifest" href="manifest.json"> <script src="aaryam-touch.js"></script> <meta name="apple-mobile-web-app-capable" content="yes"> <meta name="apple-mobile-web-app-status-bar-style" 
+content="black-translucent"> <meta name="apple-mobile-web-app-title" content="Lead Finder"> <link rel="stylesheet" href="../styles.css"> <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"> 
+<link rel="stylesheet" href="aaryam.css"> <style>body,html{overflow-x:clip}
+html.lf-locked,html.lf-locked body{overflow:hidden}
+[hidden]{display:none!important}
+body{font-size:16px}
+#content{padding:18px 16px calc(32px + env(safe-area-inset-bottom));max-width:680px;margin:0 auto}
+.ico{width:16px;height:16px;flex:0 0 auto;display:inline-block;vertical-align:-3px}
+.splash{background:var(--paper)}
+.lf-splash-wm{height:20px;width:auto}
+.splash p{margin:0;font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.lf-auth .auth-head h1{font-size:30px;margin:18px 0 4px;color:var(--ink)}
+.lf-auth-wm{height:22px;width:auto;display:block;margin:0 auto}
+.lf-auth .auth-card{border:1px solid var(--line)}
+.lf-auth .btn-primary{min-height:48px;font-size:16px}
+.lf-auth-err{background:var(--bad-soft);color:var(--bad);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:14px}
+.lf-auth .field label{color:var(--ink-2)}
+.aa-brandbar .aa-wm{height:14px}
+.aa-brandbar button{min-height:36px}
+.lf-h1{font-size:30px;line-height:1.12;margin:2px 0 4px;color:var(--ink)}
+.lf-lede{margin:0 0 16px;color:var(--muted);font-size:14.5px}
+.section-label{margin:22px 2px 10px}
+.section-label:first-child{margin-top:2px}
+.lf-searchbar{display:flex;gap:8px;margin-bottom:10px}
+.lf-searchbar .combo{flex:1;min-width:0}
+.lf-searchbar input{width:100%;-webkit-appearance:none;appearance:none;border:1.5px solid var(--line-strong);border-radius:999px;padding:12px 16px 12px 42px;font-size:16px;min-height:48px;outline:0;background:#fff;color:var(--ink)}
+.lf-searchbar input::-webkit-search-decoration{-webkit-appearance:none}
+.lf-sicon{position:absolute;left:15px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;line-height:0}
+.lf-sicon .ico{width:18px;height:18px}
+.lf-add{flex:0 0 48px;height:48px;border-radius:999px;border:1.5px solid var(--line-strong);background:#fff;color:var(--navy);cursor:pointer;display:grid;place-items:center;padding:0}
+.lf-add .ico{width:20px;height:20px}
+.lf-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;margin-bottom:6px}
+.lf-controls select,.lf-select{width:100%;min-height:44px;font-size:16px;border:1.5px solid var(--line-strong);border-radius:12px;padding:0 30px 0 12px;background-color:#fff;color:var(--ink);-webkit-appearance:none;appearance:none;font-weight:600;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23646B7C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center}
+.lf-controls .btn{min-height:44px;padding:0 22px;width:auto;font-size:15px}
+.combo-list{border:1px solid var(--line);box-shadow:var(--shadow-lift)}
+.combo-list button{min-height:46px;display:flex;align-items:center;gap:8px;color:var(--ink)}
+.combo-list button .c-city{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.combo-list button .c-meta{color:var(--muted);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.combo-list button.act,.combo-list button:hover{background:var(--surface)}
+.lf-recent{display:flex;gap:8px;overflow-x:auto;margin:10px -16px 0;padding:2px 16px 4px;scrollbar-width:none;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.lf-recent::-webkit-scrollbar{display:none}
+.lf-recent button{flex:0 0 auto;min-height:40px;border:1px solid var(--line-strong);background:#fff;border-radius:999px;padding:0 14px;font-size:14px;font-weight:600;color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.lf-recent button .ico{color:var(--muted);width:14px;height:14px}
+.lf-home-stats{display:flex;gap:10px;margin:0 -16px 14px;padding:4px 16px 10px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-snap-type:x proximity;scroll-padding:0 16px;scrollbar-width:none;touch-action:pan-x pan-y}
+.lf-home-stats::-webkit-scrollbar{display:none}
+.lf-home-stats .stat{flex:0 0 auto;min-width:118px;scroll-snap-align:start;padding:12px 14px 11px;text-align:left;border-radius:var(--radius);cursor:pointer;font:inherit;color:inherit}
+.lf-home-stats .stat .st-label{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+.lf-home-stats .stat .st-num{font-size:27px;color:var(--ink);line-height:1.1;margin-top:4px;font-weight:600}
+.lf-home-stats .stat .st-sub{font-size:12.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lf-home-stats .stat[aria-pressed=true]{border-color:var(--navy);box-shadow:inset 0 0 0 1px var(--navy),var(--shadow)}
+.lf-home-stats .stat[aria-pressed=true] .st-label{color:var(--navy)}
+.lf-home-stats .aa-skel{flex:0 0 118px;height:84px;border-radius:var(--radius)}
+.lf-pipe{border-radius:var(--radius);padding:15px 16px;margin-bottom:12px;display:block;text-decoration:none;color:inherit}
+.lf-pipe-head{display:flex;align-items:baseline;gap:10px;margin:6px 0 10px;font-size:14px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.lf-big{font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:28px;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums}
+.lf-bar{height:8px;border-radius:999px;overflow:hidden}
+.lf-bar-fill{height:100%;border-radius:999px;transition:width .4s}
+.lf-pipe .nums{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted);margin-top:7px}
+.lf-pipe .hint{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.lf-trip{display:flex;align-items:center;gap:12px}
+.lf-trip>div{flex:1;min-width:0}
+.lf-trip-line{display:flex;align-items:baseline;gap:8px;margin-top:6px;font-size:14px;color:var(--ink-2);flex-wrap:wrap}
+.lf-trip-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;font-weight:700;font-size:14px;color:var(--ink);border:1px solid var(--line-strong);border-radius:999px;padding:9px 12px 9px 14px}
+.lf-skelcard{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.lf-skelcard .aa-skel{margin-bottom:9px}
+.lf-area-note{font-size:13px;color:var(--muted);margin:-4px 2px 12px;line-height:1.5}
+.lf-arearow{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px 14px;margin-bottom:8px;cursor:pointer;font:inherit;color:inherit;min-height:60px}
+.lf-arearow:active{background:var(--surface)}
+@media (hover:hover){.lf-arearow:hover{border-color:var(--line-strong)}}.lf-arearow .ar-main{flex:1;min-width:0}
+.lf-arearow .ar-city{font-weight:700;font-size:15.5px;overflow-wrap:anywhere}
+.lf-arearow .ar-city small{color:var(--muted);font-weight:600;font-size:13px}
+.lf-arearow .ar-sub{font-size:12.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.lf-arearow .ar-num{font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:22px;color:var(--ink);line-height:1;text-align:right;font-variant-numeric:tabular-nums}
+.lf-arearow .ar-num span{display:block;font-family:var(--body);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.14em;margin-top:4px}
+.lf-morebtn{display:block;width:100%;min-height:44px;background:0 0;border:1px dashed var(--line-strong);border-radius:12px;color:var(--ink-2);font-weight:700;font-size:14px;cursor:pointer;margin:4px 0 8px;font-variant-numeric:tabular-nums}
+.lf-tip{font-size:13px;color:var(--muted);text-align:center;margin:22px 12px 0;line-height:1.55}
+.lf-backlink{display:inline-flex;align-items:center;gap:2px;min-height:40px;padding:0 12px 0 4px;margin:-8px 0 0 -6px;border:0;background:0 0;color:var(--ink-2);font-weight:700;font-size:14px;cursor:pointer;border-radius:999px}
+.lf-backlink .ico{width:18px;height:18px}
+.lf-restitle{font-size:30px;line-height:1.12;margin:2px 0 4px;overflow-wrap:anywhere}
+.lf-count{font-size:13.5px;color:var(--muted);margin:0 0 12px;font-variant-numeric:tabular-nums;line-height:1.5}
+.lf-newsearch{margin:0 0 14px}
+.lf-newsearch>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:40px;font-weight:700;font-size:14px;color:var(--ink-2)}
+.lf-newsearch>summary::-webkit-details-marker{display:none}
+.lf-newsearch[open]>summary{margin-bottom:8px}
+.lf-fchips{display:flex;gap:8px;overflow-x:auto;margin:0 -16px 10px;padding:2px 16px 4px;scrollbar-width:none;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.lf-fchips::-webkit-scrollbar{display:none}
+.lf-fchips button{flex:0 0 auto;min-height:40px;border:1.5px solid var(--line-strong);background:#fff;border-radius:999px;padding:0 14px;font-size:14px;font-weight:700;color:var(--ink-2);cursor:pointer}
+.lf-fchips button .n{font-variant-numeric:tabular-nums;opacity:.72;margin-left:3px;font-weight:600}
+.lf-fchips button.on{background:var(--ink);border-color:var(--ink);color:var(--cream)}
+@media (min-width:720px){.lf-fchips{flex-wrap:wrap;overflow:visible;margin:0 0 10px;padding:2px 0 4px}}.lf-tools{display:grid;grid-template-columns:minmax(0,1fr) 128px;gap:8px;margin-bottom:10px}
+.lf-tools input{width:100%;min-height:44px;font-size:16px;border:1.5px solid var(--line-strong);border-radius:12px;padding:0 12px;background:#fff;color:var(--ink);outline:0;-webkit-appearance:none;appearance:none}
+.lf-controls select:focus,.lf-select:focus,.lf-tools input:focus{border-color:var(--navy);box-shadow:var(--focus)}
+.lf-viewtabs{display:grid;grid-template-columns:1fr 1fr;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:14px;gap:0}
+.lf-viewtabs button{border:0;background:0 0;min-height:38px;border-radius:9px;font-size:14px;font-weight:700;color:var(--ink-2);cursor:pointer}
+.lf-viewtabs button.on{background:#fff;color:var(--ink);box-shadow:var(--shadow);border:0}
+.lf-error{text-align:center;padding:26px 18px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px}
+.lf-error h3{font-size:20px;margin:0 0 6px}
+.lf-error p{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.5}
+.lf-error .btn{width:auto;min-height:44px;padding:0 24px}
+.lf-card{border-radius:var(--radius);padding:15px 16px 14px;margin-bottom:12px;cursor:pointer;content-visibility:auto;contain-intrinsic-size:auto 210px}
+.lf-card.is-busy{opacity:.6;pointer-events:none}
+.lf-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.lf-name{font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:19px;line-height:1.22;color:var(--ink);background:0 0;border:0;padding:0;margin:0;text-align:left;cursor:pointer;overflow-wrap:anywhere;min-width:0}
+.lf-card-top .chip{flex:0 0 auto;margin-top:2px}
+.lf-addr{font-size:13.5px;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
+.lf-chiprow{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.chip{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;font-size:11.5px;padding:4px 9px;border-radius:999px}
+.chip .ico{width:12px;height:12px;vertical-align:-2px;margin-right:3px}
+.chip-res{background:var(--ok-soft);color:var(--ok)}
+.chip-p5{background:var(--navy-soft);color:var(--navy)}
+.chip-info{background:var(--info-soft);color:var(--info)}
+.lf-contacts{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.lf-cbtn{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 13px;border:1px solid var(--line-strong);background:#fff;border-radius:999px;font-size:13.5px;font-weight:700;color:var(--ink-2);text-decoration:none}
+.lf-cbtn .ico{color:var(--navy)}
+.lf-cbtn.icon{width:40px;padding:0;justify-content:center}
+.lf-cbtn:active{background:var(--surface)}
+.lf-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}
+.lf-actions .btn{min-height:44px;padding:0 6px;font-size:14px;width:100%;gap:5px;border-radius:999px}
+.btn-research.on{background:var(--info-soft);color:var(--info)}
+.lf-done{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.lf-reset{background:0 0;border:0;color:var(--ink-2);font-size:13.5px;font-weight:700;cursor:pointer;min-height:40px;padding:0 2px;text-decoration:underline;text-underline-offset:3px}
+.lf-flash{box-shadow:0 0 0 2px var(--navy),var(--shadow-lift)!important}
+.notice{border-radius:12px;font-size:13.5px;line-height:1.5}
+.empty .big{margin-bottom:6px}
+#lf-map{height:min(64vh,560px);border-radius:var(--radius);border:1px solid var(--line);box-shadow:var(--shadow)}
+.leaflet-container{font:inherit;background:var(--surface)}
+#lf-map .leaflet-tile-pane{filter:saturate(.2) sepia(.06) brightness(1.03) contrast(.94)}
+.leaflet-popup-content-wrapper{border-radius:12px;box-shadow:var(--shadow-lift)}
+.leaflet-popup-content{margin:12px 14px}
+.lf-pop b{display:block;font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:16px;line-height:1.2;color:var(--ink)}
+.lf-pop .p-sub{color:var(--muted);font-size:12.5px;margin:3px 0 8px}
+.lf-pop button{border:0;background:var(--navy);color:var(--cream);border-radius:999px;min-height:36px;padding:0 14px;font-weight:700;font-size:13px;cursor:pointer}
+.lf-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:10px 2px 0}
+.lf-legend i{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:-1px}
+.modal{max-height:88vh;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;border-radius:20px 20px 0 0;padding:10px 20px calc(22px + env(safe-area-inset-bottom))}
+.modal:focus{outline:0}
+.sheet-grab{width:40px;height:4px;border-radius:2px;background:var(--line-strong);margin:0 auto 14px}
+.modal h3{font-size:25px;line-height:1.18;margin:2px 0 6px;overflow-wrap:anywhere;color:var(--ink)}
+.modal p{color:var(--muted)}
+.modal .modal-actions{margin-top:16px}
+.modal .modal-actions .btn{min-height:46px}
+@media (min-width:720px){.modal-overlay{align-items:center;padding:24px}
+.modal{border-radius:20px;max-height:86vh}
+.sheet-grab{display:none}
+.modal{padding-top:22px}}.lf-facts{margin:14px 0 4px;border-top:1px solid var(--line)}
+.detail-row{font-size:14.5px;padding:9px 0}
+.detail-row .dk{width:34%;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:3px}
+.detail-row .dv{font-weight:600;color:var(--ink);white-space:pre-line}
+.lf-sec-title{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:20px 2px 8px}
+.lf-res{margin-top:6px}
+.lf-res .res-sum{margin:0 0 12px;font-size:15px;line-height:1.55;color:var(--ink);white-space:pre-line}
+.lf-res .res-sec{border-left:3px solid var(--line-strong);padding:0 0 0 12px;margin-bottom:12px}
+.lf-res .res-sec.good{border-left-color:var(--ok)}
+.lf-res .res-sec.gap{border-left-color:var(--warn)}
+.lf-res .res-sec.pitch{border-left-color:var(--navy);background:var(--navy-soft);border-radius:0 10px 10px 0;padding:10px 12px}
+.lf-res h5{margin:0 0 4px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.lf-res .res-sec.pitch h5{color:var(--navy)}
+.lf-res .res-sec p{margin:0;font-size:14.5px;line-height:1.55;color:var(--ink);white-space:pre-line}
+.lf-res details{margin-top:4px}
+.lf-res summary{font-size:13px;color:var(--ink-2);cursor:pointer;font-weight:700;min-height:36px;display:flex;align-items:center}
+.lf-res .ev{margin:4px 0 0;padding-left:18px;font-size:13px;color:var(--muted);line-height:1.55;overflow-wrap:anywhere}
+.lf-msg{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.6;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+mark.ph{background:var(--navy-soft);color:var(--navy);border-radius:6px;padding:0 4px;font-weight:700;white-space:nowrap}
+.lf-msg-note{font-size:12.5px!important;margin:8px 2px 10px!important;line-height:1.6}
+.lf-notes{white-space:pre-line;font-size:14px;color:var(--ink-2);margin:0;line-height:1.55;overflow-wrap:anywhere}
+.lf-wide{width:100%;min-height:46px;margin-top:8px}
+.lf-detail-actions{margin-top:18px}
+.lf-small{font-size:12.5px!important;margin:8px 2px 0!important}
+.lf-draft textarea{width:100%;min-height:200px;border:1.5px solid var(--line-strong);border-radius:12px;padding:12px 13px;font-size:16px;line-height:1.55;resize:vertical;background:#fff;color:var(--ink);outline:0;font-family:var(--body);font-weight:500}
+.lf-draft textarea:focus{border-color:var(--navy);box-shadow:var(--focus)}
+.lf-draft .field{margin-bottom:10px}
+.lf-draft .why{font-size:12.5px;color:var(--muted);margin:8px 2px 0;line-height:1.55}
+.lf-ph-warn{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:9px 12px;font-size:13.5px;line-height:1.5}
+.lf-ph-warn mark.ph{background:#fff;color:var(--warn)}
+.lf-draft .send{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.lf-draft .send button{min-height:48px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line-strong);background:#fff;border-radius:999px;font-size:14.5px;font-weight:700;color:var(--ink);cursor:pointer}
+.lf-draft .send button .ico{color:var(--navy)}
+.lf-draft .send button:active{background:var(--surface)}
+.lf-draft .send .copy{background:var(--navy);color:var(--cream);border-color:var(--navy)}
+.lf-draft .send .copy .ico{color:var(--cream)}
+.seg button{min-height:44px;font-size:14.5px;color:var(--ink-2)}
+#toast{bottom:calc(20px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:14px;max-width:min(92vw,520px)}
+#toast.has-act{pointer-events:auto}
+#toast .t-act{background:0 0;border:0;color:inherit;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:6px 2px;font-size:14px;flex:0 0 auto}
+@media (min-width:720px){.lf-h1,.lf-restitle{font-size:34px}}</style> </head> <body> <div id="app"> <div class="splash"> <img src="aaryam-wordmark.svg" alt="Aaryam" class="lf-splash-wm"> <p>Lead Finder</p> </div> </div> <div id="sheet">
+</div> <div id="toast" role="status" aria-live="polite"></div> <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script> <script 
+src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script> <script src="../config.js"></script> <script>
+"use strict";const $app=document.getElementById("app"),$sheet=document.getElementById("sheet"),$=e=>document.getElementById(e)
+;if(!window.supabase||!window.BJ_CONFIG)throw $app.innerHTML='<div class="auth-wrap lf-auth"><div class="auth-card" style="text-align:center"><img src="aaryam-wordmark.svg" alt="Aaryam" class="lf-auth-wm" style="margin-bottom:18px"><h2>Could not load the Lead Finder</h2><p class="sub">The app needs a connection the first time it opens. Check your signal and try again.</p><button class="btn btn-primary" onclick="location.reload()">Try again</button></div></div>',
+new Error("Lead Finder: supabase-js or config.js did not load");const sb=window.supabase.createClient(BJ_CONFIG.SUPABASE_URL,BJ_CONFIG.SUPABASE_KEY),S={user:null,screen:"home",results:[],byId:new Map,filter:"all",view:"list",sort:"name",
+textFilter:"",q:"",state:"",buf:"10",areaLabel:"",retiredHidden:0,capped:!1,map:null,mlayer:null,io:null,health:null,healthErr:!1,pipe:void 0,approved:void 0,areas:null,areasErr:!1,areaView:[],areaShown:10,sug:[],sugIdx:-1,
+rejectTarget:null,sheet:null,draft:null,busy:new Set,undo:new Map,searchSeq:0,lastSearch:null,skipPop:!1},PAGE=40,MAX_ROWS=5e3,LV={items:[],shown:0
+},REJECT_REASONS=["Natural only","Gold with CZ / moissanite only","Silver / fashion only","Indian vendor / supplier","Pawn shop","Chain store","Repair / watch only","Closed","Not a jeweller","Other"];let STATES=["FL","NY","NJ"]
+;const REGION_NAME={FL:"Florida",NY:"New York",NJ:"New Jersey",TX:"Texas",CA:"California",GA:"Georgia",IL:"Illinois",PA:"Pennsylvania",MA:"Massachusetts",CT:"Connecticut",DC:"Washington DC",MD:"Maryland",VA:"Virginia",NC:"North Carolina",
+AZ:"Arizona",NV:"Nevada",OH:"Ohio",MI:"Michigan",WA:"Washington",CO:"Colorado",TN:"Tennessee",SC:"South Carolina"
+},COLS="id,source,name,address,city,region,postcode,latitude,longitude,phone,website,email,instagram,facebook,opening_hours,segment,locations_count,verdict,verdict_reasons,verdict_source,priority,approved,summary,good_at,struggling_with,pitch_angle,notes,updated_at,hidden,research,approach_msg,area,skip_reason,sales_channel,owner_name,owner_role,booth,deals_in",svg=(e,t)=>`<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${t||""}>${e}</svg>`,I={
+search:svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>'),plus:svg('<path d="M12 5v14M5 12h14"/>'),back:svg('<path d="m15 18-6-6 6-6"/>'),chev:svg('<path d="m9 18 6-6-6-6"/>'),check:svg('<path d="M20 6 9 17l-5-5"/>'),
+x:svg('<path d="M18 6 6 18M6 6l12 12"/>'),star:svg('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),clock:svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+phone:svg('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>'),
+sms:svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),wa:svg('<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/>'),mail:svg('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>'),
+web:svg('<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'),
+ig:svg('<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8"/>'),fb:svg('<path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>'),
+map:svg('<path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3zM9 3v15M15 6v15"/>'),pin:svg('<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>'),
+copy:svg('<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>')};function esc(e){return String(null==e?"":e).replace(/[&<>"']/g,(e=>({"&":"&amp;","<":"&lt;",">":"&gt;",
+'"':"&quot;","'":"&#39;"}[e])))}function num(e){const t=Number(e);return Number.isFinite(t)?t.toLocaleString("en-US"):"0"}function plural(e,t,a){return num(e)+" "+(1===Number(e)?t:a||t+"s")}function cssVar(e){
+return getComputedStyle(document.documentElement).getPropertyValue(e).trim()}function errMsg(e,t){if("undefined"!=typeof navigator&&!1===navigator.onLine)return(t?t+" \u2014 ":"")+"no signal. Try again when you have a connection."
+;const a=e&&(e.message||e.error_description||e.msg);return(t?t+": ":"")+(a?String(a):"something went wrong")}function toast(e,t,a){const n=$("toast");n.textContent="";const s=document.createElement("span");if(s.textContent=e,
+n.appendChild(s),a){const e=document.createElement("button");e.type="button",e.className="t-act",e.textContent=a.label,e.addEventListener("click",(()=>{hideToast(),a.fn()})),n.appendChild(e)}
+n.className="show"+(t?" "+t:"")+(a?" has-act":""),clearTimeout(toast._h),toast._h=setTimeout(hideToast,a?6e3:2800)}function hideToast(){const e=$("toast");e.className="",clearTimeout(toast._c),toast._c=setTimeout((()=>{
+e.className||(e.textContent="")}),300)}function digitsOnly(e){return(e||"").replace(/[^0-9+]/g,"")}function waLink(e){let t=digitsOnly(e).replace(/^\+/,"");return t?(10===t.length&&(t="1"+t),"https://wa.me/"+t):null}function smsLink(e){
+let t=digitsOnly(e).replace(/^\+/,"");return t?(10===t.length&&(t="1"+t),"sms:+"+t):null}function igLink(e){return e?/^https?:\/\//i.test(e)?e:"https://www.instagram.com/"+encodeURIComponent(String(e).trim().replace(/^@/,""))+"/":null}
+function fbLink(e){return e?/^https?:\/\//i.test(e)?e:"https://www.facebook.com/"+encodeURIComponent(String(e).trim()):null}function webLink(e){return e?(e=String(e).trim(),
+/^https?:\/\//i.test(e)?e:"https://"+e.replace(/^[a-z]+:\/*/i,"")):null}function mapsLink(e){const t="https://www.google.com/maps/search/?api=1&query=";if(e.address&&e.city&&e.region){const a=e.region+(e.postcode?" "+e.postcode:"")
+;return t+encodeURIComponent([e.name,e.address,e.city,a].filter(Boolean).join(", "))}return hasPin(e)?t+e.latitude+","+e.longitude:t+encodeURIComponent([e.name,e.city,e.region,"USA"].filter(Boolean).join(", "))}function hasPin(e){
+return Number.isFinite(Number(e.latitude))&&Number.isFinite(Number(e.longitude))&&null!==e.latitude&&null!==e.longitude}function statusOf(e){return!0===e.approved?"approved":!1===e.approved?"rejected":"pending"}function relTime(e){
+if(!e)return null;const t=(Date.now()-new Date(e).getTime())/1e3;if(!Number.isFinite(t))return null;if(t<90)return"just now";if(t<3600)return Math.round(t/60)+" min ago";if(t<86400)return Math.round(t/3600)+" h ago"
+;const a=Math.round(t/86400);return 1===a?"yesterday":a+" days ago"}function todayISO(){const e=new Date;return e.getFullYear()+"-"+String(e.getMonth()+1).padStart(2,"0")+"-"+String(e.getDate()).padStart(2,"0")}function fmtVisitDate(e){
+const t=/^(\d{4})-(\d{2})-(\d{2})$/.exec(e||"");if(!t)return"";return new Date(+t[1],+t[2]-1,+t[3]).toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}const PH_RE=/\{(city|date|store|hook)\}/g;function phHtml(e){
+return esc(e).replace(PH_RE,'<mark class="ph">{$1}</mark>')}function phList(e){return[...new Set(String(e||"").match(PH_RE)||[])]}const PRIO_LABEL={5:"Sells lab-grown",4:"Bridal / custom focus",3:"Solid independent",2:"Needs verifying",
+1:"Weak fit"};function firstReason(e){const t=Array.isArray(e.verdict_reasons)?e.verdict_reasons[0]:null;return t&&"object"==typeof t&&t.signal?String(t.signal):""}function prioChip(e){const t=parseInt(e.priority,10)
+;return t?`<span class="chip ${t>=5?"chip-p5":"chip-src"}">${t>=5?I.star:""}P${t} \xb7 ${esc(PRIO_LABEL[t]||"")}</span>`:""}function statusChip(e,t){const a=statusOf(e)
+;if("pending"===a)return'<span class="chip chip-pending">To review</span>';if("approved"===a)return`<span class="chip chip-approved">${I.check}Approved</span>`;const n=t?firstReason(e):""
+;return`<span class="chip chip-rejected">Rejected${n?" \u2014 "+esc(n):""}</span>`}function extraChips(e,t){const a=statusOf(e),n=[],s=firstReason(e)
+;!s||t&&"rejected"===a||n.push(`<span class="chip chip-src" title="${esc(s)}">${esc(s)}</span>`),Number(e.locations_count)>1&&n.push(`<span class="chip chip-src">${num(e.locations_count)} locations \u2014 main branch</span>`),
+"exchange"===e.segment&&n.push('<span class="chip chip-src">Multi-vendor exchange</span>'),"walk_in"===e.skip_reason&&n.push('<span class="chip chip-src">Walk-in</span>'),
+"online_only"===e.sales_channel&&n.push('<span class="chip chip-src">Online only</span>'),
+e.pitch_angle?n.push('<span class="chip chip-res">Researched</span>'):e.research&&"pending"===a&&n.push('<span class="chip chip-info">Listed for research</span>');const r=prioChip(e);return r&&n.push(r),
+e.source&&"osm"!==e.source&&"tomtom"!==e.source&&n.push(`<span class="chip chip-src">${esc(e.source)}</span>`),n}function researchHtml(e){
+const t=Array.isArray(e.verdict_reasons)?e.verdict_reasons.filter((e=>e&&"object"==typeof e)):[],a=e.summary||e.good_at||e.struggling_with||e.pitch_angle;if(!a&&!t.length)return""
+;const n=(e,t,a)=>a?`<div class="res-sec ${e}"><h5>${t}</h5><p>${esc(a)}</p></div>`:"",s=t.map((e=>`<li>${esc(e.signal||"")}${e.src?" <i>\u2014 "+esc(e.src)+"</i>":""}</li>`)).join("");let r=""
+;return t.length&&(r=a?`<details><summary>Evidence (${t.length})</summary><ul class="ev">${s}</ul></details>`:`<div class="res-sec ${"not_fit"===e.verdict?"gap":"good"}">\n             <h5>${"not_fit"===e.verdict?"Why this was ruled out":"What we found"}</h5>\n             <ul class="ev" style="margin-top:2px">${s}</ul></div>`),
+`<div class="lf-sec-title">Research</div><div class="lf-res">\n      ${e.summary?`<p class="res-sum">${esc(e.summary)}</p>`:""}\n      ${n("good","What they\u2019re good at",e.good_at)}\n      ${n("gap","Where they struggle",e.struggling_with)}\n      ${n("pitch","How we pitch them",e.pitch_angle)}\n      ${r}\n    </div>`
+}const OUTREACH={signoff:"Ravi\nAaryam Fine Jewelry",place:e=>e.city||REGION_NAME[e.region]||e.region||"your area",hook(e){const t=(e.segment||"").toLowerCase()
+;return e.priority>=5?"I saw you already carry lab-grown \u2014 that is exactly what we make, so you would be buying straight from the workshop.":"wholesaler"===t?"We supply wholesalers direct at manufacturer prices, with credit terms and memo available.":"exchange"===t?"We supply the independent dealers in exchanges like yours \u2014 certified lab-grown, ready stock or made to order.":"We supply independent jewellers with certified lab-grown pieces \u2014 ready stock, or made to order in 4 to 10 days."
+},compose(e,t){if(e.approach_msg)return OUTREACH.fill(e.approach_msg,e,t);const a=OUTREACH.place(e),n=t||"{date}"
+;return OUTREACH.fill(`Hello \u2014 Ravi here from Aaryam Fine Jewelry. We make lab-grown diamond jewelry in our own workshop in Surat and hold stock in New York.\n\n{hook}\n\nI am in ${a} on ${n} and would like 15 minutes to show you a few pieces \u2014 IGI certified, overnight from New York, memo available.\n\nWould that suit you?\n\n${OUTREACH.signoff}`,e,t)
+},fill:(e,t,a)=>String(e).replace(/\{hook\}/g,OUTREACH.hook(t)).replace(/\{store\}/g,t.name||"").replace(/\{city\}/g,OUTREACH.place(t)).replace(/\{date\}/g,a||"{date}")};let sheetReturnFocus=null;function openSheet(e,t,a,n){
+const s=S.sheet&&S.sheet.kind===e&&S.sheet.id===t,r=$sheet.querySelector(".modal"),i=s&&r?r.scrollTop:0;$sheet.innerHTML||(sheetReturnFocus=document.activeElement),
+$sheet.innerHTML=`<div class="modal-overlay" data-act="sheet-bg">\n      <div class="modal${"draft"===e?" lf-draft":""}" role="dialog" aria-modal="true" aria-label="${esc(a)}" tabindex="-1">\n        <div class="sheet-grab" aria-hidden="true"></div>${n}</div></div>`,
+S.sheet={kind:e,id:t},document.documentElement.classList.add("lf-locked");const o=$sheet.querySelector(".modal");i&&(o.scrollTop=i);try{o.focus({preventScroll:!0})}catch(e){}}function closeSheet(){if(!$sheet.innerHTML)return
+;$sheet.innerHTML="",S.sheet=null,S.rejectTarget=null,S.draft=null,document.documentElement.classList.remove("lf-locked");const e=sheetReturnFocus;if(sheetReturnFocus=null,e&&document.contains(e)&&e.focus)try{e.focus({preventScroll:!0})
+}catch(e){}}function openDraft(e){const t=S.byId.get(e);if(!t)return
+;const a=OUTREACH.compose(t,null),n=t.approach_msg?"Written for this store during research.":t.good_at?"Built from the template. What they are good at: "+esc(String(t.good_at).split(". ")[0])+".":"Built from the template \u2014 this store has not been deep-researched yet.",s=a.indexOf("{date}")>-1,r=esc(t.id)
+;openSheet("draft",e,"Message "+(t.name||""),`\n      <div class="eyebrow">Message</div>\n      <h3>${esc(t.name)}</h3>\n      <p style="margin:2px 0 14px">Edit it however you like. Nothing is sent from here \u2014 WhatsApp, Messages or Mail opens with the text in it, and you press send.</p>\n      ${s?`<div class="field"><label for="dr-date">Visit date</label><input id="dr-date" type="date" min="${todayISO()}"></div>`:""}\n      <div class="field"><label for="dr-text">Message</label><textarea id="dr-text" rows="10" spellcheck="true">${esc(a)}</textarea></div>\n      <div id="dr-ph" class="lf-ph-warn" hidden></div>\n      <div class="why">${n}</div>\n      <div class="send">\n        <button type="button" class="copy" data-act="copy">${I.copy}Copy</button>\n        ${waLink(t.phone)?`<button type="button" data-act="wa" data-id="${r}">${I.wa}WhatsApp</button>`:""}\n        ${smsLink(t.phone)?`<button type="button" data-act="sms" data-id="${r}">${I.sms}Text</button>`:""}\n        ${t.email?`<button type="button" data-act="mail" data-id="${r}">${I.mail}Email</button>`:""}\n      </div>\n      <div class="modal-actions">\n        <button type="button" class="btn btn-secondary" data-act="detail" data-id="${r}">Back to store</button>\n        <button type="button" class="btn btn-secondary" data-act="close">Close</button>\n      </div>`),
+S.draft={id:e,lastDate:""},updatePh()}function draftText(){const e=$("dr-text");return e?e.value:""}function updatePh(){const e=$("dr-ph");if(!e)return;const t=phList(draftText());if(!t.length)return e.hidden=!0,void(e.innerHTML="")
+;e.hidden=!1,e.innerHTML="Still to fill in: "+t.map((e=>`<mark class="ph">${esc(e)}</mark>`)).join(" ")+(t.includes("{date}")&&$("dr-date")?" \u2014 pick the visit date above and it fills itself.":" \u2014 type over it before you send.")}
+function fillDate(e){const t=$("dr-text"),a=fmtVisitDate(e)
+;t&&a&&S.draft&&(t.value.indexOf("{date}")>-1?t.value=t.value.split("{date}").join(a):S.draft.lastDate&&t.value.indexOf(S.draft.lastDate)>-1&&(t.value=t.value.split(S.draft.lastDate).join(a)),S.draft.lastDate=a,updatePh())}
+function okToOpen(){const e=phList(draftText());return!e.length||window.confirm("The message still has "+e.join(" and ")+" in it. Open it anyway? You can still edit it before you press send.")}async function copyDraft(){const e=draftText()
+;let t=!1;try{await navigator.clipboard.writeText(e),t=!0}catch(e){const a=$("dr-text");if(a){a.focus(),a.select();try{t=document.execCommand("copy")}catch(e){t=!1}}}const a=phList(e)
+;t?toast(a.length?"Copied \u2014 it still says "+a.join(" and "):"Copied",a.length?"":"ok"):toast("Could not copy \u2014 select the text and copy it by hand","err")}function openWa(e){const t=S.byId.get(e);if(!t)return
+;const a=waLink(t.phone);a&&okToOpen()&&window.open(a+"?text="+encodeURIComponent(draftText()),"_blank","noopener")}function openSms(e){const t=S.byId.get(e);if(!t)return;const a=smsLink(t.phone)
+;a&&okToOpen()&&(window.location.href=a+"?&body="+encodeURIComponent(draftText()))}function openMail(e){const t=S.byId.get(e)
+;t&&t.email&&okToOpen()&&(window.location.href="mailto:"+encodeURIComponent(String(t.email).trim())+"?subject="+encodeURIComponent("Lab-grown diamond fine jewelry \u2014 Aaryam")+"&body="+encodeURIComponent(draftText()))}
+const RKEY="aaryam.lf.recent";function getRecent(){try{const e=JSON.parse(localStorage.getItem(RKEY)||"[]");return Array.isArray(e)?e.filter((e=>e&&"string"==typeof e.q&&e.q)).slice(0,6):[]}catch(e){return[]}}function pushRecent(e){try{
+const t=getRecent().filter((t=>!(t.q.toLowerCase()===e.q.toLowerCase()&&(t.state||"")===(e.state||""))));t.unshift({q:e.q,state:e.state||"",buf:e.buf||"10"}),localStorage.setItem(RKEY,JSON.stringify(t.slice(0,6)))}catch(e){}}
+function fillRecent(){const e=$("h-recent");if(!e)return;const t=getRecent()
+;e.innerHTML=t.length?`<div class="lf-recent" aria-label="Recent searches">${t.map(((e,t)=>`<button type="button" data-act="recent" data-i="${t}">${I.clock}${esc(e.q)}${e.state?" \xb7 "+esc(e.state):""}</button>`)).join("")}</div>`:""}
+async function loadAreas(){try{let e=[],t=0;for(let a=0;a<12;a++){const{data:a,error:n}=await sb.from("lf_areas").select("*").order("total",{ascending:!1}).order("city").range(t,t+999);if(n)throw n;if(!a||!a.length)break;if(e=e.concat(a),
+a.length<1e3)break;t+=1e3}S.areas=e.filter((e=>e&&e.city)),S.areasErr=!1}catch(e){S.areasErr=!0}}function areaSub(e){const t=[];return e.to_review&&t.push(num(e.to_review)+" to review"),e.approved&&t.push(num(e.approved)+" approved"),
+e.lgd&&t.push(num(e.lgd)+" sell lab-grown"),t.length||t.push(e.fits?num(e.fits)+" worth a look":"not screened yet"),t.join(" \xb7 ")}function areaSuggest(e){const t=$("lf-areadrop");if(!t)return;const a=(e||"").trim().toLowerCase()
+;if(!a||!S.areas)return void closeSug();const n=S.areas.filter((e=>!S.state||e.region===S.state)),s=[],r=[];for(const e of n){const t=String(e.city).toLowerCase();if(t.startsWith(a)?s.push(e):t.includes(a)&&r.push(e),s.length>=8)break}
+if(S.sug=s.concat(r).slice(0,8),S.sugIdx=-1,!S.sug.length)return void closeSug()
+;t.innerHTML=S.sug.map(((e,t)=>`<button type="button" role="option" id="sug-${t}" data-act="sug" data-i="${t}"><span class="c-city">${esc(e.city)}${S.state?"":" \xb7 "+esc(e.region)}</span><span class="c-meta">${num(e.total)}</span></button>`)).join(""),
+t.className="combo-list open";const i=$("lf-q");i&&i.setAttribute("aria-expanded","true")}function markSug(){const e=$("lf-areadrop");if(!e)return;e.querySelectorAll("button").forEach(((e,t)=>e.classList.toggle("act",t===S.sugIdx)))
+;const t=$("lf-q");t&&t.setAttribute("aria-activedescendant",S.sugIdx>=0?"sug-"+S.sugIdx:"")}function closeSug(){const e=$("lf-areadrop");e&&(e.className="combo-list",e.innerHTML="");const t=$("lf-q")
+;t&&(t.setAttribute("aria-expanded","false"),t.removeAttribute("aria-activedescendant")),S.sug=[],S.sugIdx=-1}function goArea(e){if(!e)return;closeSug();const t=$("lf-buf")?$("lf-buf").value:S.buf;doSearch({q:e.city,state:e.region||"",buf:t
+})}function onStateChange(e){S.state=e,S.areaShown=10,closeSug(),"home"===S.screen&&(fillStats(),fillAreas())}function toggleState(e){S.state=S.state===e?"":e;const t=$("lf-state");t&&(t.value=S.state),onStateChange(S.state)}
+function fillAreas(){const e=$("h-areas");if(!e)return
+;if(!S.areas)return void(e.innerHTML=S.areasErr?`<div class="section-label">Areas</div><div class="lf-error"><h3>Areas did not load</h3><p>${!1===navigator.onLine?"No signal right now.":"The server did not answer."} You can still search a town above.</p><button class="btn btn-secondary" data-act="retry-home">Try again</button></div>`:`<div class="section-label">Areas with the most jewellers</div>${'<div class="lf-skelcard"><div class="aa-skel" style="width:55%"></div><div class="aa-skel" style="width:35%;margin:0"></div></div>'.repeat(4)}`)
+;S.areaView=S.areas.filter((e=>!S.state||e.region===S.state));const t=`<div class="section-label">Areas with the most jewellers${S.state?" \u2014 "+esc(REGION_NAME[S.state]||S.state):""}</div>`
+;if(!S.areaView.length)return void(e.innerHTML=t+'<div class="empty">No areas grouped for this state yet. Search a town above instead.</div>')
+;const a=Math.min(S.areaShown,S.areaView.length),n=S.areaView.slice(0,a).map(((e,t)=>`<button type="button" class="lf-arearow" data-act="area" data-i="${t}">\n         <span class="ar-main">\n           <span class="ar-city" style="display:block">${esc(e.city)}${S.state?"":" <small>\xb7 "+esc(e.region)+"</small>"}</span>\n           <span class="ar-sub" style="display:block">${areaSub(e)}</span>\n         </span>\n         <span class="ar-num">${num(e.total)}<span>JEWELLERS</span></span>\n       </button>`)).join(""),s=S.areaView.length-a,r=s>0?`<button type="button" class="lf-morebtn" data-act="areas-more">Show ${Math.min(40,s)} more \xb7 ${num(s)} left</button>`:a>10?'<button type="button" class="lf-morebtn" data-act="areas-less">Show fewer</button>':""
+;e.innerHTML=t+`<p class="lf-area-note">Tap an area to see its jewellers. Grouped by the nearest town, so a tap covers the surrounding shops too.</p>${n}${r}`}function renderShell(){
+$app.innerHTML='\n      <header class="aa-brandbar">\n        <img src="aaryam-wordmark-cream.svg" alt="Aaryam" class="aa-wm">\n        <span class="aa-sub">Lead Finder</span>\n        <span class="aa-spacer"></span>\n        <button type="button" data-act="signout">Sign out</button>\n      </header>\n      <nav class="bjnav" aria-label="Lead Finder">\n        <a href="./" class="on" aria-current="page">Leads</a><a href="approve.html">Approve</a><a href="trips.html">Trips</a><a href="visits.html">Visits</a>\n      </nav>\n      <main id="content"></main>'
+}function setContent(e){destroyMap(),S.io&&(S.io.disconnect(),S.io=null);$("content")||renderShell(),$("content").innerHTML=e}const FOOT='<p class="aa-foot"><b>Aaryam Inc.</b> \xb7 New York \xb7 Lab-grown diamond fine jewelry</p>'
+;function stateOptions(){return`<option value=""${""===S.state?" selected":""}>Any state</option>`+STATES.map((e=>`<option value="${esc(e)}"${S.state===e?" selected":""}>${esc(e)}</option>`)).join("")}function searchFormHtml(e){
+return`<form id="f-search" role="search" autocomplete="off" novalidate>\n      <div class="lf-searchbar">\n        <div class="combo">\n          <span class="lf-sicon" aria-hidden="true">${I.search}</span>\n          <input id="lf-q" type="search" enterkeyhint="search" placeholder="Search a town or area" value="${esc(e)}"\n                 aria-label="Town or area" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false"\n                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lf-areadrop">\n          <div id="lf-areadrop" class="combo-list" role="listbox" aria-label="Areas"></div>\n        </div>\n        <button type="button" class="lf-add" data-act="addlead" aria-label="Add a jeweller" title="Add a jeweller">${I.plus}</button>\n      </div>\n      <div class="lf-controls">\n        <select id="lf-state" aria-label="State">${stateOptions()}</select>\n        <select id="lf-buf" aria-label="How far around">\n          <option value="0"${"0"===S.buf?" selected":""}>Town only</option>\n          <option value="10"${"10"===S.buf?" selected":""}>+10 km</option>\n          <option value="25"${"25"===S.buf?" selected":""}>+25 km</option>\n        </select>\n        <button type="submit" class="btn btn-primary">Search</button>\n      </div>\n    </form>`
+}function refreshStateSelect(){const e=$("lf-state");e&&(e.innerHTML=stateOptions(),e.value=S.state)}function renderLogin(e){closeSheet(),destroyMap(),
+$app.innerHTML=`\n    <div class="auth-wrap lf-auth">\n      <div class="auth-head">\n        <img src="aaryam-wordmark.svg" alt="Aaryam" class="lf-auth-wm">\n        <h1>Lead Finder</h1>\n        <p>Sign in with your marketing app account</p>\n      </div>\n      <form class="auth-card" id="f-login" novalidate>\n        <div id="li-err" role="alert">${e?`<div class="lf-auth-err">${esc(e)}</div>`:""}</div>\n        <div class="field"><label for="li-email">Email</label><input type="email" id="li-email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false"></div>\n        <div class="field"><label for="li-pass">Password</label><input type="password" id="li-pass" autocomplete="current-password"></div>\n        <button type="submit" class="btn btn-primary" id="li-go">Sign in</button>\n      </form>\n      ${FOOT}\n    </div>`
+}let loggingIn=!1;async function doLogin(){if(loggingIn)return;const e=$("li-email").value.trim(),t=$("li-pass").value,a=e=>{$("li-err").innerHTML=`<div class="lf-auth-err">${esc(e)}</div>`}
+;if(!e||!t)return void a("Enter your email and password.");loggingIn=!0;const n=$("li-go");n.disabled=!0,n.textContent="Signing in\u2026";try{const{error:a}=await sb.auth.signInWithPassword({email:e,password:t});if(a)throw a;init()
+}catch(e){a(errMsg(e,"Could not sign in")),document.contains(n)&&(n.disabled=!1,n.textContent="Sign in")}finally{loggingIn=!1}}async function doSignOut(){try{await sb.auth.signOut()}catch(e){}S.results=[],S.byId=new Map,S.undo.clear(),
+S.searchSeq++,renderLogin()}let homeLoad=null;function loadHome(){return homeLoad||(homeLoad=(async()=>{const e=S.areas?Promise.resolve():loadAreas().then((()=>{"home"===S.screen&&(fillAreas(),fillStats())}))
+;await Promise.all([loadHealth().then((()=>{"home"===S.screen&&(refreshStateSelect(),fillStats(),fillTrip())})),loadPipe().then((()=>{"home"===S.screen&&fillPipe()}))]),await e})().finally((()=>{homeLoad=null})),homeLoad)}
+async function loadHealth(){try{const{data:e,error:t}=await sb.from("lf_health").select("region,live_rows,approved,awaiting_review,lab_grown");if(t)throw t;const a=(e||[]).filter((e=>e&&e.region))
+;S.health=a.sort(((e,t)=>(Number(t.live_rows)||0)-(Number(e.live_rows)||0))),S.healthErr=!1;const n=[...new Set(a.map((e=>e.region)))].sort();n.length&&(STATES=n),S.approved=a.reduce(((e,t)=>e+(Number(t.approved)||0)),0)}catch(e){
+S.healthErr=!0,S.health||(S.health=null),void 0===S.approved&&(S.approved=null)}}async function loadPipe(){try{const e=()=>sb.from("lf_places").select("id",{count:"exact",head:!0
+}).eq("hidden",!1),[t,a,n,s]=await Promise.all([e().eq("research",!0).is("verdict",null),e().eq("research",!0).not("verdict","is",null),e().is("verdict",null).is("verdict_source",null).not("website","is",null),sb.from("lf_places").select("updated_at").eq("hidden",!1).eq("research",!0).not("verdict","is",null).order("updated_at",{
+ascending:!1}).limit(1)]),r=[t,a,n,s].find((e=>e.error));if(r)throw r.error;S.pipe={waiting:t.count||0,done:a.count||0,unscreened:n.count||0,last:s.data&&s.data.length?s.data[0].updated_at:null}}catch(e){void 0===S.pipe&&(S.pipe=null)}}
+function renderHome(){
+S.screen="home",setContent(`\n      <h1 class="lf-h1">Find jewellers</h1>\n      <p class="lf-lede">Search a town, or start from the busiest areas below.</p>\n      ${searchFormHtml("")}\n      <div id="h-recent"></div>\n      <div class="section-label">Jewellers by state</div>\n      <div class="lf-home-stats" id="h-stats" aria-label="States \u2014 tap one to show only its areas"></div>\n      <div id="h-trip"></div>\n      <div id="h-pipe"></div>\n      <div id="h-areas"></div>\n      <p class="lf-tip">Approve the good ones \u2014 they become your trip list.<br>Spotted a jeweller on Instagram or on the road? Tap + to add it.</p>\n      ${FOOT}\n    `),
+fillRecent(),fillStats(),fillTrip(),fillPipe(),fillAreas()}function fillStats(){const e=$("h-stats");e&&(S.health?e.innerHTML=S.health.map((e=>{const t=S.state===e.region
+;return`<button type="button" class="stat" data-act="tile" data-st="${esc(e.region)}" aria-pressed="${t}" title="${esc(REGION_NAME[e.region]||e.region)}">\n        <div class="st-label">${esc(e.region)}</div>\n        <div class="st-num">${num(e.live_rows)}</div>\n        <div class="st-sub">${num(e.approved)} approved</div></button>`
+})).join(""):e.innerHTML=S.healthErr?'<button type="button" class="stat" data-act="retry-home"><div class="st-label">Not loaded</div><div class="st-num">\u2014</div><div class="st-sub">Tap to try again</div></button>':'<div class="aa-skel"></div>'.repeat(4))
+}function fillTrip(){const e=$("h-trip");if(!e)return;const t=S.approved;if(!t)return void(e.innerHTML="");const a=Math.max(1,Math.ceil(t/10))
+;e.innerHTML=`<a class="lf-pipe lf-trip" href="trips.html">\n        <div>\n          <div class="eyebrow">Trip planner</div>\n          <div class="lf-trip-line"><span class="lf-big">${num(t)}</span><span>approved jeweller${1===t?"":"s"} ready to visit</span></div>\n          <div class="hint">About ${plural(a,"packed day")} on the road.</div>\n        </div>\n        <span class="lf-trip-go">Plan a trip ${I.chev}</span>\n      </a>`
+}function fillPipe(){const e=$("h-pipe");if(!e)return;const t=S.pipe
+;if(void 0===t)return void(e.innerHTML='<div class="lf-skelcard"><div class="aa-skel" style="width:40%"></div><div class="aa-skel" style="height:8px"></div><div class="aa-skel" style="width:70%;margin:0"></div></div>')
+;if(!t||t.waiting+t.done===0)return void(e.innerHTML="");const a=t.waiting+t.done,n=Math.round(100*t.done/a),s=t.unscreened>0?`Auto-screen: ${plural(t.unscreened,"website")} in the queue`:"Auto-screen is caught up"
+;e.innerHTML=`<section class="lf-pipe" aria-label="Research pipeline">\n        <div class="eyebrow">Research pipeline</div>\n        <div class="lf-pipe-head"><span class="lf-big">${n}%</span><span>${num(t.done)} of ${num(a)} researched</span></div>\n        <div class="lf-bar" role="progressbar" aria-label="Researched" aria-valuenow="${n}" aria-valuemin="0" aria-valuemax="100"><div class="lf-bar-fill" style="width:${n}%"></div></div>\n        <div class="nums"><span>${num(t.waiting)} waiting</span><span>${t.last?"Last research "+esc(relTime(t.last)):""}</span></div>\n        <div class="hint">${s}. A batch is researched automatically every night \u2014 or ask Claude to \u201cresearch the flagged list\u201d any time.</div>\n      </section>`
+}async function geocode(e,t){
+const a="https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q="+encodeURIComponent(e+(t?", "+t:"")+", USA"),n="undefined"!=typeof AbortController?new AbortController:null,s=n?setTimeout((()=>n.abort()),8e3):null
+;try{const e=await fetch(a,{headers:{Accept:"application/json"},signal:n?n.signal:void 0});if(!e.ok)return null;const t=await e.json();return Array.isArray(t)&&t.length?t[0]:null}finally{s&&clearTimeout(s)}}async function fetchPaged(e){
+const t=[];for(let a=0;a<MAX_ROWS;a+=1e3){const{data:n,error:s}=await e().range(a,a+999);if(s)throw s;const r=n||[];for(const e of r)t.push(e);if(r.length<1e3)return{rows:t,capped:!1}}return{rows:t,capped:!0}}function readSearchForm(){
+return{q:($("lf-q")?$("lf-q").value:"").trim(),state:$("lf-state")?$("lf-state").value:S.state,buf:$("lf-buf")?$("lf-buf").value:S.buf}}async function runSearch(e){const t=parseFloat(e.buf)||0;let a=null,n=e.q,s=!1;try{
+const r=await geocode(e.q,e.state);if(r&&r.boundingbox){let i=parseFloat(r.boundingbox[0]),o=parseFloat(r.boundingbox[1]),l=parseFloat(r.boundingbox[2]),c=parseFloat(r.boundingbox[3])
+;const d=t/111,u=(i+o)/2,p=t/(111*Math.max(.3,Math.cos(u*Math.PI/180)));i-=d,o+=d,l-=p,c+=p;const h=await fetchPaged((()=>{
+let t=sb.from("lf_places").select(COLS).eq("hidden",!1).gte("latitude",i).lte("latitude",o).gte("longitude",l).lte("longitude",c);return e.state&&(t=t.eq("region",e.state)),t.order("name").order("id")}));a=h.rows,s=h.capped,
+n=(r.display_name||e.q).split(",").slice(0,2).join(",").trim()}}catch(e){}if(null===a||0===a.length){const t=e.q.replace(/[,()%.*:"\\]/g," ").replace(/\s+/g," ").trim();if(t){const r=await fetchPaged((()=>{
+let a=sb.from("lf_places").select(COLS).eq("hidden",!1).or(`city.ilike.%${t}%,name.ilike.%${t}%,address.ilike.%${t}%,area.ilike.%${t}%`);return e.state&&(a=a.eq("region",e.state)),a.order("name").order("id")}))
+;(null===a||r.rows.length>a.length)&&(a=r.rows,s=r.capped,r.rows.length&&(n=e.q))}}return{rows:a||[],label:n,capped:s}}async function doSearch(e){const t=e||readSearchForm();if(closeSug(),!t.q){toast("Type a town or area name","err")
+;const e=$("lf-q");return void(e&&e.focus())}S.q=t.q,S.state=t.state||"",S.buf=t.buf||"10",S.lastSearch={q:S.q,state:S.state,buf:S.buf};const a=++S.searchSeq,n="results"!==S.screen;if(renderResultsLoading(),
+n&&(!history.state||"results"!==history.state.lf))try{history.pushState({lf:"results"},"")}catch(e){}try{const e=await runSearch(S.lastSearch);if(a!==S.searchSeq)return;let t=e.rows
+;const n=t.filter((e=>"duplicate"===e.skip_reason||"branch"===e.skip_reason)).length;t=t.filter((e=>"duplicate"!==e.skip_reason&&"branch"!==e.skip_reason)),S.retiredHidden=n,S.capped=e.capped,S.results=t,
+S.byId=new Map(t.map((e=>[e.id,e]))),S.areaLabel=e.label,S.view="list",S.textFilter="",S.filter=t.some((e=>null==e.approved))?"pending":"all",pushRecent(S.lastSearch),renderResults()}catch(e){if(a!==S.searchSeq)return;renderResultsError(e)}
+}function resultsHead(e,t){return`<button type="button" class="lf-backlink" data-act="home">${I.back}All areas</button>\n      <h1 class="lf-restitle">${esc(e)}</h1>\n      <div class="lf-count" id="r-count">${t}</div>`}
+function renderResultsLoading(){
+S.screen="results",setContent(resultsHead(S.q,"Searching\u2026")+'<div class="lf-skelcard"><div class="aa-skel" style="width:60%;height:18px"></div><div class="aa-skel" style="width:80%"></div><div class="aa-skel" style="width:45%;margin:0"></div></div>'.repeat(3)+FOOT)
+}function renderResultsError(e){
+S.screen="results",setContent(resultsHead(S.q,"")+`<div class="lf-error" role="alert"><h3>Could not search ${esc(S.q)}</h3>\n      <p>${esc(errMsg(e))}</p><button type="button" class="btn btn-primary" data-act="retry-search">Try again</button></div>`+FOOT)
+}function chipCounts(){const e={all:S.results.length,pending:0,approved:0,rejected:0,research:0};for(const t of S.results){const a=statusOf(t);e[a]++,t.research&&"pending"===a&&e.research++}return e}function hay(e){
+return void 0===e._h&&(e._h=[e.name,e.address,e.city,e.area,e.postcode,e.owner_name].filter(Boolean).join(" ").toLowerCase()),e._h}function fitRank(e){return 10*(Number(e.priority)||0)+(e.pitch_angle?2:0)+(e.research?1:0)}
+function viewItems(){let e=S.results;"research"===S.filter?e=e.filter((e=>e.research&&"pending"===statusOf(e))):"all"!==S.filter&&(e=e.filter((e=>statusOf(e)===S.filter)));const t=S.textFilter.trim().toLowerCase()
+;return t&&(e=e.filter((e=>hay(e).includes(t)))),"fit"===S.sort&&(e=e.slice().sort(((e,t)=>fitRank(t)-fitRank(e)||String(e.name||"").localeCompare(String(t.name||""))))),e}function renderResults(){S.screen="results"
+;setContent(resultsHead((S.areaLabel||S.q).split(",")[0],"")+`\n      <details class="lf-newsearch"><summary>${I.search}Search another area</summary>${searchFormHtml(S.q)}</details>\n      <div class="lf-fchips" id="r-chips" role="toolbar" aria-label="Filter by status"></div>\n      <div class="lf-tools">\n        <input id="r-filter" type="search" placeholder="Filter by name or street" aria-label="Filter these results" value="${esc(S.textFilter)}" autocomplete="off" enterkeyhint="done">\n        <select id="r-sort" class="lf-select" aria-label="Sort">\n          <option value="name"${"name"===S.sort?" selected":""}>A to Z</option>\n          <option value="fit"${"fit"===S.sort?" selected":""}>Best fit</option>\n        </select>\n      </div>\n      <div class="lf-viewtabs" role="group" aria-label="View">\n        <button type="button" data-act="view" data-v="list" class="${"list"===S.view?"on":""}" aria-pressed="${"list"===S.view}">List</button>\n        <button type="button" data-act="view" data-v="map" class="${"map"===S.view?"on":""}" aria-pressed="${"map"===S.view}">Map</button>\n      </div>\n      <div id="r-notice"></div>\n      <div id="lf-list"></div>\n      <div id="lf-more"></div>\n      <div id="lf-mapwrap" hidden>\n        <div id="lf-map" role="region" aria-label="Map of these jewellers"></div>\n        <div class="lf-legend" id="lf-legend"></div>\n      </div>\n      ${FOOT}`),
+fillCount(),fillChips(),fillNotice(),"IntersectionObserver"in window&&(S.io=new IntersectionObserver((e=>{"list"===S.view&&e.some((e=>e.isIntersecting))&&LV.shown<LV.items.length&&appendMore()}),{rootMargin:"900px 0px"}),
+S.io.observe($("lf-more"))),applyView(!0)}function fillCount(){const e=$("r-count");if(!e)return;const t=(S.areaLabel||"").split(",").slice(1).join(",").trim(),a=[];t&&a.push(esc(t)),a.push(plural(S.results.length,"jeweller")),
+S.retiredHidden&&a.push(`${num(S.retiredHidden)} merged into another listing and hidden`),e.innerHTML=a.join(" \xb7 ")+(S.capped?`<br>Showing the first ${num(MAX_ROWS)} \u2014 pick a smaller radius or a state to see the rest.`:"")}
+function fillChips(){const e=$("r-chips");if(!e)return;const t=chipCounts()
+;e.innerHTML=[["pending","To review"],["approved","Approved"],["research","Listed for research"],["rejected","Rejected"],["all","All"]].map((([e,a])=>`<button type="button" data-act="filter" data-f="${e}" class="${S.filter===e?"on":""}" aria-pressed="${S.filter===e}">${a}<span class="n">${num(t[e])}</span></button>`)).join("")
+;const a=e.querySelector(".on");if(a&&e.scrollWidth>e.clientWidth){const t=a.offsetLeft-e.offsetLeft,n=t+a.offsetWidth;(t<e.scrollLeft+16||n>e.scrollLeft+e.clientWidth-16)&&(e.scrollLeft=Math.max(0,t-16))}}function fillNotice(){
+const e=$("r-notice");if(!e)return;const t=S.results,a=t.length>0&&t.every((e=>!e.source||"osm"===e.source||"manual"===e.source))&&!t.some((e=>e.verdict))
+;e.innerHTML=a?'<div class="notice"><b>Seed list only.</b> This area comes from OpenStreetMap and has not been deep-scanned, so some shops are missing. Ask Claude to <b>deep scan</b> it before you work it \u2014 missing stores get added and each one is screened with evidence and pitch notes.</div>':""
+}function emptyHtml(){
+return S.results.length?`<div class="empty"><div class="big">Nothing matches</div>No jewellers in this filter${S.textFilter?" with \u201c"+esc(S.textFilter)+"\u201d":""}.<br>\n      <button type="button" class="lf-reset" data-act="filter" data-f="all" data-clear="1">Show all ${num(S.results.length)}</button></div>`:'<div class="empty"><div class="big">No jewellers here yet</div>Try a nearby town, a wider radius, or \u201cAny state\u201d.</div>'
+}function renderList(e){const t=$("lf-list");if(!t)return;LV.items=viewItems();const a=Math.min(LV.items.length,e?Math.max(PAGE,LV.shown):PAGE);LV.shown=a,t.innerHTML=LV.items.length?LV.items.slice(0,a).map(card).join(""):emptyHtml(),
+fillMore()}function appendMore(){const e=$("lf-list");if(!e)return;const t=LV.items.slice(LV.shown,LV.shown+PAGE);t.length&&(e.insertAdjacentHTML("beforeend",t.map(card).join("")),LV.shown+=t.length,fillMore())}function fillMore(){
+const e=$("lf-more");if(!e)return;const t=LV.items.length-LV.shown;e.innerHTML="list"===S.view&&t>0?`<button type="button" class="lf-morebtn" data-act="more">Show ${Math.min(PAGE,t)} more \xb7 ${num(t)} left</button>`:""}
+function applyView(e){const t=$("lf-list"),a=$("lf-mapwrap"),n=$("lf-more");t&&a&&("map"===S.view?(t.hidden=!0,n.hidden=!0,a.hidden=!1,ensureMap()&&drawMarkers(e)):(a.hidden=!0,t.hidden=!1,n.hidden=!1,renderList(!1)))}
+function setFilter(e,t){if(S.filter=e,t){S.textFilter="";const e=$("r-filter");e&&(e.value="")}fillChips(),"list"===S.view?renderList(!1):S.map&&drawMarkers(!0)}function setView(e){e!==S.view&&(S.view=e,
+document.querySelectorAll(".lf-viewtabs button").forEach((t=>{const a=t.dataset.v===e;t.classList.toggle("on",a),t.setAttribute("aria-pressed",a)})),applyView(!0))}let filterTimer=null;function onTextFilter(e){clearTimeout(filterTimer),
+filterTimer=setTimeout((()=>{S.textFilter=e,"list"===S.view?renderList(!1):S.map&&drawMarkers(!0)}),140)}function contactBtns(e,t){
+const a=[],n=(e,a,n,s,r)=>r&&!t?`<a class="lf-cbtn icon" href="${esc(e)}" aria-label="${n}" title="${n}"${s?' target="_blank" rel="noopener noreferrer"':""}>${a}</a>`:`<a class="lf-cbtn" href="${esc(e)}"${s?' target="_blank" rel="noopener noreferrer"':""}>${a}${n}</a>`
+;e.phone&&digitsOnly(e.phone)&&a.push(n("tel:"+digitsOnly(e.phone),I.phone,"Call"));const s=smsLink(e.phone);if(s&&a.push(n(s,I.sms,"Text")),t){const t=waLink(e.phone);t&&a.push(n(t,I.wa,"WhatsApp",!0))}
+e.email&&a.push(n("mailto:"+String(e.email).trim(),I.mail,"Email"));const r=webLink(e.website);r&&a.push(n(r,I.web,"Website",!0));const i=igLink(e.instagram);i&&a.push(n(i,I.ig,"Instagram",!0,!0));const o=fbLink(e.facebook)
+;return o&&a.push(n(o,I.fb,"Facebook",!0,!0)),a.push(n(mapsLink(e),I.map,"Map",!0)),hasPin(e)&&a.push(n("https://www.google.com/maps/search/?api=1&query="+Number(e.latitude)+","+Number(e.longitude),I.pin,"Pin",!0,!0)),a}function card(e){
+const t=statusOf(e),a=esc(e.id),n=[e.address,e.city,e.postcode].filter(Boolean).join(", "),s=extraChips(e,!1),r="pending"===t?`<div class="lf-actions">\n           <button type="button" class="btn btn-approve" data-act="approve" data-id="${a}">${I.check}Approve</button>\n           <button type="button" class="btn btn-reject" data-act="reject" data-id="${a}">${I.x}Reject</button>\n           <button type="button" class="btn btn-research${e.research?" on":""}" data-act="research" data-id="${a}" aria-pressed="${!!e.research}"\n             title="${e.research?"Listed for Claude deep research \u2014 tap to remove":"List for Claude deep research"}">${e.research?"Listed":"Research"}</button>\n         </div>`:`<div class="lf-done"><span>${"approved"===t?"On your trip list":"Ruled out"}</span>\n           <button type="button" class="lf-reset" data-act="undo" data-id="${a}">Undo \u2014 back to review</button></div>`
+;return`<article class="lf-card${S.busy.has(e.id)?" is-busy":""}" id="card-${a}" data-act="detail" data-id="${a}">\n      <div class="lf-card-top"><button type="button" class="lf-name" data-act="detail" data-id="${a}">${esc(e.name||"Unnamed jeweller")}</button>${statusChip(e)}</div>\n      ${n?`<div class="lf-addr">${esc(n)}</div>`:""}\n      ${s.length?`<div class="lf-chiprow">${s.join("")}</div>`:""}\n      <div class="lf-contacts">${contactBtns(e).join("")}</div>\n      ${r}\n    </article>`
+}function msgBlockHtml(e){const t=esc(e.id);if(!e.approach_msg)return`<button type="button" class="btn btn-secondary lf-wide" data-act="draft" data-id="${t}">${I.mail}Draft a message</button>`
+;const a="walk_in"===e.skip_reason,n=phList(e.approach_msg),s=[]
+;return n.length&&s.push("Highlighted words fill in per trip"+(n.includes("{city}")?': <mark class="ph">{city}</mark> becomes the town':"")+(n.includes("{date}")?(n.includes("{city}")?",":":")+' <mark class="ph">{date}</mark> the visit day':"")+"."),
+a&&s.push("No website or email route for this shop \u2014 this is for walking in."),
+`<div class="lf-sec-title">${a?"Walk-in opener":"Approach message"}</div>\n      <div class="lf-msg">${phHtml(e.approach_msg)}</div>\n      ${s.length?`<p class="lf-msg-note">${s.join(" ")}</p>`:'<div style="height:10px"></div>'}\n      <button type="button" class="btn btn-secondary lf-wide" style="margin-top:0" data-act="draft" data-id="${t}">${I.mail}Use this message</button>`
+}function openDetail(e){const t=S.byId.get(e);if(!t)return;const a=statusOf(t),n=esc(t.id),s=[],r=(e,t)=>{t&&s.push(`<div class="detail-row"><div class="dk">${e}</div><div class="dv">${t}</div></div>`)}
+;r("Address",esc([t.address,t.city,t.region,t.postcode].filter(Boolean).join(", "))),r("Phone",t.phone?esc(t.phone):null),r("Email",t.email?esc(t.email):null),r("Website",t.website?esc(t.website):null),
+r("Hours",t.opening_hours?esc(String(t.opening_hours).replace(/;\s*/g,"\n")):null),r("Owner",t.owner_name?esc(t.owner_name+(t.owner_role?" \u2014 "+t.owner_role:"")):null),r("Booth",t.booth?esc(t.booth):null),r("Deals in",t.deals_in?esc({
+lab:"Lab-grown",natural:"Natural",both:"Lab-grown and natural"}[t.deals_in]||t.deals_in):null),r("Segment",t.segment?esc(t.segment):null),
+r("Locations",Number(t.locations_count)>1?esc(num(t.locations_count)+" in this state \u2014 buying usually happens at the head office"):null),r("Source","osm"===t.source?"OpenStreetMap seed list":t.source?esc(t.source):null)
+;const i=[statusChip(t,!0)].concat(extraChips(t,!0)),o=t.notes?`<div class="lf-sec-title">Notes</div><p class="lf-notes">${esc(t.notes)}</p>`:"",l="pending"===a?`<div class="lf-actions">\n           <button type="button" class="btn btn-approve" data-act="approve" data-id="${n}">${I.check}Approve</button>\n           <button type="button" class="btn btn-reject" data-act="reject" data-id="${n}">${I.x}Reject</button>\n           <button type="button" class="btn btn-research${t.research?" on":""}" data-act="research" data-id="${n}" aria-pressed="${!!t.research}">${t.research?"Listed":"Research"}</button>\n         </div>\n         <p class="lf-small">${t.research?"Listed for Claude deep research \u2014 tap Listed to take it off the list.":"Research lists it for Claude\u2019s next deep-research run."}</p>`:`<div class="lf-done"><span>${"approved"===a?"Approved \u2014 on your trip list":"Rejected"}</span>\n           <button type="button" class="lf-reset" data-act="undo" data-id="${n}">Undo \u2014 back to review</button></div>`
+;openSheet("detail",e,t.name||"Jeweller",`\n      <div class="eyebrow">${esc([t.city,t.region].filter(Boolean).join(" \xb7 ")||"Jeweller")}</div>\n      <h3>${esc(t.name||"Unnamed jeweller")}</h3>\n      <div class="lf-chiprow" style="margin:8px 0 2px">${i.join("")}</div>\n      <div class="lf-contacts" style="margin-top:14px">${contactBtns(t,!0).join("")}</div>\n      ${t.phone?'<p class="lf-small">WhatsApp opens only if that number is registered on WhatsApp \u2014 Text always works.</p>':""}\n      <div class="lf-detail-actions">${l}</div>\n      ${msgBlockHtml(t)}\n      ${researchHtml(t)}\n      ${o}\n      <div class="lf-facts">${s.join("")}</div>\n      <div class="modal-actions"><button type="button" class="btn btn-secondary" data-act="close">Close</button></div>`)
+}function ensureMap(){const e=$("lf-map");if(!e)return!1
+;if("undefined"==typeof L)return e.innerHTML='<div class="lf-error" style="margin:0;border:0;box-shadow:none"><h3>The map did not load</h3><p>Check your signal, then come back to this search. The list still works.</p></div>',!1
+;if(S.map)return S.map.invalidateSize(),!0;S.map=L.map(e,{preferCanvas:!0,zoomSnap:.5,worldCopyJump:!1}),L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,
+attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(S.map),S.map.attributionControl.setPrefix(!1),S.mlayer=L.layerGroup().addTo(S.map);const t={pending:cssVar("--navy"),
+approved:cssVar("--ok"),rejected:cssVar("--line-strong")};S.mcol=t;const a=$("lf-legend")
+;return a&&(a.innerHTML=`<span><i style="background:${t.pending}"></i>To review</span><span><i style="background:${t.approved}"></i>Approved</span><span><i style="background:${t.rejected}"></i>Rejected</span><span id="lf-nopin"></span>`),
+setTimeout((()=>{S.map&&S.map.invalidateSize()}),80),!0}function drawMarkers(e){if(!S.map||!S.mlayer)return;S.mlayer.clearLayers();const t=[];let a=0;const n=cssVar("--cream");for(const e of viewItems()){if(!hasPin(e)){a++;continue}
+const s=statusOf(e),r=[Number(e.latitude),Number(e.longitude)],i=L.circleMarker(r,{radius:Number(e.priority)>=5?9:7,color:n,weight:2,fillColor:S.mcol[s],fillOpacity:"rejected"===s?.75:.95});i.bindPopup((()=>popupEl(e)),{
+autoPanPadding:[24,24],maxWidth:260}),S.mlayer.addLayer(i),t.push(r)}const s=$("lf-nopin");s&&(s.textContent=a?plural(a,"jeweller")+" without a map pin":""),e&&(t.length?S.map.fitBounds(t,{padding:[30,30],maxZoom:15
+}):S.map.setView([39.5,-98.35],4))}function popupEl(e){const t=document.createElement("div");t.className="lf-pop";const a=document.createElement("b");a.textContent=e.name||"Unnamed jeweller",t.appendChild(a)
+;const n=document.createElement("div");n.className="p-sub",n.textContent=[[e.address,e.city].filter(Boolean).join(", "),{pending:"To review",approved:"Approved",rejected:"Rejected"}[statusOf(e)]].filter(Boolean).join(" \xb7 "),
+t.appendChild(n);const s=document.createElement("button");return s.type="button",s.textContent="Open details",s.addEventListener("click",(()=>openDetail(e.id))),t.appendChild(s),t}function destroyMap(){if(S.map)try{S.map.remove()}catch(e){}
+S.map=null,S.mlayer=null}async function writePlace(e,t){const a=S.byId.get(e);if(!a)return!1;if(S.busy.has(e))return!1;S.busy.add(e),markBusy(e,!0);try{const{data:n,error:s}=await sb.from("lf_places").update(t).eq("id",e).select("id")
+;if(s)throw s;if(!n||!n.length)throw new Error("the database did not accept the change \u2014 sign out and in again, then retry");return Object.assign(a,t),!0}catch(e){return toast(errMsg(e,"Not saved"),"err"),!1}finally{S.busy.delete(e),
+markBusy(e,!1)}}function markBusy(e,t){const a=document.getElementById("card-"+e);if(a&&a.classList.toggle("is-busy",t),S.sheet&&S.sheet.id===e){const e=$sheet.querySelector(".modal");e&&e.querySelectorAll("[data-act]").forEach((e=>{
+"BUTTON"===e.tagName&&"close"!==e.dataset.act&&(e.disabled=t)}))}}function snap(e){return{approved:null==e.approved?null:e.approved,verdict:null==e.verdict?null:e.verdict,verdict_source:null==e.verdict_source?null:e.verdict_source,
+verdict_reasons:null==e.verdict_reasons?null:e.verdict_reasons}}function afterChange(e){"results"===S.screen&&(fillChips(),"list"===S.view?renderList(!0):S.map&&drawMarkers(!1),
+S.sheet&&"detail"===S.sheet.kind&&S.sheet.id===e&&openDetail(e))}async function approve(e){const t=S.byId.get(e);if(!t||"approved"===statusOf(t))return;const a=snap(t),n={approved:!0,verdict:t.verdict||"fit",verdict_source:"manual"}
+;await writePlace(e,n)&&(S.undo.set(e,a),S.sheet&&S.sheet.id===e&&closeSheet(),afterChange(e),toast("Approved \u2014 "+(t.name||"store")+" is on your trip list","ok",{label:"Undo",fn:()=>undoVerdict(e)}))}function openReject(e){
+const t=S.byId.get(e)
+;t&&(S.rejectTarget=e,openSheet("reject",e,"Reject "+(t.name||""),`\n      <div class="eyebrow">Reject</div>\n      <h3>${esc(t.name)}</h3>\n      <p style="margin:2px 0 14px">Why is this store not a fit?</p>\n      <div class="seg" style="margin-bottom:6px">\n        ${REJECT_REASONS.map(((e,t)=>`<button type="button" data-act="rj" data-i="${t}">${esc(e)}</button>`)).join("")}\n      </div>\n      <div class="modal-actions"><button type="button" class="btn btn-secondary" data-act="detail" data-id="${esc(t.id)}">Back</button><button type="button" class="btn btn-secondary" data-act="close">Cancel</button></div>`),
+S.rejectTarget=e)}function openOtherReason(){const e=S.rejectTarget,t=S.byId.get(e)
+;t&&(openSheet("reject-other",e,"Reject "+(t.name||""),`\n      <div class="eyebrow">Reject</div>\n      <h3>${esc(t.name)}</h3>\n      <form id="f-other" novalidate>\n        <p style="margin:2px 0 12px">In your own words \u2014 why is this one not a fit? What you type shows on the card.</p>\n        <div class="field"><label for="rj-other">Reason</label>\n          <input id="rj-other" type="text" maxlength="160" placeholder="e.g. only sells antique estate pieces" enterkeyhint="done"></div>\n        <div class="modal-actions">\n          <button type="button" class="btn btn-secondary" data-act="rj-back">Back</button>\n          <button type="submit" class="btn btn-primary">Reject</button>\n        </div>\n      </form>`),
+S.rejectTarget=e,setTimeout((()=>{const e=$("rj-other");e&&e.focus()}),60))}function saveOtherReason(){const e=$("rj-other"),t=(e?e.value:"").trim();t?applyReject(t.slice(0,160)):toast("Type a short reason, or tap Back to pick one","err")}
+async function applyReject(e){const t=S.rejectTarget,a=S.byId.get(t);if(!a)return;const n=snap(a),s={approved:!1,verdict:"not_fit",verdict_source:"manual",verdict_reasons:[{signal:e,src:"manual"}]};await writePlace(t,s)&&(S.undo.set(t,n),
+closeSheet(),afterChange(t),toast("Rejected \u2014 "+e,"ok",{label:"Undo",fn:()=>undoVerdict(t)}))}async function markResearch(e){const t=S.byId.get(e);if(!t)return;const a=!t.research;await writePlace(e,{research:a})&&(afterChange(e),
+toast(a?"Listed for Claude deep research":"Taken off the research list","ok"))}async function undoVerdict(e){if(!S.byId.get(e))return;const t=S.undo.get(e),a=t&&null==t.approved?t:{approved:null,verdict:null,verdict_source:null,
+verdict_reasons:null};await writePlace(e,a)&&(S.undo.delete(e),afterChange(e),toast("Back to review","ok"))}function openAddLead(){
+openSheet("add",null,"Add a jeweller",`\n      <div class="eyebrow">New lead</div>\n      <h3>Add a jeweller</h3>\n      <form id="f-add" novalidate>\n        <p style="margin:2px 0 14px">Spotted one on Instagram or on the road? Add it \u2014 Claude researches it on the next run.</p>\n        <div class="field"><label for="al-name">Store name <span style="color:var(--bad)">*</span></label><input id="al-name" type="text" required autocapitalize="words"></div>\n        <div class="field"><label for="al-ig">Instagram handle</label><input id="al-ig" type="text" placeholder="e.g. boca_treasures" autocapitalize="none" autocorrect="off" spellcheck="false"></div>\n        <div class="field"><label for="al-city">Town</label><input id="al-city" type="text" autocapitalize="words"></div>\n        <div class="field"><label for="al-state">State</label><select id="al-state">${STATES.map((e=>`<option value="${esc(e)}"${(S.state||"FL")===e?" selected":""}>${esc(e)}</option>`)).join("")}</select></div>\n        <div class="field"><label for="al-phone">Phone (optional)</label><input id="al-phone" type="tel" autocomplete="off"></div>\n        <div class="modal-actions">\n          <button type="button" class="btn btn-secondary" data-act="close">Cancel</button>\n          <button type="submit" class="btn btn-primary" id="al-go">Add</button>\n        </div>\n      </form>`),
+setTimeout((()=>{const e=$("al-name");e&&e.focus()}),60)}let savingLead=!1;async function saveLead(){if(savingLead)return;const e=$("al-name").value.trim();if(!e)return toast("Store name is needed","err"),void $("al-name").focus()
+;const t=$("al-ig").value.trim().replace(/^@/,""),a=$("al-city").value.trim(),n=$("al-state").value,s=$("al-phone").value.trim(),r={source:"manual",source_id:"manual-"+Date.now(),name:e,instagram:t||null,city:a||null,area:a||null,region:n,
+phone:s||null,research:!0};savingLead=!0;const i=$("al-go");i&&(i.disabled=!0,i.textContent="Adding\u2026");try{const{data:e,error:t}=await sb.from("lf_places").insert(r).select(COLS).single();if(t)throw t;closeSheet(),
+toast("Added \u2014 listed for Claude research","ok"),"results"===S.screen&&e&&(S.results.unshift(e),S.byId.set(e.id,e),fillCount(),fillChips(),"list"===S.view?renderList(!0):S.map&&drawMarkers(!1))}catch(e){
+toast(errMsg(e,"Not added"),"err"),i&&document.contains(i)&&(i.disabled=!1,i.textContent="Add")}finally{savingLead=!1}}function goHome(e){if(S.searchSeq++,closeSheet(),!e&&history.state&&"results"===history.state.lf){S.skipPop=!0;try{
+history.back()}catch(e){S.skipPop=!1}}renderHome(),window.scrollTo(0,0),loadHome()}function renderGate(e,t,a){closeSheet(),destroyMap(),
+$app.innerHTML=`<div class="auth-wrap lf-auth"><div class="auth-card" style="text-align:center">\n      <img src="aaryam-wordmark.svg" alt="Aaryam" class="lf-auth-wm" style="margin-bottom:18px">\n      <h2>${esc(e)}</h2><p class="sub">${esc(t)}</p>${a}</div>${FOOT}</div>`
+}async function init(){try{const{data:e,error:t}=await sb.auth.getSession();if(t)throw t;const a=e&&e.session;if(!a)return void renderLogin();S.user=a.user
+;const{data:n,error:s}=await sb.from("profiles").select("role, active").eq("id",S.user.id).single();if(s&&"PGRST116"!==s.code)throw s
+;if(!n||"owner"!==n.role||!n.active)return void renderGate("Owner only","The Lead Finder is currently available only to the owner account.",'<button type="button" class="btn btn-secondary" data-act="signout">Sign out</button>')
+;renderShell(),renderHome(),loadHome()}catch(e){
+renderGate("Could not reach the server",errMsg(e),'<button type="button" class="btn btn-primary" data-act="retry-init">Try again</button><div style="height:8px"></div><button type="button" class="btn btn-secondary" data-act="signout">Sign out</button>')
+}}window.addEventListener("popstate",(()=>{if(S.skipPop)S.skipPop=!1;else if($sheet.innerHTML){if(closeSheet(),"results"===S.screen)try{history.pushState({lf:"results"},"")}catch(e){}}else"results"===S.screen&&goHome(!0)})),
+document.addEventListener("click",(e=>{const t=e.target.closest("[data-act], a[href], button, input, select, textarea, label, summary");if(!t||!t.dataset||!t.dataset.act)return;const a=t.dataset.act,n=t.dataset.id;if("sheet-bg"!==a){
+if(!t.disabled)switch(a){case"home":goHome();break;case"signout":doSignOut();break;case"recent":{const e=getRecent()[+t.dataset.i];e&&doSearch({q:e.q,state:e.state||"",buf:e.buf||"10"});break}case"tile":toggleState(t.dataset.st);break
+;case"area":goArea(S.areaView[+t.dataset.i]);break;case"areas-more":S.areaShown+=40,fillAreas();break;case"areas-less":S.areaShown=10,fillAreas();{const e=$("h-areas");e&&e.scrollIntoView({block:"start"})}break;case"sug":
+goArea(S.sug[+t.dataset.i]);break;case"filter":setFilter(t.dataset.f,!!t.dataset.clear);break;case"view":setView(t.dataset.v);break;case"more":appendMore();break;case"detail":openDetail(n);break;case"approve":approve(n);break;case"reject":
+openReject(n);break;case"rj":{const e=REJECT_REASONS[+t.dataset.i]||"Other";"Other"===e?openOtherReason():applyReject(e);break}case"rj-back":openReject(S.rejectTarget);break;case"research":markResearch(n);break;case"undo":undoVerdict(n)
+;break;case"draft":openDraft(n);break;case"close":closeSheet();break;case"copy":copyDraft();break;case"wa":openWa(n);break;case"sms":openSms(n);break;case"mail":openMail(n);break;case"addlead":openAddLead();break;case"retry-home":
+S.healthErr=!1,S.areasErr=!1,fillStats(),fillAreas(),loadHome();break;case"retry-search":S.lastSearch&&doSearch(S.lastSearch);break;case"retry-init":init()}}else e.target===t&&closeSheet()})),document.addEventListener("submit",(e=>{
+const t=e.target;if(t&&t.id)if(e.preventDefault(),"f-login"===t.id)doLogin();else if("f-search"===t.id){const e=$("lf-q");e&&e.blur(),doSearch()}else"f-add"===t.id?saveLead():"f-other"===t.id&&saveOtherReason()})),
+document.addEventListener("input",(e=>{const t=e.target;"lf-q"===t.id?areaSuggest(t.value):"r-filter"===t.id?onTextFilter(t.value):"dr-text"===t.id&&updatePh()})),document.addEventListener("change",(e=>{const t=e.target
+;"lf-state"===t.id?onStateChange(t.value):"lf-buf"===t.id?S.buf=t.value:"r-sort"===t.id?(S.sort=t.value,"list"===S.view&&renderList(!1)):"dr-date"===t.id&&fillDate(t.value)})),document.addEventListener("mousedown",(e=>{
+e.target.closest&&e.target.closest(".combo-list")&&e.preventDefault()})),document.addEventListener("focusout",(e=>{e.target&&"lf-q"===e.target.id&&setTimeout((()=>{document.activeElement!==$("lf-q")&&closeSug()}),150)})),
+document.addEventListener("keydown",(e=>{if("Escape"===e.key)return $sheet.innerHTML?void closeSheet():void closeSug();e.target&&"lf-q"===e.target.id&&S.sug.length&&("ArrowDown"===e.key||"ArrowUp"===e.key?(e.preventDefault(),
+S.sugIdx=(S.sugIdx+("ArrowDown"===e.key?1:-1)+S.sug.length)%S.sug.length,markSug()):"Enter"===e.key&&S.sugIdx>=0&&(e.preventDefault(),goArea(S.sug[S.sugIdx])))})),init()</script> <script>
+"serviceWorker"in navigator&&navigator.serviceWorker.register("sw.js",{scope:"./"}).catch((()=>{}))</script> </body> </html> 

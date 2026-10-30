@@ -1,1965 +1,312 @@
-/* ============================================================
-   Bhagwati Jewels — Marketing Lead Capture
-   Phase 1 · vanilla JS + Supabase
-   ============================================================ */
-'use strict';
-
-const CFG = window.BJ_CONFIG;
-const db = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY);
-
-/* ---------------- state ---------------- */
-const S = {
-  session: null,
-  me: null,               // my profile row
-  team: new Map(),        // id -> profile
-  tab: 'today',
-  todayScope: 'mine',     // 'mine' | 'all' (owner)
-  report: { period: '7d' },
-  sub: [],                // subview stack: {title, render}
-  formState: {},          // segmented control values for open form
-  fu: [],                 // follow-up builder rows
-  photos: { front: null, back: null },   // pending card photos {blob, base64, mime}
-  editingClient: null,    // client row when editing
-  interactionClient: null,
-  currentClientId: null,
-  searchTimer: null,
-  geminiConfigured: false,
-  suppressPop: false,
-};
-
-/* ---------------- tiny utils ---------------- */
-const $ = (sel) => document.querySelector(sel);
-const esc = (s) => (s == null ? '' : String(s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
-
-let toastTimer = null;
-function toast(msg, kind) {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.className = 'show' + (kind ? ' ' + kind : '');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = ''; }, 3400);
-}
-
-function fmtDT(iso) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) +
-    ', ' + d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
-}
-function fmtD(iso) {
-  const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-}
-function todayStr(offsetDays) {
-  const d = new Date();
-  if (offsetDays) d.setDate(d.getDate() + offsetDays);
-  const p = (n) => String(n).padStart(2, '0');
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-}
-function dueLabel(due) {
-  const t = todayStr();
-  if (due < t) {
-    const days = Math.round((new Date(t) - new Date(due)) / 86400000);
-    return 'Overdue ' + days + (days === 1 ? ' day' : ' days');
-  }
-  if (due === t) return 'Today';
-  if (due === todayStr(1)) return 'Tomorrow';
-  return fmtD(due);
-}
-
-function normMobile(v) {
-  let d = String(v || '').replace(/\D/g, '');
-  if (d.length > 10 && d.startsWith('91')) d = d.slice(-10);
-  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
-  return d;
-}
-const isIndianMobile = (m) => /^[6-9]\d{9}$/.test(m);
-
-function nameOf(id) {
-  const p = S.team.get(id);
-  return p ? (p.full_name || 'Team member') : '—';
-}
-
-function chipCat(c) {
-  if (!c) c = 'Undefined';
-  const label = c === 'Undefined' ? 'Cat: —' : 'Cat ' + c;
-  return '<span class="chip chip-cat ' + esc(c) + '">' + esc(label) + '</span>';
-}
-function chipInterest(i) {
-  if (!i) return '';
-  const cls = i === 'Hot' ? 'chip-hot' : i === 'Warm' ? 'chip-warm' : 'chip-cold';
-  return '<span class="chip ' + cls + '">' + esc(i) + '</span>';
-}
-function chipType(t) {
-  return '<span class="chip chip-type">' + esc(t) + '</span>';
-}
-
-/* ---------------- icons (inline svg) ---------------- */
-const IC = {
-  today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8.5 15.5l2.5 2.5 4.5-4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.2"/><path d="M12 8v8M8 12h8" stroke-linecap="round"/></svg>',
-  find: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2" stroke-linecap="round"/></svg>',
-  more: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none"/><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="4"/></svg>',
-  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8.5A2.5 2.5 0 016.5 6h1.2l1.1-1.7c.3-.5.8-.8 1.4-.8h3.6c.6 0 1.1.3 1.4.8L16.3 6h1.2A2.5 2.5 0 0120 8.5v8A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-8z"/><circle cx="12" cy="12.5" r="3.4"/></svg>',
-  pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16"/><path d="M6 16.5L15.5 7a2.1 2.1 0 013 3L9 19.5 5 20l1-3.5z" stroke-linejoin="round"/></svg>',
-  back: '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  mic: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9.2" y="3" width="5.6" height="11" rx="2.8"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3" stroke-linecap="round"/></svg>',
-  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 20v-7M12 20V5M19 20v-11" stroke-linecap="round"/><path d="M3 20.5h18" stroke-linecap="round"/></svg>',
-};
-
-/* ---------------- edge functions ---------------- */
-async function callAdmin(action, body) {
-  try {
-    const { data, error } = await db.functions.invoke('admin-users', { body: Object.assign({ action }, body || {}) });
-    if (error) return { error: 'Network problem — please try again.' };
-    return data || { error: 'Empty response' };
-  } catch (e) {
-    return { error: 'Network problem — please try again.' };
-  }
-}
-async function callScan(front, back) {
-  try {
-    const body = { image_base64: front.base64, mime_type: front.mime };
-    if (back) { body.image_back_base64 = back.base64; body.back_mime_type = back.mime; }
-    const { data, error } = await db.functions.invoke('scan-card', { body });
-    if (error) return { error: 'network' };
-    return data || { error: 'empty' };
-  } catch (e) {
-    return { error: 'network' };
-  }
-}
-
-/* ---------------- modal ---------------- */
-function openModal(html) {
-  closeModal();
-  const ov = document.createElement('div');
-  ov.className = 'modal-overlay';
-  ov.id = 'modal-ov';
-  ov.innerHTML = '<div class="modal">' + html + '</div>';
-  ov.addEventListener('click', (e) => { if (e.target === ov) closeModal(); });
-  document.body.appendChild(ov);
-  return ov;
-}
-function closeModal() {
-  const ov = $('#modal-ov');
-  if (ov) ov.remove();
-}
-function confirmModal(title, text, yesLabel, onYes, danger) {
-  const ov = openModal(
-    '<h3>' + esc(title) + '</h3><p>' + esc(text) + '</p>' +
-    '<div class="modal-actions">' +
-    '<button class="btn btn-secondary" data-m="no">Cancel</button>' +
-    '<button class="btn btn-primary" data-m="yes"' + (danger ? ' style="background:#b3372f"' : '') + '>' + esc(yesLabel) + '</button>' +
-    '</div>');
-  ov.querySelector('[data-m=no]').onclick = closeModal;
-  ov.querySelector('[data-m=yes]').onclick = () => { closeModal(); onYes(); };
-}
-
-/* ============================================================
-   AUTH
-   ============================================================ */
-async function showAuth() {
-  const app = $('#app');
-  app.innerHTML =
-    '<div class="auth-wrap"><div class="auth-head">' +
-    '<div class="logo-badge" style="margin:0 auto">BJ</div>' +
-    '<h1>Bhagwati Jewels</h1><p>Marketing &amp; Lead Capture</p></div>' +
-    '<div class="auth-card" id="auth-card"><p class="sub">Checking…</p></div></div>';
-
-  const st = await callAdmin('status');
-  S.geminiConfigured = !!st.gemini_configured;
-  if (st.error) {
-    $('#auth-card').innerHTML = '<h2>Cannot reach the server</h2><p class="sub">' + esc(st.error) + '</p>' +
-      '<button class="btn btn-primary" onclick="location.reload()">Retry</button>';
-    return;
-  }
-  if (!st.initialized) renderOwnerSetup();
-  else renderLogin();
-}
-
-function renderLogin() {
-  $('#auth-card').innerHTML =
-    '<h2>Sign in</h2><p class="sub">Use the login given to you by the owner.</p>' +
-    '<form id="login-form">' +
-    '<div class="field"><label>Email</label><input type="email" id="li-email" autocomplete="username" required></div>' +
-    '<div class="field"><label>Password</label><input type="password" id="li-pass" autocomplete="current-password" required></div>' +
-    '<button class="btn btn-primary" type="submit" id="li-btn">Sign in</button>' +
-    '</form>';
-  $('#login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('#li-btn'); btn.disabled = true; btn.textContent = 'Signing in…';
-    const { error } = await db.auth.signInWithPassword({ email: $('#li-email').value.trim(), password: $('#li-pass').value });
-    if (error) {
-      btn.disabled = false; btn.textContent = 'Sign in';
-      toast(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message, 'err');
-    }
-    // success → onAuthStateChange takes over
-  });
-}
-
-function renderOwnerSetup() {
-  $('#auth-card').innerHTML =
-    '<h2>First-time setup</h2><p class="sub">Create the <b>owner</b> account. This screen appears only once — after this, only the owner can add team logins.</p>' +
-    '<form id="setup-form">' +
-    '<div class="field"><label>Your name</label><input type="text" id="su-name" required placeholder="e.g. Ravi"></div>' +
-    '<div class="field"><label>Email</label><input type="email" id="su-email" required></div>' +
-    '<div class="field"><label>Password <span class="req">(min 8 characters)</span></label><input type="password" id="su-pass" minlength="8" required autocomplete="new-password"></div>' +
-    '<button class="btn btn-primary" type="submit" id="su-btn">Create owner account</button>' +
-    '</form>';
-  $('#setup-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = $('#su-btn'); btn.disabled = true; btn.textContent = 'Creating…';
-    const email = $('#su-email').value.trim(), pass = $('#su-pass').value, name = $('#su-name').value.trim();
-    const r = await callAdmin('bootstrap', { email, password: pass, full_name: name });
-    if (r.error) { btn.disabled = false; btn.textContent = 'Create owner account'; toast(r.error, 'err'); return; }
-    const { error } = await db.auth.signInWithPassword({ email, password: pass });
-    if (error) { toast('Account created — please sign in.', 'ok'); renderLogin(); }
-  });
-}
-
-/* ============================================================
-   SHELL
-   ============================================================ */
-function renderShell() {
-  $('#app').innerHTML =
-    '<header id="appbar">' +
-    '<button class="back-btn" data-action="back">' + IC.back + '</button>' +
-    '<div class="mini-badge">BJ</div>' +
-    '<div class="titles"><div class="app-name">Bhagwati Jewels</div><div class="screen-name" id="screen-name">Today</div></div>' +
-    '</header>' +
-    '<main id="content"></main>' +
-    '<nav id="tabbar">' +
-    '<button data-action="tab" data-tab="today">' + IC.today + '<span>Today</span></button>' +
-    '<button data-action="tab" data-tab="new">' + IC.plus + '<span>New</span></button>' +
-    '<button data-action="tab" data-tab="find">' + IC.find + '<span>Find</span></button>' +
-    (S.me && S.me.role === 'owner' ? '<button data-action="tab" data-tab="report">' + IC.chart + '<span>Report</span></button>' : '') +
-    '<button data-action="tab" data-tab="more">' + IC.more + '<span>More</span></button>' +
-    '</nav>';
-  bindDelegates();
-}
-
-function setHeader(title, hasBack) {
-  $('#screen-name').textContent = title;
-  $('#appbar').classList.toggle('has-back', !!hasBack);
-}
-
-function switchTab(tab) {
-  S.tab = tab;
-  S.sub = [];
-  document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  if (tab === 'today') renderToday();
-  else if (tab === 'new') renderNewChoice();
-  else if (tab === 'find') renderFind();
-  else if (tab === 'report') renderReport();
-  else renderMore();
-  window.scrollTo(0, 0);
-}
-
-/* subview navigation (client page, forms) */
-function showSub(title, renderFn, replace) {
-  if (replace && S.sub.length) S.sub[S.sub.length - 1] = { title, renderFn };
-  else {
-    S.sub.push({ title, renderFn });
-    try { history.pushState({ sub: S.sub.length }, ''); } catch (e) {}
-  }
-  setHeader(title, true);
-  renderFn();
-  window.scrollTo(0, 0);
-}
-function goBack() {
-  if (!S.sub.length) return;
-  S.sub.pop();
-  if (S.sub.length) {
-    const top = S.sub[S.sub.length - 1];
-    setHeader(top.title, true);
-    top.renderFn();
-  } else {
-    switchTab(S.tab);
-  }
-  window.scrollTo(0, 0);
-}
-window.addEventListener('popstate', () => {
-  if (S.suppressPop) { S.suppressPop = false; return; }
-  if ($('#modal-ov')) { closeModal(); return; }
-  if (S.sub.length) goBack();
-});
-
-function bindDelegates() {
-  $('#content').addEventListener('click', onDelegatedClick);
-  $('#tabbar').addEventListener('click', onDelegatedClick);
-  $('#appbar').addEventListener('click', onDelegatedClick);
-  $('#content').addEventListener('input', (e) => {
-    const fu = e.target.closest('[data-fuf]');
-    if (fu) {
-      const idx = +fu.dataset.idx;
-      if (S.fu[idx]) S.fu[idx][fu.dataset.fuf] = fu.value;
-    }
-  });
-}
-
-async function onDelegatedClick(e) {
-  const el = e.target.closest('[data-action]');
-  if (!el) return;
-  const a = el.dataset.action;
-
-  if (a === 'tab') switchTab(el.dataset.tab);
-  else if (a === 'back') { if (S.sub.length) { S.suppressPop = true; try { history.back(); } catch (_) {} goBack(); } }
-  else if (a === 'seg') {
-    const group = el.dataset.group;
-    const same = S.formState[group] === el.dataset.val;
-    S.formState[group] = same ? null : el.dataset.val;   // tap again to clear
-    el.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', !same && b === el));
-    if (group === 'desig') { const w = $('#desig-other-wrap'); if (w) w.style.display = S.formState.desig === 'Other' ? 'block' : 'none'; }
-    if (group === 'int_outcome') { const w = $('#outcome-other-wrap'); if (w) w.style.display = S.formState.int_outcome === 'Other' ? 'block' : 'none'; }
-  }
-  else if (a === 'open-client') openClient(el.dataset.id);
-  else if (a === 'scan-start') { S.photos = { front: null, back: null }; S.editingClient = null; showSub('Scan Card', renderScanCapture); }
-  else if (a === 'scan-run') runScan();
-  else if (a === 'scan-type-instead') showSub('New Client', () => renderClientForm(null, {}, 'manual'), true);
-  else if (a === 'manual-start') { S.photos = { front: null, back: null }; showSub('New Client', () => renderClientForm(null, {}, 'manual')); }
-  else if (a === 'attach-photo') attachPhoto(el.dataset.side || 'front');
-  else if (a === 'remove-photo') { S.photos[el.dataset.side || 'front'] = null; redrawPhotos(); }
-  else if (a === 'save-client') saveClient(el.dataset.editId || null);
-  else if (a === 'fu-add') { S.fu.push({ type: el.dataset.type, content: '', due_date: el.dataset.type === 'reminder' ? todayStr(1) : '' }); redrawFuRows(); }
-  else if (a === 'fu-del') { S.fu.splice(+el.dataset.idx, 1); redrawFuRows(); }
-  else if (a === 'save-interaction') saveInteraction();
-  else if (a === 'new-interaction') { const c = await fetchClient(el.dataset.id); if (c) openInteractionForm(c); }
-  else if (a === 'edit-client') { const c = await fetchClient(el.dataset.id); if (c) { S.photos = { front: null, back: null }; showSub('Edit Client', () => renderClientForm(c, c, c.entry_source)); } }
-  else if (a === 'fu-done') {
-    const { error } = await db.from('followups').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', el.dataset.id);
-    if (error) toast('Could not update — try again.', 'err');
-    else { toast('Marked done ✓', 'ok'); if (S.sub.length && S.currentClientId) openClient(S.currentClientId, true); else renderToday(); }
-  }
-  else if (a === 'fu-tomorrow') {
-    const { error } = await db.from('followups').update({ due_date: todayStr(1) }).eq('id', el.dataset.id);
-    if (error) toast('Could not update — try again.', 'err');
-    else { toast('Moved to tomorrow', 'ok'); renderToday(); }
-  }
-  else if (a === 'today-scope') { S.todayScope = el.dataset.scope; renderToday(); }
-  else if (a === 'logout') confirmModal('Sign out?', 'You will need your email and password to sign in again.', 'Sign out', async () => { await db.auth.signOut(); location.reload(); });
-  else if (a === 'team-add') renderTeamAddModal();
-  else if (a === 'member-toggle') toggleMember(el.dataset.id, el.dataset.active === 'true');
-  else if (a === 'member-resetpw') renderResetPwModal(el.dataset.id);
-  else if (a === 'save-gemini') saveGeminiKey();
-  else if (a === 'export-data') exportAllData();
-  else if (a === 'report-period') { S.report.period = el.dataset.p; renderReport(); }
-  else if (a === 'report-exec') {
-    const xid = el.dataset.id, xnm = el.dataset.name;
-    showSub(xnm, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportExecView(xid, xnm); });
-  }
-  else if (a === 'report-clients') {
-    const rk = el.dataset.k, rv = el.dataset.v;
-    showSub('Clients — ' + rv, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportClientsView(rk, rv); });
-  }
-  else if (a === 'report-outcome') {
-    const ov = el.dataset.v;
-    showSub(ov, function () { $('#content').innerHTML = '<div class="empty">Loading…</div>'; reportMeetsView(ov); });
-  }
-  else if (a === 'call') { /* href handles it */ }
-}
-
-/* ============================================================
-   TODAY
-   ============================================================ */
-async function renderToday() {
-  setHeader('Today', false);
-  const c = $('#content');
-  c.innerHTML = '<div class="empty">Loading…</div>';
-
-  let q = db.from('followups')
-    .select('id, content, due_date, client_id, assigned_to, clients(trade_name, city)')
-    .eq('type', 'reminder').eq('status', 'pending')
-    .order('due_date', { ascending: true })
-    .limit(200);
-  if (!(S.me.role === 'owner' && S.todayScope === 'all')) q = q.eq('assigned_to', S.me.id);
-
-  const { data, error } = await q;
-  if (error) { c.innerHTML = '<div class="empty">Could not load reminders.<br>Pull down to retry.</div>'; return; }
-
-  const t = todayStr(), soon = todayStr(7);
-  const overdue = [], today = [], upcoming = [], later = [];
-  (data || []).forEach((r) => {
-    if (!r.due_date || r.due_date < t) overdue.push(r);
-    else if (r.due_date === t) today.push(r);
-    else if (r.due_date <= soon) upcoming.push(r);
-    else later.push(r);
-  });
-
-  let html = '';
-  if (S.me.role === 'owner') {
-    html += '<div class="filter-chips">' +
-      '<button class="' + (S.todayScope === 'mine' ? 'on' : '') + '" data-action="today-scope" data-scope="mine">My reminders</button>' +
-      '<button class="' + (S.todayScope === 'all' ? 'on' : '') + '" data-action="today-scope" data-scope="all">Whole team</button></div>';
-  }
-
-  const item = (r) => {
-    const who = (S.me.role === 'owner' && S.todayScope === 'all' && r.assigned_to !== S.me.id)
-      ? ' · ' + esc(nameOf(r.assigned_to)) : '';
-    return '<div class="rem-item">' +
-      '<div class="rem-content">' + esc(r.content) + '</div>' +
-      '<div class="rem-client" data-action="open-client" data-id="' + r.client_id + '">' + esc(r.clients ? r.clients.trade_name : 'Client') + ' ›</div>' +
-      '<div class="rem-meta">' + esc(dueLabel(r.due_date || t)) + who + '</div>' +
-      '<div class="rem-actions">' +
-      '<button class="btn btn-small btn-secondary" data-action="fu-tomorrow" data-id="' + r.id + '">→ Tomorrow</button>' +
-      '<button class="btn btn-small btn-primary" data-action="fu-done" data-id="' + r.id + '">✓ Done</button>' +
-      '</div></div>';
-  };
-  const group = (label, cls, arr) => arr.length
-    ? '<div class="due-group-label ' + cls + '">' + label + ' (' + arr.length + ')</div>' + arr.map(item).join('') : '';
-
-  html += group('Overdue', 'overdue', overdue);
-  html += group('Today', 'today', today);
-  html += group('Next 7 days', 'soon', upcoming);
-  if (later.length) html += '<div class="due-group-label soon">Later</div><div class="empty" style="padding:10px">+ ' + later.length + ' more further out</div>';
-
-  if (!overdue.length && !today.length && !upcoming.length && !later.length) {
-    html += '<div class="empty"><div class="big">🌤️</div>No pending reminders.<br>Log an interaction and add follow-ups — they will appear here.</div>';
-  }
-  c.innerHTML = html;
-}
-
-/* ============================================================
-   NEW CLIENT
-   ============================================================ */
-function renderNewChoice() {
-  setHeader('New Client', false);
-  $('#content').innerHTML =
-    '<div class="section-label">How do you want to add them?</div>' +
-    '<button class="choice-btn" data-action="scan-start">' +
-    '<span class="ico">' + IC.camera + '</span>' +
-    '<span><span class="ch-title">Scan visiting card</span><br><span class="ch-sub">Front &amp; back photos → details filled in for you' + (S.geminiConfigured ? '' : ' (setup pending — photos still saved)') + '</span></span></button>' +
-    '<button class="choice-btn" data-action="manual-start">' +
-    '<span class="ico">' + IC.pen + '</span>' +
-    '<span><span class="ch-title">Enter manually</span><br><span class="ch-sub">No card? Type the details in a minute</span></span></button>' +
-    '<div class="notice">Tip: after saving the client, you will be asked to record the meeting — reminders you add will show on the Today screen.</div>';
-}
-
-function pickImage(cb, fromGallery) {
-  const inp = document.createElement('input');
-  inp.type = 'file';
-  inp.accept = 'image/*';
-  if (!fromGallery) inp.setAttribute('capture', 'environment');
-  inp.onchange = () => { if (inp.files && inp.files[0]) cb(inp.files[0]); };
-  inp.click();
-}
-
-function downscale(file, maxSide) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale), hgt = Math.round(img.height * scale);
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = hgt;
-      cv.getContext('2d').drawImage(img, 0, 0, w, hgt);
-      URL.revokeObjectURL(url);
-      cv.toBlob((blob) => {
-        if (!blob) return reject(new Error('image'));
-        const fr = new FileReader();
-        fr.onload = () => resolve({ blob, base64: String(fr.result).split(',')[1], mime: 'image/jpeg' });
-        fr.onerror = () => reject(new Error('image'));
-        fr.readAsDataURL(blob);
-      }, 'image/jpeg', 0.82);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
-    img.src = url;
-  });
-}
-
-/* ---------------- QR / barcode reading ---------------- */
-
-const CODE_1D = ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e'];
-const CODE_2D = ['qr_code', 'data_matrix', 'aztec', 'pdf417'];
-
-let jsqrPromise = null;
-function loadJsQR() {
-  if (window.jsQR) return Promise.resolve(window.jsQR);
-  if (jsqrPromise) return jsqrPromise;
-  jsqrPromise = new Promise((resolve) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
-    s.async = true;
-    let t = 0;
-    const done = (v) => { clearTimeout(t); resolve(v); };
-    t = setTimeout(() => done(null), 8000);
-    s.onload = () => done(window.jsQR || null);
-    s.onerror = () => done(null);
-    document.head.appendChild(s);
-  });
-  return jsqrPromise;
-}
-
-function imageDataFor(file, maxSide) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      let out = null;
-      try {
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const cv = document.createElement('canvas');
-        cv.width = w; cv.height = h;
-        const ctx = cv.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0, w, h);
-        out = ctx.getImageData(0, 0, w, h);
-      } catch (_) { out = null; }
-      URL.revokeObjectURL(url);
-      resolve(out);
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-    img.src = url;
-  });
-}
-
-/* Reads every QR / barcode printed on one card photo.
-   Uses the phone's built-in detector when available (Chrome on Android),
-   and falls back to the jsQR library for QR codes (iPhone / older browsers).
-   Always resolves — a card with no code simply gives an empty list. */
-async function readCodes(file) {
-  const out = [];
-  const seen = Object.create(null);
-  const push = (format, raw) => {
-    const v = String(raw == null ? '' : raw).trim();
-    if (!v || seen[v]) return;
-    seen[v] = 1;
-    out.push({ format: format || 'qr_code', raw: v });
-  };
-
-  try {
-    if (window.BarcodeDetector && window.createImageBitmap) {
-      let formats = CODE_2D.concat(CODE_1D);
-      try {
-        const sup = await window.BarcodeDetector.getSupportedFormats();
-        if (sup && sup.length) formats = formats.filter((f) => sup.indexOf(f) >= 0);
-      } catch (_) { /* older implementations have no getSupportedFormats */ }
-      if (formats.length) {
-        const det = new window.BarcodeDetector({ formats });
-        const bmp = await createImageBitmap(file);
-        const found = await det.detect(bmp);
-        try { bmp.close(); } catch (_) {}
-        (found || []).forEach((f) => push(f.format, f.rawValue));
-      }
-    }
-  } catch (_) { /* fall through to jsQR */ }
-
-  if (!out.length) {
-    try {
-      const q = await loadJsQR();
-      if (q) {
-        const sizes = [1600, 1000];
-        for (let i = 0; i < sizes.length; i++) {
-          const d = await imageDataFor(file, sizes[i]);
-          if (!d) continue;
-          const hit = q(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
-          if (hit && hit.data) { push('qr_code', hit.data); break; }
-        }
-      }
-    } catch (_) {}
-  }
-  return out;
-}
-
-function codesFor(side) {
-  const p = S.photos[side];
-  if (!p || !p.codesP) return Promise.resolve([]);
-  return p.codesP.then((c) => c || []).catch(() => []);
-}
-
-/* ---------------- code payload parsing ---------------- */
-
-function qpDecode(s) {
-  try {
-    const bytes = [];
-    for (let i = 0; i < s.length; i++) {
-      if (s.charAt(i) === '=' && /^[0-9A-Fa-f]{2}$/.test(s.substr(i + 1, 2))) { bytes.push(parseInt(s.substr(i + 1, 2), 16)); i += 2; }
-      else bytes.push(s.charCodeAt(i) & 0xff);
-    }
-    return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-  } catch (_) { return s; }
-}
-
-function vcUnesc(s) {
-  let out = '';
-  const t = String(s == null ? '' : s);
-  for (let i = 0; i < t.length; i++) {
-    const c = t.charAt(i);
-    if (c === '\\' && i + 1 < t.length) {
-      const n = t.charAt(i + 1);
-      out += (n === 'n' || n === 'N') ? ' ' : n;
-      i++;
-    } else out += c;
-  }
-  return out.replace(/\s+/g, ' ').trim();
-}
-
-function vcLines(raw) {
-  return String(raw).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    .replace(/\n[ \t]/g, '')
-    .split('\n').map((l) => l.trim()).filter(Boolean);
-}
-
-function splitEsc(s, ch) {
-  const out = [];
-  let cur = '';
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charAt(i);
-    if (c === '\\' && i + 1 < s.length) { cur += s.charAt(i + 1); i++; }
-    else if (c === ch) { out.push(cur); cur = ''; }
-    else cur += c;
-  }
-  out.push(cur);
-  return out;
-}
-
-function parseVCard(raw) {
-  const o = { tels: [], emails: [], urls: [] };
-  vcLines(raw).forEach((line) => {
-    const i = line.indexOf(':');
-    if (i < 0) return;
-    const head = line.slice(0, i);
-    const params = head.toUpperCase();
-    let val = line.slice(i + 1);
-    if (params.indexOf('QUOTED-PRINTABLE') >= 0) val = qpDecode(val);
-    if (!val.trim()) return;
-    const key = params.split(';')[0].replace(/^ITEM\d+\./, '');
-    // structured values must be split on UNescaped ';' before unescaping each part
-    const parts = () => splitEsc(val, ';').map((x) => vcUnesc(x));
-    const plain = () => vcUnesc(val);
-    if (key === 'FN') { const v = plain(); if (v && !o.name) o.name = v; }
-    else if (key === 'N') {
-      if (!o.name) {
-        const p = parts();
-        const v = [p[3], p[1], p[2], p[0], p[4]].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-        if (v) o.name = v;
-      }
-    } else if (key === 'ORG') { const v = parts().filter(Boolean).join(' ').trim(); if (v && !o.org) o.org = v; }
-    else if (key === 'TITLE' || key === 'ROLE') { const v = plain(); if (v && !o.title) o.title = v; }
-    else if (key === 'TEL') {
-      const v = plain();
-      const isCell = /CELL|MOBILE|HANDY/.test(params);
-      // a line the card itself labels WORK / HOME / FAX is a landline — never a mobile
-      const isLine = !isCell && /FAX|WORK|HOME|MAIN|PAGER/.test(params);
-      if (v) o.tels.push({ v: v, cell: isCell, line: isLine });
-    }
-    else if (key === 'EMAIL') { const v = plain(); if (v) o.emails.push(v); }
-    else if (key === 'URL') { const v = plain(); if (v) o.urls.push(v); }
-    else if (key === 'ADR') {
-      const p = parts();
-      const street = [p[1], p[2]].filter(Boolean).join(' ').trim();
-      const adr = { street: street, city: String(p[3] || '').trim(), state: String(p[4] || '').trim(), pin: String(p[5] || '').trim() };
-      const addr = [street, adr.city, adr.state, adr.pin].filter(Boolean).join(', ');
-      if (addr && !o.address) { o.adr = adr; o.address = addr; }
-    }
-  });
-  return o;
-}
-
-function parseMeCard(raw) {
-  const o = { tels: [], emails: [], urls: [] };
-  const body = String(raw).replace(/^MECARD:/i, '').replace(/;;\s*$/, '');
-  splitEsc(body, ';').forEach((part) => {
-    const i = part.indexOf(':');
-    if (i < 0) return;
-    const key = part.slice(0, i).trim().toUpperCase();
-    const val = part.slice(i + 1).trim();
-    if (!val) return;
-    if (key === 'N') { if (!o.name) o.name = splitEsc(val, ',').reverse().filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(); }
-    else if (key === 'ORG') { if (!o.org) o.org = val; }
-    else if (key === 'TEL') o.tels.push({ v: val, cell: true });
-    else if (key === 'EMAIL') o.emails.push(val);
-    else if (key === 'URL') o.urls.push(val);
-    else if (key === 'ADR') { o.address = splitEsc(val, ',').map((x) => x.trim()).filter(Boolean).join(', '); }
-  });
-  return o;
-}
-
-/* ---------------- links ---------------- */
-
-const SOCIAL_SITES = [
-  { host: 'instagram.com', label: 'Instagram' },
-  { host: 'facebook.com', label: 'Facebook' },
-  { host: 'fb.com', label: 'Facebook' },
-  { host: 'fb.me', label: 'Facebook' },
-  { host: 'linkedin.com', label: 'LinkedIn' },
-  { host: 'twitter.com', label: 'X' },
-  { host: 'x.com', label: 'X' },
-  { host: 'youtube.com', label: 'YouTube' },
-  { host: 'youtu.be', label: 'YouTube' },
-  { host: 'pinterest.com', label: 'Pinterest' },
-  { host: 't.me', label: 'Telegram' },
-  { host: 'telegram.me', label: 'Telegram' },
-  { host: 'threads.net', label: 'Threads' },
-  { host: 'threads.com', label: 'Threads' },
-  { host: 'snapchat.com', label: 'Snapchat' },
-  { host: 'tiktok.com', label: 'TikTok' },
-];
-
-const HANDLE_SITES = {
-  instagram: 'instagram.com', insta: 'instagram.com', ig: 'instagram.com',
-  facebook: 'facebook.com', fb: 'facebook.com',
-  linkedin: 'linkedin.com/in', twitter: 'x.com', x: 'x.com',
-  youtube: 'youtube.com', threads: 'threads.net', pinterest: 'pinterest.com',
-  telegram: 't.me', snapchat: 'snapchat.com', tiktok: 'tiktok.com',
-};
-
-function hostOf(u) {
-  try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch (_) { return ''; }
-}
-
-/* Turns text into a clickable link, or returns '' if it is not a real web address.
-   ONLY http(s) survives. A value like "javascript://a.b/%0a<code>" parses as a valid
-   URL but must never become an href — it would run script in the signed-in owner's
-   session — so anything that is not http/https is rejected and shown as plain text. */
-function normUrl(s) {
-  let v = String(s == null ? '' : s).trim().replace(/[),.;:]+$/, '');
-  if (!v || /\s/.test(v)) return '';
-  if (!/^https?:\/\//i.test(v)) {
-    // A scheme that is not http(s) is out. "example.com:8080/x" is a host and port,
-    // not a scheme, so it is still allowed through.
-    if (/^[a-z][a-z0-9+.-]*:/i.test(v) && !/^[a-z0-9.-]+:\d+([/?#]|$)/i.test(v)) return '';
-    v = 'https://' + v.replace(/^\/+/, '');
-  }
-  let u;
-  try { u = new URL(v); } catch (_) { return ''; }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
-  if (!u.hostname || u.hostname.indexOf('.') < 0) return '';
-  return v;
-}
-
-function socialOf(u) {
-  const h = hostOf(u);
-  if (!h) return null;
-  for (let i = 0; i < SOCIAL_SITES.length; i++) {
-    const s = SOCIAL_SITES[i];
-    if (h === s.host || h.slice(-(s.host.length + 1)) === '.' + s.host) return s.label;
-  }
-  return null;
-}
-
-/* Turns "Instagram: @jdsolitaire", "@jdsolitaire", "instagram.com/jd" into a real link. */
-function normSocial(raw) {
-  let s = String(raw == null ? '' : raw).trim();
-  if (!s) return '';
-  let platform = '';
-  const m = s.match(/^([A-Za-z][A-Za-z ]{1,14}?)\s*[:\-–—]\s*(.+)$/);
-  if (m) {
-    const k = m[1].trim().toLowerCase().replace(/\s+/g, '');
-    if (HANDLE_SITES[k]) { platform = k; s = m[2].trim(); }
-  }
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s) || /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/|$)/i.test(s)) {
-    const u = normUrl(s);
-    if (u) return u;
-  }
-  const handle = s.replace(/^@/, '').replace(/^\/+/, '').trim();
-  if (!handle) return '';
-  if (platform) return 'https://' + HANDLE_SITES[platform] + '/' + handle;
-  return s;
-}
-
-/* Numbers taken from a scanned code are read strictly: "0" + 10 digits is an
-   STD landline (e.g. 0712-2554433 Nagpur), not a mobile, so it is dropped.
-   Ravi's rule: mobiles only. */
-function codeMobile(v) {
-  let d = String(v == null ? '' : v).replace(/\D/g, '');
-  d = d.replace(/^0{2,}/, '');                                   // 0091… → 91…
-  if (d.length === 12 && d.slice(0, 2) === '91') d = d.slice(2); // 91 + 10 digits
-  else if (d.length === 11 && d.charAt(0) === '0') return '';    // 0 + STD code = landline
-  return isIndianMobile(d) ? d : '';
-}
-
-function classifyCode(c) {
-  const raw = String(c.raw || '').trim();
-  if (!raw) return { kind: 'none' };
-  if (CODE_1D.indexOf(c.format) >= 0) return { kind: 'code', text: c.format.replace(/_/g, '-').toUpperCase() + ': ' + raw };
-  const head = raw.slice(0, 12).toUpperCase();
-  if (head.indexOf('BEGIN:VCARD') === 0) return { kind: 'vcard', card: parseVCard(raw) };
-  if (head.indexOf('MECARD:') === 0) return { kind: 'vcard', card: parseMeCard(raw) };
-  if (/^upi:\/\//i.test(raw)) {
-    let pa = '';
-    try { pa = new URL(raw).searchParams.get('pa') || ''; } catch (_) {}
-    return { kind: 'code', text: 'UPI: ' + (pa || raw) };
-  }
-  if (/^mailto:/i.test(raw)) return { kind: 'email', value: raw.slice(7).split('?')[0].trim() };
-  if (/^(tel|sms|smsto):/i.test(raw)) return { kind: 'phone', value: raw.replace(/^[a-z]+:/i, '').split(/[?:,]/)[0].trim() };
-  if (/^(https?:\/\/|www\.)/i.test(raw) || /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/|\?|$)/i.test(raw)) {
-    const u = normUrl(raw);
-    if (!u) return { kind: 'code', text: raw };
-    const h = hostOf(u);
-    if (h === 'wa.me' || h === 'api.whatsapp.com' || h === 'whatsapp.com' || h === 'chat.whatsapp.com') {
-      let n = '';
-      try {
-        const uu = new URL(u);
-        n = (uu.searchParams.get('phone') || uu.pathname).replace(/\D/g, '');
-      } catch (_) {}
-      if (h === 'chat.whatsapp.com') return { kind: 'code', text: u };
-      return n ? { kind: 'phone', value: n } : { kind: 'code', text: u };
-    }
-    if (socialOf(u)) return { kind: 'social', value: u };
-    if (/(^|\.)(goo\.gl|g\.page)$/.test(h) || (/google\./.test(h) && /\/maps/i.test(u))) return { kind: 'code', text: u };
-    return { kind: 'website', value: u };
-  }
-  const digits = raw.replace(/\D/g, '');
-  if (/^\+?[\d\s().-]{8,20}$/.test(raw) && digits.length >= 10 && digits.length <= 13) return { kind: 'phone', value: digits };
-  return { kind: 'code', text: raw };
-}
-
-/* Folds every code found on both photos into one set of suggestions. */
-function mergeCodes(codes) {
-  const r = { website: '', social: [], codes: [], phones: [], emails: [], vcard: null, found: 0 };
-  (codes || []).forEach((c) => {
-    const k = classifyCode(c);
-    if (k.kind === 'none') return;
-    r.found++;
-    if (k.kind === 'vcard') {
-      const card = k.card || {};
-      if (!r.vcard) r.vcard = card;
-      (card.tels || []).forEach((t) => r.phones.push(t));
-      (card.emails || []).forEach((e) => r.emails.push(e));
-      (card.urls || []).forEach((u) => {
-        const nu = normUrl(u);
-        if (!nu) return;
-        if (socialOf(nu)) r.social.push(nu);
-        else if (!r.website) r.website = nu;
-      });
-    } else if (k.kind === 'website') { if (!r.website) r.website = k.value; }
-    else if (k.kind === 'social') r.social.push(k.value);
-    else if (k.kind === 'phone') r.phones.push({ v: k.value, cell: true });
-    else if (k.kind === 'email') r.emails.push(k.value);
-    else if (k.kind === 'code') {
-      // a QR can hold thousands of characters — keep the field, sheet and CSV readable
-      const t = String(k.text);
-      r.codes.push(t.length > 200 ? t.slice(0, 200) + '…' : t);
-    }
-  });
-  return r;
-}
-
-/* ---------------- link display ---------------- */
-
-function linkHTML(u) {
-  const url = normUrl(u);
-  const shown = String(u).replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-  if (!url) return esc(u);
-  return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(shown) + '</a>';
-}
-
-function socialHTML(s) {
-  return String(s).split(',').map((x) => {
-    const t = x.trim();
-    if (!t) return '';
-    const u = normUrl(t);
-    if (!u) return esc(t);
-    const lab = socialOf(u);
-    return '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(lab || u.replace(/^https?:\/\//i, '').replace(/\/+$/, '')) + '</a>';
-  }).filter(Boolean).join(' · ');
-}
-
-function codeHTML(s) {
-  return String(s).split(' | ').map((x) => {
-    const t = x.trim();
-    if (!t) return '';
-    return /^https?:\/\//i.test(t) ? linkHTML(t) : esc(t);
-  }).filter(Boolean).join('<br>');
-}
-
-function renderScanCapture() {
-  $('#content').innerHTML =
-    '<div class="section-label">Card photos</div>' +
-    '<div class="card" id="photo-wrap">' + photosSectionHTML(null) + '</div>' +
-    '<div class="notice">Add the <b>front</b> photo, and the <b>back</b> too if the card has details there — the scanner reads both sides together.</div>' +
-    '<button class="btn btn-primary" data-action="scan-run" id="scan-run-btn">Scan & fill details</button>' +
-    '<div style="height:8px"></div>' +
-    '<button class="btn btn-secondary" data-action="scan-type-instead">Type the details instead</button>' +
-    '<div style="height:10px"></div>';
-}
-
-async function runScan() {
-  if (!S.photos.front) { toast('Add the front photo first.', 'err'); return; }
-  const ov = document.createElement('div');
-  ov.className = 'scan-overlay';
-  ov.innerHTML = '<div class="spinner"></div><div>Reading the card…</div>';
-  document.body.appendChild(ov);
-
-  const codesP = Promise.all([codesFor('front'), codesFor('back')])
-    .then((a) => a[0].concat(a[1])).catch(() => []);
-  const r = await callScan(S.photos.front, S.photos.back);
-  let codes = [];
-  try { codes = await codesP; } catch (_) { codes = []; }
-  ov.remove();
-
-  const f = (r.ok && r.fields) ? r.fields : {};
-  const oc = mergeCodes(codes);
-  const vc = oc.vcard;
-
-  // website + social — a scanned code is exact, printed text is only a reading
-  const website = oc.website || normUrl(f.website || '') || String(f.website || '').trim();
-  const socialList = [];
-  const addSoc = (x) => {
-    const v = normSocial(x);
-    if (!v) return;
-    const key = v.toLowerCase().replace(/\/+$/, '');
-    for (let i = 0; i < socialList.length; i++) {
-      if (socialList[i].toLowerCase().replace(/\/+$/, '') === key) return;
-    }
-    socialList.push(v);
-  };
-  oc.social.forEach(addSoc);
-  String(f.social || '').split(/[,;|]/).forEach(addSoc);
-
-  // mobiles — a vCard's CELL number is exact, so it leads; landlines are still dropped
-  const mobiles = [];
-  const push = (m) => { if (m && mobiles.indexOf(m) < 0) mobiles.push(m); };
-  const addMob = (x) => { const m = normMobile(x); if (isIndianMobile(m)) push(m); };
-  const addCodeMob = (x) => push(codeMobile(x));
-  if (vc) (vc.tels || []).filter((t) => t.cell).forEach((t) => addCodeMob(t.v));
-  addMob(f.mobile || '');
-  oc.phones.forEach((t) => addCodeMob(t.v));
-  if (vc) (vc.tels || []).filter((t) => !t.cell && !t.line).forEach((t) => addCodeMob(t.v));
-  String(f.phone_other || '').split(',').forEach(addMob);
-
-  const pre = {
-    trade_name: f.trade_name || (vc && vc.org) || '',
-    company_name: f.company_name || f.trade_name || (vc && vc.org) || '',
-    contact_person: (vc && vc.name) || f.contact_person || '',
-    designation: (vc && vc.title) || f.designation || '',
-    mobile: mobiles[0] || normMobile(f.mobile || ''),
-    phone_other: mobiles.slice(1).join(', '),
-    email: String(oc.emails[0] || f.email || '').trim(),
-    city: f.city || (vc && vc.adr ? vc.adr.city : '') || '',
-    area: f.area || '',
-    address: f.address || (vc && vc.address) || '',
-    state: f.state || (vc && vc.adr ? vc.adr.state : '') || '',
-    website: website,
-    social_links: socialList.join(', '),
-    card_code: oc.codes.join(' | '),
-  };
-  const gotSomething = Object.keys(pre).some((k) => String(pre[k] || '').trim());
-
-  if (r.ok && r.fields) {
-    toast(oc.found ? 'Card read ✓ — code on the card read too' : 'Card read ✓ — please check the details', 'ok');
-    showSub('New Client', () => renderClientForm(null, pre, 'scan'), true);
-    return;
-  }
-  // OCR failed, but a QR code on the card may still have given us everything
-  if (gotSomething) {
-    toast('Read the code on the card ✓ — please check the details', 'ok');
-    showSub('New Client', () => renderClientForm(null, pre, 'scan'), true);
-    return;
-  }
-  if (r.error === 'not_configured') toast('Card scanning is not set up yet — the photos will still be saved with the client.');
-  else if (r.error === 'quota') toast('Daily scan limit reached — please type the details; the photos will still be saved.');
-  else toast('Could not read the card — please type the details; the photos will still be saved.');
-  showSub('New Client', () => renderClientForm(null, {}, 'manual'), true);
-}
-
-function attachPhoto(side) {
-  const ov = openModal(
-    '<h3>' + (side === 'back' ? 'Back side' : 'Front side') + ' photo</h3>' +
-    '<p>Take a fresh photo, or pick one already saved on this phone.</p>' +
-    '<div style="display:flex;flex-direction:column;gap:10px">' +
-    '<button class="btn btn-primary" data-m="cam">📷 Take photo</button>' +
-    '<button class="btn btn-secondary" data-m="gal">🖼️ Choose from gallery</button>' +
-    '</div>');
-  const go = function (fromGallery) {
-    closeModal();
-    pickImage(async (file) => {
-      try { S.photos[side] = await downscale(file, 1600); }
-      catch (e) { toast('Could not read that image — try again.', 'err'); return; }
-      // read any QR / barcode from the ORIGINAL full-size photo, in the background
-      S.photos[side].codesP = readCodes(file).catch(() => []);
-      redrawPhotos();
-    }, fromGallery);
-  };
-  ov.querySelector('[data-m=cam]').onclick = function () { go(false); };
-  ov.querySelector('[data-m=gal]').onclick = function () { go(true); };
-}
-
-function photoSlotHTML(side, savedPath) {
-  const p = S.photos[side];
-  const label = side === 'front' ? 'Front side' : 'Back side';
-  if (p) {
-    const url = URL.createObjectURL(p.blob);
-    return '<div class="photo-slot"><div class="ps-label">' + label + '</div>' +
-      '<img class="cardphoto" src="' + url + '" alt="' + label + '">' +
-      '<div class="photo-row">' +
-      '<button type="button" class="btn btn-small btn-secondary" data-action="attach-photo" data-side="' + side + '">Retake</button>' +
-      '<button type="button" class="btn btn-small btn-ghost" data-action="remove-photo" data-side="' + side + '">Remove</button>' +
-      '</div></div>';
-  }
-  return '<div class="photo-slot"><div class="ps-label">' + label + (savedPath ? ' <span class="ps-saved">saved ✓</span>' : '') + '</div>' +
-    '<button type="button" class="btn btn-secondary" data-action="attach-photo" data-side="' + side + '">＋ ' + (savedPath ? 'Replace' : 'Add photo') + '</button></div>';
-}
-function photosSectionHTML(existing) {
-  return '<div class="photo-grid">' +
-    photoSlotHTML('front', existing && existing.card_image_path) +
-    photoSlotHTML('back', existing && existing.card_image_back_path) +
-    '</div>';
-}
-function redrawPhotos() {
-  const w = $('#photo-wrap');
-  if (w) w.innerHTML = photosSectionHTML(S.editingClient);
-}
-
-function segHTML(group, options, selected, extraCls) {
-  return '<div class="seg">' + options.map((o) => {
-    const cls = (extraCls && extraCls[o] ? extraCls[o] : '') + (selected === o ? ' on' : '');
-    return '<button type="button" class="' + cls.trim() + '" data-action="seg" data-group="' + group + '" data-val="' + esc(o) + '">' + esc(o) + '</button>';
-  }).join('') + '</div>';
-}
-
-const OUTCOMES = ['Meeting', 'Job work order', 'Outright order', 'Person not available', 'Other'];
-function outcomeChip(v) {
-  return v ? '<span class="chip" style="background:#f3ead9;color:#7a5a15">' + esc(v) + '</span>' : '';
-}
-
-/* ---------------- Indian regions (suggestions — free typing always allowed) ---------------- */
-const INDIAN_STATES = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
-  'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
-  'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana',
-  'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
-  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
-];
-const INDIAN_CITIES = [
-  'Agartala', 'Agra', 'Ahmedabad', 'Aizawl', 'Ajmer', 'Akola', 'Aligarh', 'Alwar', 'Ambala', 'Amravati',
-  'Amritsar', 'Anand', 'Anantapur', 'Asansol', 'Aurangabad', 'Ballari', 'Bareilly', 'Bathinda', 'Belagavi',
-  'Bengaluru', 'Bhagalpur', 'Bharuch', 'Bhavnagar', 'Bhilai', 'Bhilwara', 'Bhopal', 'Bhubaneswar', 'Bikaner',
-  'Bilaspur', 'Bokaro', 'Chandigarh', 'Chennai', 'Coimbatore', 'Cuttack', 'Davangere', 'Dehradun', 'Delhi',
-  'Dewas', 'Dhanbad', 'Dhule', 'Dimapur', 'Durg', 'Durgapur', 'Erode', 'Faridabad', 'Gandhinagar', 'Gangtok',
-  'Gaya', 'Ghaziabad', 'Gorakhpur', 'Guntur', 'Gurugram', 'Guwahati', 'Gwalior', 'Haldwani', 'Haridwar',
-  'Himmatnagar', 'Hisar', 'Hosur', 'Howrah', 'Hubballi', 'Hyderabad', 'Ichalkaranji', 'Imphal', 'Indore',
-  'Itanagar', 'Jabalpur', 'Jaipur', 'Jalandhar', 'Jalgaon', 'Jammu', 'Jamnagar', 'Jamshedpur', 'Jhansi',
-  'Jodhpur', 'Junagadh', 'Kakinada', 'Kalaburagi', 'Kanpur', 'Karimnagar', 'Karnal', 'Kharagpur', 'Khammam',
-  'Kochi', 'Kolhapur', 'Kolkata', 'Kota', 'Kozhikode', 'Kurnool', 'Latur', 'Lucknow', 'Ludhiana', 'Madurai',
-  'Mangaluru', 'Margao', 'Meerut', 'Mehsana', 'Moradabad', 'Mumbai', 'Muzaffarpur', 'Mysuru', 'Nagpur',
-  'Nanded', 'Nashik', 'Navsari', 'Nellore', 'Nizamabad', 'Noida', 'Palanpur', 'Pali', 'Panaji', 'Panipat',
-  'Patan', 'Patiala', 'Patna', 'Prayagraj', 'Puducherry', 'Pune', 'Raipur', 'Rajahmundry', 'Rajkot', 'Ranchi',
-  'Ratlam', 'Rohtak', 'Sagar', 'Saharanpur', 'Salem', 'Sangli', 'Satara', 'Secunderabad', 'Shillong', 'Shimla',
-  'Sikar', 'Siliguri', 'Solapur', 'Srinagar', 'Surat', 'Thane', 'Thiruvananthapuram', 'Thrissur',
-  'Tiruchirappalli', 'Tirunelveli', 'Tirupati', 'Tumakuru', 'Udaipur', 'Ujjain', 'Vadodara', 'Valsad', 'Vapi',
-  'Varanasi', 'Vellore', 'Vijayawada', 'Visakhapatnam', 'Warangal',
-];
-
-function comboFilter(arr, q) {
-  q = String(q || '').trim().toLowerCase();
-  if (!q) return arr;
-  const starts = arr.filter(function (x) { return x.toLowerCase().indexOf(q) === 0; });
-  const contains = arr.filter(function (x) { return x.toLowerCase().indexOf(q) > 0; });
-  return starts.concat(contains);
-}
-
-/* Visible dropdown + free typing for a text input (native datalist is hidden by Chrome's address autofill). */
-function attachCombo(inputSel, listSel, arr) {
-  const inp = $(inputSel), list = $(listSel);
-  if (!inp || !list) return;
-  const arrBtn = inp.parentElement.querySelector('.combo-arr');
-  let showAll = false;
-  const close = function () { list.classList.remove('open'); };
-  const render = function () {
-    const items = comboFilter(arr, inp.value).slice(0, showAll ? 400 : 8);
-    list.innerHTML = items.length
-      ? items.map(function (x) { return '<button type="button" data-v="' + esc(x) + '">' + esc(x) + '</button>'; }).join('')
-      : '<div class="combo-none">Not in the list — what you typed will be saved as is.</div>';
-    list.classList.add('open');
-  };
-  inp.addEventListener('input', function () { showAll = false; render(); });
-  inp.addEventListener('focus', function () { showAll = false; render(); });
-  inp.addEventListener('blur', function () { setTimeout(close, 200); });
-  if (arrBtn) {
-    arrBtn.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
-    arrBtn.addEventListener('click', function () {
-      if (list.classList.contains('open') && showAll) { close(); return; }
-      showAll = true; render();
-    });
-  }
-  list.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
-  list.addEventListener('click', function (ev) {
-    const b = ev.target.closest('button[data-v]');
-    if (!b) return;
-    inp.value = b.dataset.v;
-    close();
-  });
-}
-
-/* Which compulsory fields are still empty? Returns [label, selector|null] pairs. */
-function missingFields(v, fs) {
-  const m = [];
-  if (!v.company) m.push(['Company name', '#f-company']);
-  if (!v.person) m.push(['Contact person', '#f-person']);
-  if (!v.mobile) m.push(['Mobile number', '#f-mobile']);
-  if (!fs.polki) m.push(['Buys Polki?', null]);
-  if (!fs.order_type) m.push(['Order type', null]);
-  if (!fs.interest) m.push(['Client interest', null]);
-  if (!v.city) m.push(['City', '#f-city']);
-  if (!v.address) m.push(['Full address', '#f-address']);
-  return m;
-}
-
-function renderClientForm(existing, pre, source) {
-  const c = $('#content');
-  const e = existing || {};
-  const v = (k) => esc(pre[k] != null ? pre[k] : (e[k] != null ? e[k] : ''));
-  const compVal = esc(String(pre.company_name || pre.trade_name || e.company_name || e.trade_name || '').trim());
-  const codeRaw = String(pre.card_code != null ? pre.card_code : (e.card_code != null ? e.card_code : '')).trim();
-  const desigRaw = String((pre.designation != null ? pre.designation : e.designation) || '').trim();
-  const DESIG_KNOWN = ['Partner', 'Owner', 'Founder', 'Staff'];
-  const desigMatch = DESIG_KNOWN.find((k) => k.toLowerCase() === desigRaw.toLowerCase());
-  S.formState = {
-    polki: e.is_polki_buyer === true ? 'Yes' : e.is_polki_buyer === false ? 'No' : (existing ? 'Undefined' : null),
-    category: e.category || 'Undefined',
-    order_type: e.order_type || null,
-    interest: e.interest || null,
-    entry_source: source || e.entry_source || 'manual',
-    desig: desigRaw ? (desigMatch || 'Other') : null,
-    desig_other: desigRaw && !desigMatch ? desigRaw : '',
-  };
-  S.editingClient = existing || null;
-
-  c.innerHTML =
-    '<div class="section-label">Visiting card</div>' +
-    '<div class="card" id="photo-wrap">' + photosSectionHTML(existing) + '</div>' +
-
-    '<div class="section-label">Basic details</div>' +
-    '<div class="card">' +
-    '<div class="field"><label>Company / firm name <span class="req">*</span></label><input type="text" id="f-company" value="' + compVal + '" placeholder="Shop / company name"></div>' +
-    '<div class="field"><label>Contact person <span class="req">*</span></label><input type="text" id="f-person" value="' + v('contact_person') + '"></div>' +
-    '<div class="field"><label>Designation</label>' + segHTML('desig', ['Partner', 'Owner', 'Founder', 'Staff', 'Other'], S.formState.desig) +
-    '<div id="desig-other-wrap" style="display:' + (S.formState.desig === 'Other' ? 'block' : 'none') + ';margin-top:8px"><input type="text" id="f-desig-other" value="' + esc(S.formState.desig_other) + '" placeholder="Type the designation"></div></div>' +
-    '<div class="field"><label>Mobile number <span class="req">*</span></label><input type="tel" id="f-mobile" inputmode="numeric" value="' + v('mobile') + '" placeholder="10-digit mobile">' +
-    '<div id="mobile-note"></div></div>' +
-    '<div class="field"><label>Other mobile numbers</label><input type="text" id="f-phone2" autocomplete="off" inputmode="tel" value="' + v('phone_other') + '" placeholder="Extra mobile numbers, if any"></div>' +
-    '<div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="off" inputmode="email" value="' + v('email') + '" placeholder="name@gmail.com"></div>' +
-    '<div class="field"><label>Website</label><input type="text" id="f-website" autocomplete="off" inputmode="url" value="' + v('website') + '" placeholder="www.example.com"></div>' +
-    '<div class="field"><label>Social profiles</label><input type="text" id="f-social" autocomplete="off" value="' + v('social_links') + '" placeholder="Instagram / Facebook link">' +
-    '<div class="hint">More than one? Separate them with a comma</div></div>' +
-    (codeRaw
-      ? '<div class="field"><label>Scanned code</label><input type="text" id="f-code" autocomplete="off" value="' + v('card_code') + '">' +
-        '<div class="hint">Read from the QR / barcode printed on the card</div></div>'
-      : '') +
-    '<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="' + v('owner_name') + '"></div>' +
-    '</div>' +
-
-    '<div class="section-label">Business profile</div>' +
-    '<div class="card">' +
-    '<div class="field"><label>Buys Polki jewellery? <span class="req">*</span></label>' + segHTML('polki', ['Yes', 'No', 'Undefined'], S.formState.polki) + '</div>' +
-    '<div class="field"><label>Customer category (volume of work)</label>' + segHTML('category', ['A', 'B', 'C', 'Undefined'], S.formState.category) +
-    '<div class="hint">A = highest volume · C = lowest</div></div>' +
-    '<div class="field"><label>Order type <span class="req">*</span></label>' + segHTML('order_type', ['Job work', 'Outright', 'Both'], S.formState.order_type) + '</div>' +
-    '<div class="field"><label>Client interest (lead quality) <span class="req">*</span></label>' + segHTML('interest', ['Hot', 'Warm', 'Cold'], S.formState.interest, { Hot: 'hot', Warm: 'warm', Cold: 'cold' }) +
-    '<div class="hint">Hot = high interest · Warm = medium · Cold = low</div></div>' +
-    '</div>' +
-
-    '<div class="section-label">Location</div>' +
-    '<div class="card">' +
-    '<div class="field"><label>City <span class="req">*</span></label><div class="combo"><input type="text" id="f-city" autocomplete="off" value="' + v('city') + '" placeholder="Type or pick a city"><button type="button" class="combo-arr" tabindex="-1" aria-label="Show cities">▾</button><div class="combo-list" id="cl-city"></div></div></div>' +
-    '<div class="field"><label>State</label><div class="combo"><input type="text" id="f-state" autocomplete="off" value="' + v('state') + '" placeholder="Type or pick a state"><button type="button" class="combo-arr" tabindex="-1" aria-label="Show states">▾</button><div class="combo-list" id="cl-state"></div></div></div>' +
-    '<div class="field"><label>Area / locality</label><input type="text" id="f-area" value="' + v('area') + '" placeholder="Market / locality"></div>' +
-    '<div class="field"><label>Full address <span class="req">*</span></label><textarea id="f-address" style="min-height:70px" placeholder="Shop no., street, market, city, PIN">' + v('address') + '</textarea></div>' +
-    '</div>' +
-
-    '<button class="btn btn-primary" data-action="save-client"' + (existing ? ' data-edit-id="' + existing.id + '"' : '') + ' id="save-client-btn">' +
-    (existing ? 'Save changes' : 'Save client') + '</button>' +
-    '<div style="height:10px"></div>';
-
-  const mobileInput = $('#f-mobile');
-  mobileInput.addEventListener('blur', async () => {
-    const note = $('#mobile-note');
-    note.innerHTML = '';
-    const m = normMobile(mobileInput.value);
-    if (!m) return;
-    mobileInput.value = m;
-    if (!isIndianMobile(m)) {
-      note.innerHTML = '<div class="warn">This does not look like a 10-digit mobile number (landline?). You can still save it.</div>';
-    }
-    if (m.length === 10) {
-      const { data } = await db.from('clients').select('id, trade_name, contact_person').eq('mobile', m).neq('id', e.id || '00000000-0000-0000-0000-000000000000').limit(1);
-      if (data && data.length) {
-        note.innerHTML += '<div class="dup">⚠ This number is already saved for <b>' + esc(data[0].trade_name) + '</b>. ' +
-          '<a href="#" data-action="open-client" data-id="' + data[0].id + '">Open that client</a> instead of creating a duplicate.</div>';
-      }
-    }
-  });
-
-  attachCombo('#f-city', '#cl-city', INDIAN_CITIES);
-  attachCombo('#f-state', '#cl-state', INDIAN_STATES);
-}
-
-async function saveClient(editId) {
-  const btn = $('#save-client-btn');
-  const mobile = normMobile($('#f-mobile').value);
-  const vals = {
-    company: $('#f-company').value.trim(),
-    person: $('#f-person').value.trim(),
-    mobile: mobile,
-    city: $('#f-city').value.trim(),
-    address: $('#f-address').value.trim(),
-  };
-  const miss = missingFields(vals, S.formState);
-  if (miss.length) {
-    toast('Please fill: ' + miss.map((m) => m[0]).join(', '), 'err');
-    const first = miss.find((m) => m[1]);
-    if (first) {
-      const fe = $(first[1]);
-      if (fe) { fe.focus(); try { fe.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) {} }
-    }
-    return;
-  }
-
-  const webRaw = $('#f-website').value.trim();
-  const webVal = normUrl(webRaw) || webRaw;
-  const socialVal = $('#f-social').value.split(',')
-    .map((x) => normSocial(x) || x.trim())
-    .filter(Boolean).join(', ');
-  const codeVal = $('#f-code')
-    ? $('#f-code').value.trim()
-    : (S.editingClient && S.editingClient.card_code ? S.editingClient.card_code : '');
-
-  const desigVal = S.formState.desig === 'Other'
-    ? ($('#f-desig-other') ? $('#f-desig-other').value.trim() : '')
-    : (S.formState.desig || '');
-  const row = {
-    trade_name: vals.company,
-    company_name: vals.company,
-    contact_person: vals.person,
-    designation: desigVal || null,
-    mobile: mobile,
-    phone_other: $('#f-phone2').value.trim() || null,
-    email: $('#f-email').value.trim() || null,
-    website: webVal || null,
-    social_links: socialVal || null,
-    card_code: codeVal || null,
-    owner_name: $('#f-owner').value.trim() || null,
-    address: vals.address,
-    is_polki_buyer: S.formState.polki === 'Yes' ? true : S.formState.polki === 'No' ? false : null,
-    category: S.formState.category || 'Undefined',
-    order_type: S.formState.order_type,
-    interest: S.formState.interest,
-    city: vals.city,
-    state: $('#f-state').value.trim() || null,
-    area: $('#f-area').value.trim() || null,
-    entry_source: S.formState.entry_source,
-  };
-
-  const doSave = async () => {
-    btn.disabled = true; btn.textContent = 'Saving…';
-    let clientId = editId;
-    if (editId) {
-      const { error } = await db.from('clients').update(row).eq('id', editId);
-      if (error) { btn.disabled = false; btn.textContent = 'Save changes'; toast('Could not save — please try again.', 'err'); return; }
-    } else {
-      row.created_by = S.me.id;
-      const { data, error } = await db.from('clients').insert(row).select('id').single();
-      if (error) { btn.disabled = false; btn.textContent = 'Save client'; toast('Could not save — please try again.', 'err'); return; }
-      clientId = data.id;
-    }
-
-    for (const pair of [['front', 'card_image_path'], ['back', 'card_image_back_path']]) {
-      const side = pair[0], col = pair[1];
-      const p = S.photos[side];
-      if (!p) continue;
-      const path = clientId + '/' + side + '-' + Date.now() + '.jpg';
-      const { error: upErr } = await db.storage.from('cards').upload(path, p.blob, { contentType: 'image/jpeg' });
-      if (!upErr) {
-        const patch = {};
-        patch[col] = path;
-        await db.from('clients').update(patch).eq('id', clientId);
-      } else {
-        toast('Client saved, but the ' + side + ' card photo could not be uploaded.', 'err');
-      }
-      S.photos[side] = null;
-    }
-
-    toast(editId ? 'Client updated ✓' : 'Client saved ✓', 'ok');
-    if (editId) { openClient(editId, true); return; }
-
-    const client = await fetchClient(clientId);
-    const ov = openModal(
-      '<h3>Client saved 🎉</h3><p>Record the meeting now? Reminders and instructions you add will appear on the Today screen.</p>' +
-      '<div class="modal-actions">' +
-      '<button class="btn btn-secondary" data-m="later">Later</button>' +
-      '<button class="btn btn-primary" data-m="now">Record meeting</button></div>');
-    ov.querySelector('[data-m=later]').onclick = () => { closeModal(); openClient(clientId, true); };
-    ov.querySelector('[data-m=now]').onclick = () => { closeModal(); if (client) openInteractionForm(client, true); };
-  };
-
-  if (mobile && !isIndianMobile(mobile)) {
-    confirmModal('Not a mobile number?', 'The number "' + mobile + '" does not look like a 10-digit Indian mobile. Save anyway?', 'Save anyway', doSave);
-  } else {
-    doSave();
-  }
-}
-
-/* ============================================================
-   FIND / SEARCH
-   ============================================================ */
-function renderFind() {
-  setHeader('Find Client', false);
-  $('#content').innerHTML =
-    '<div class="search-box"><input type="text" id="search-input" placeholder="Search name, shop, mobile, city…" autocomplete="off"></div>' +
-    '<div id="search-results"><div class="empty">Loading recent clients…</div></div>';
-  const inp = $('#search-input');
-  inp.addEventListener('input', () => {
-    clearTimeout(S.searchTimer);
-    S.searchTimer = setTimeout(() => runSearch(inp.value), 280);
-  });
-  runSearch('');
-}
-
-async function runSearch(qRaw) {
-  const box = $('#search-results');
-  if (!box) return;
-  const q = String(qRaw || '').trim().replace(/[,%()]/g, ' ').trim();
-  let query = db.from('clients').select('id, trade_name, company_name, contact_person, city, area, category, interest, mobile');
-  if (q) {
-    const pat = '%' + q + '%';
-    query = query.or('trade_name.ilike.' + pat + ',company_name.ilike.' + pat + ',contact_person.ilike.' + pat + ',mobile.ilike.' + pat + ',phone_other.ilike.' + pat + ',city.ilike.' + pat + ',owner_name.ilike.' + pat + ',email.ilike.' + pat + ',website.ilike.' + pat + ',social_links.ilike.' + pat).limit(50);
-  } else {
-    query = query.order('created_at', { ascending: false }).limit(25);
-  }
-  const { data, error } = await query;
-  if (error) { box.innerHTML = '<div class="empty">Search failed — try again.</div>'; return; }
-  if (!data || !data.length) {
-    box.innerHTML = '<div class="empty"><div class="big">🔎</div>' + (q ? 'No client matches "' + esc(q) + '".<br>Check the spelling, or add them as a new client.' : 'No clients yet — add your first from the New Client tab.') + '</div>';
-    return;
-  }
-  box.innerHTML = (q ? '' : '<div class="section-label">Recently added</div>') + data.map((cl) =>
-    '<div class="list-item" data-action="open-client" data-id="' + cl.id + '">' +
-    '<div class="li-main">' +
-    '<div class="li-title">' + esc(cl.trade_name) + '</div>' +
-    '<div class="li-sub">' + esc([cl.contact_person, cl.city].filter(Boolean).join(' · ') || cl.company_name || '') + '</div>' +
-    '<div class="li-chips">' + chipCat(cl.category) + chipInterest(cl.interest) + '</div>' +
-    '</div><div style="color:var(--muted)">›</div></div>').join('');
-}
-
-/* ============================================================
-   CLIENT PAGE
-   ============================================================ */
-async function fetchClient(id) {
-  const { data, error } = await db.from('clients').select('*').eq('id', id).maybeSingle();
-  if (error || !data) { toast('Could not open client.', 'err'); return null; }
-  return data;
-}
-
-async function openClient(id, replace) {
-  S.currentClientId = id;
-  const cl = await fetchClient(id);
-  if (!cl) return;
-  showSub(cl.trade_name, () => renderClientPage(cl), replace);
-  loadClientHistory(cl);
-}
-
-function renderClientPage(cl) {
-  const rows = [];
-  const add = (k, vHtml) => { if (vHtml) rows.push('<div class="detail-row"><div class="dk">' + k + '</div><div class="dv">' + vHtml + '</div></div>'); };
-  if (cl.company_name && cl.company_name !== cl.trade_name) add('Company', esc(cl.company_name));
-  add('Contact person', esc([cl.contact_person, cl.designation].filter(Boolean).join(' — ')));
-  if (cl.mobile) add('Mobile', '<a href="tel:' + esc(cl.mobile) + '" data-action="call">' + esc(cl.mobile) + '</a>');
-  if (cl.phone_other) add('Other mobiles', esc(cl.phone_other));
-  if (cl.email) add('Email', '<a href="mailto:' + esc(cl.email) + '">' + esc(cl.email) + '</a>');
-  if (cl.website) add('Website', linkHTML(cl.website));
-  if (cl.social_links) add('Social', socialHTML(cl.social_links));
-  if (cl.card_code) add('Scanned code', codeHTML(cl.card_code));
-  add('Owner', esc(cl.owner_name));
-  add('Location', esc([cl.area, cl.city, cl.state].filter(Boolean).join(', ')));
-  add('Address', esc(cl.address));
-  add('Polki jewellery', cl.is_polki_buyer === true ? 'Yes' : cl.is_polki_buyer === false ? 'No' : '');
-  add('Order type', esc(cl.order_type));
-  add('Added by', esc(nameOf(cl.created_by)) + ' · ' + fmtD(cl.created_at));
-
-  $('#content').innerHTML =
-    '<div class="client-head"><h2>' + esc(cl.trade_name) + '</h2>' +
-    (cl.company_name && cl.company_name !== cl.trade_name ? '<div class="co">' + esc(cl.company_name) + '</div>' : '') +
-    '<div class="chips">' + chipCat(cl.category) + chipInterest(cl.interest) +
-    (cl.order_type ? '<span class="chip">' + esc(cl.order_type) + '</span>' : '') + '</div></div>' +
-
-    '<div class="action-row">' +
-    '<button class="btn btn-primary" data-action="new-interaction" data-id="' + cl.id + '">＋ Record meeting</button>' +
-    '<button class="btn btn-secondary" data-action="edit-client" data-id="' + cl.id + '">Edit</button>' +
-    '</div>' +
-
-    '<div class="card">' + (rows.join('') || '<div class="empty" style="padding:6px">No details yet</div>') + '</div>' +
-    '<div id="client-card-photo"></div>' +
-    '<div id="client-followups"></div>' +
-    '<div id="client-history"><div class="empty">Loading history…</div></div>';
-
-  const sides = [['Front', cl.card_image_path], ['Back', cl.card_image_back_path]].filter((s) => s[1]);
-  if (sides.length) {
-    Promise.all(sides.map((s) =>
-      db.storage.from('cards').createSignedUrl(s[1], 3600).then(({ data }) => [s[0], data && data.signedUrl])
-    )).then((list) => {
-      const el = $('#client-card-photo');
-      if (!el) return;
-      const imgs = list.filter((x) => x[1]).map((x) =>
-        '<div class="photo-slot"><div class="ps-label">' + x[0] + '</div><img class="cardphoto" src="' + x[1] + '" alt="Visiting card ' + x[0] + '"></div>').join('');
-      if (imgs) el.innerHTML = '<div class="section-label">Visiting card</div><div class="card"><div class="photo-grid">' + imgs + '</div></div>';
-    });
-  }
-}
-
-async function loadClientHistory(cl) {
-  const [ints, fus] = await Promise.all([
-    db.from('interactions').select('*').eq('client_id', cl.id).order('happened_at', { ascending: false }).limit(100),
-    db.from('followups').select('*').eq('client_id', cl.id).order('created_at', { ascending: true }).limit(300),
-  ]);
-  const fuEl = $('#client-followups'), hiEl = $('#client-history');
-  if (!fuEl || !hiEl) return;
-
-  const followups = fus.data || [];
-  const pending = followups.filter((f) => f.status === 'pending');
-  if (pending.length) {
-    fuEl.innerHTML = '<div class="section-label">Pending follow-ups</div><div class="card">' +
-      pending.map((f) =>
-        '<div class="fu-line">' + chipType(f.type) + '<span style="flex:1">' + esc(f.content) + '</span>' +
-        (f.due_date ? '<span class="fu-due">' + esc(dueLabel(f.due_date)) + '</span>' : '') +
-        '<button class="btn btn-small btn-ghost" data-action="fu-done" data-id="' + f.id + '">✓</button></div>').join('') +
-      '</div>';
-  } else fuEl.innerHTML = '';
-
-  const byInt = {};
-  followups.forEach((f) => { if (f.interaction_id) (byInt[f.interaction_id] = byInt[f.interaction_id] || []).push(f); });
-
-  const items = (ints.data || []).map((it) => {
-    const fuHtml = (byInt[it.id] || []).map((f) =>
-      '<div class="fu-line' + (f.status === 'done' ? ' done' : '') + '">' + chipType(f.type) +
-      '<span style="flex:1">' + esc(f.content) + '</span>' +
-      (f.due_date && f.status === 'pending' ? '<span class="fu-due">' + esc(dueLabel(f.due_date)) + '</span>' : '') + '</div>').join('');
-    return '<div class="timeline-item">' +
-      '<div class="t-meta"><span>' + esc(nameOf(it.exec_id)) + '</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
-      (it.outcome ? '<div style="margin:2px 0 5px">' + outcomeChip(it.outcome) + '</div>' : '') +
-      '<div class="t-notes">' + esc(it.notes) + '</div>' +
-      (it.interest_after ? '<div style="margin-top:7px">' + chipInterest(it.interest_after) + ' <span style="font-size:12px;color:var(--muted)">after this meeting</span></div>' : '') +
-      (fuHtml ? '<div class="t-fus">' + fuHtml + '</div>' : '') +
-      '</div>';
-  });
-
-  hiEl.innerHTML = '<div class="section-label">Meeting history</div>' +
-    (items.length ? items.join('') : '<div class="empty">No meetings recorded yet.<br>Tap “Record meeting” after you speak with them.</div>');
-}
-
-/* ============================================================
-   INTERACTION FORM
-   ============================================================ */
-function openInteractionForm(client, replace) {
-  S.interactionClient = client;
-  S.fu = [];
-  S.formState.int_interest = client.interest || null;
-  S.formState.int_outcome = null;
-  showSub('Record Meeting', renderInteractionForm, replace);
-}
-
-function renderInteractionForm() {
-  const cl = S.interactionClient;
-  $('#content').innerHTML =
-    '<div class="card" style="padding:13px 15px"><b>' + esc(cl.trade_name) + '</b>' +
-    (cl.city ? ' <span style="color:var(--muted);font-size:13px">· ' + esc(cl.city) + '</span>' : '') + '</div>' +
-
-    '<div class="section-label">Meeting outcome</div>' +
-    '<div class="card"><div class="field" style="margin-bottom:2px">' +
-    segHTML('int_outcome', OUTCOMES, S.formState.int_outcome) +
-    '<div id="outcome-other-wrap" style="display:' + (S.formState.int_outcome === 'Other' ? 'block' : 'none') + ';margin-top:8px"><input type="text" id="f-outcome-other" placeholder="What was the outcome?"></div>' +
-    '</div></div>' +
-
-    '<div class="section-label">What happened in the meeting?</div>' +
-    '<div class="card">' +
-    '<div class="field"><textarea id="int-notes" placeholder="e.g. Showed the new antique collection. Wants a quotation for 200 gm job work…"></textarea>' +
-    '<div class="mic-hint">' + IC.mic + ' Tip: tap the mic on your keyboard and just speak.</div></div>' +
-    '</div>' +
-
-    '<div class="section-label">Follow-ups (optional)</div>' +
-    '<div class="fu-add-row">' +
-    '<button class="btn btn-small btn-secondary" data-action="fu-add" data-type="reminder">＋ Reminder</button>' +
-    '<button class="btn btn-small btn-secondary" data-action="fu-add" data-type="note">＋ Note</button>' +
-    '<button class="btn btn-small btn-secondary" data-action="fu-add" data-type="instruction">＋ Instruction</button>' +
-    '</div><div id="fu-rows"></div>' +
-
-    '<div class="section-label">Client interest after this meeting</div>' +
-    '<div class="card"><div class="field" style="margin-bottom:2px">' +
-    segHTML('int_interest', ['Hot', 'Warm', 'Cold'], S.formState.int_interest, { Hot: 'hot', Warm: 'warm', Cold: 'cold' }) +
-    '</div></div>' +
-
-    '<button class="btn btn-primary" data-action="save-interaction" id="save-int-btn">Save meeting</button>' +
-    '<div style="height:10px"></div>';
-  redrawFuRows();
-}
-
-function redrawFuRows() {
-  const box = $('#fu-rows');
-  if (!box) return;
-  box.innerHTML = S.fu.map((f, i) =>
-    '<div class="fu-row">' +
-    '<div class="fu-top">' + chipType(f.type) + '<button type="button" class="fu-x" data-action="fu-del" data-idx="' + i + '">✕</button></div>' +
-    '<input type="text" data-fuf="content" data-idx="' + i + '" value="' + esc(f.content) + '" placeholder="' +
-    (f.type === 'reminder' ? 'e.g. Call about the quotation' : f.type === 'note' ? 'e.g. Prefers antique finish' : 'e.g. Send catalogue by courier') + '">' +
-    (f.type === 'reminder' ? '<input type="date" data-fuf="due_date" data-idx="' + i + '" value="' + esc(f.due_date || todayStr(1)) + '" min="' + todayStr() + '">' : '') +
-    '</div>').join('');
-}
-
-async function saveInteraction() {
-  const cl = S.interactionClient;
-  const notes = $('#int-notes').value.trim();
-  const fus = S.fu.filter((f) => f.content && f.content.trim());
-  const outcomeVal = S.formState.int_outcome === 'Other'
-    ? ($('#f-outcome-other') ? $('#f-outcome-other').value.trim() : '')
-    : (S.formState.int_outcome || '');
-  if (!notes && !fus.length && !outcomeVal) { toast('Choose an outcome, write what happened, or add a follow-up.', 'err'); return; }
-
-  const btn = $('#save-int-btn'); btn.disabled = true; btn.textContent = 'Saving…';
-  const interestAfter = S.formState.int_interest || null;
-
-  const { data: intRow, error } = await db.from('interactions').insert({
-    client_id: cl.id, exec_id: S.me.id,
-    notes: notes || (outcomeVal ? '(' + outcomeVal + ')' : '(follow-ups only)'),
-    outcome: outcomeVal || null,
-    interest_after: interestAfter !== cl.interest ? interestAfter : null,
-  }).select('id').single();
-  if (error) { btn.disabled = false; btn.textContent = 'Save meeting'; toast('Could not save — please try again.', 'err'); return; }
-
-  if (fus.length) {
-    const rows = fus.map((f) => ({
-      client_id: cl.id, interaction_id: intRow.id, type: f.type, content: f.content.trim(),
-      due_date: f.type === 'reminder' ? (f.due_date || todayStr(1)) : null,
-      assigned_to: S.me.id, created_by: S.me.id,
-    }));
-    const { error: fuErr } = await db.from('followups').insert(rows);
-    if (fuErr) toast('Meeting saved, but follow-ups failed — add them again from the client page.', 'err');
-  }
-
-  if (interestAfter && interestAfter !== cl.interest) {
-    await db.from('clients').update({ interest: interestAfter }).eq('id', cl.id);
-  }
-
-  toast('Meeting recorded ✓', 'ok');
-  openClient(cl.id, true);
-}
-
-/* ============================================================
-   REPORT (owner dashboard)
-   ============================================================ */
-function periodStartISO(p) {
-  if (p === 'all') return null;
-  const d = new Date();
-  if (p === 'today') { d.setHours(0, 0, 0, 0); return d.toISOString(); }
-  const days = p === '7d' ? 7 : 30;
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
-}
-function periodLabel(p) {
-  return p === 'today' ? 'today' : p === '7d' ? 'in the last 7 days' : p === '30d' ? 'in the last 30 days' : 'overall';
-}
-function aggReport(clients, meets, team) {
-  const perExec = new Map();
-  team.forEach(function (p) { if (p.active) perExec.set(p.id, { name: p.full_name || p.email || '—', meetings: 0, clients: 0 }); });
-  const bump = function (id, k) {
-    if (!id) return;
-    if (!perExec.has(id)) perExec.set(id, { name: '—', meetings: 0, clients: 0 });
-    perExec.get(id)[k] += 1;
-  };
-  meets.forEach(function (m) { bump(m.exec_id, 'meetings'); });
-  clients.forEach(function (c) { bump(c.created_by, 'clients'); });
-  const cat = { A: 0, B: 0, C: 0, 'Undefined': 0 };
-  const intr = { Hot: 0, Warm: 0, Cold: 0 };
-  const city = new Map();
-  clients.forEach(function (c) {
-    const ck = c.category || 'Undefined';
-    cat[ck] = (cat[ck] || 0) + 1;
-    if (c.interest) intr[c.interest] = (intr[c.interest] || 0) + 1;
-    if (c.city && c.city.trim()) { const k = c.city.trim(); city.set(k, (city.get(k) || 0) + 1); }
-  });
-  const execRows = Array.from(perExec.entries())
-    .map(function (e) { return { id: e[0], name: e[1].name, meetings: e[1].meetings, clients: e[1].clients }; })
-    .sort(function (a, b) { return b.meetings - a.meetings || b.clients - a.clients || (a.name < b.name ? -1 : 1); });
-  const topCities = Array.from(city.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5);
-  const outMap = new Map();
-  meets.forEach(function (m) { const o = String(m.outcome || '').trim(); if (o) outMap.set(o, (outMap.get(o) || 0) + 1); });
-  const known = OUTCOMES.slice(0, OUTCOMES.length - 1);
-  const out = known.map(function (k) { return [k, outMap.get(k) || 0]; })
-    .concat(Array.from(outMap.entries())
-      .filter(function (e) { return known.indexOf(e[0]) === -1; })
-      .sort(function (a, b) { return b[1] - a[1]; })
-      .slice(0, 6));
-  return { execRows: execRows, cat: cat, intr: intr, topCities: topCities, out: out };
-}
-
-async function renderReport() {
-  if (!S.me || S.me.role !== 'owner') { switchTab('today'); return; }
-  setHeader('Report', false);
-  const c = $('#content');
-  c.innerHTML = '<div class="empty">Loading…</div>';
-
-  const startISO = periodStartISO(S.report.period);
-  let cq = db.from('clients').select('id, trade_name, city, category, interest, created_by, created_at').order('created_at', { ascending: false }).limit(1000);
-  let iq = db.from('interactions').select('id, exec_id, client_id, happened_at, outcome').order('happened_at', { ascending: false }).limit(1000);
-  if (startISO) { cq = cq.gte('created_at', startISO); iq = iq.gte('happened_at', startISO); }
-  const results = await Promise.all([
-    cq, iq,
-    db.from('followups').select('id', { count: 'exact', head: true }).eq('type', 'reminder').eq('status', 'pending'),
-  ]);
-  if (results[0].error || results[1].error) { c.innerHTML = '<div class="empty">Could not load the report — try again.</div>'; return; }
-  const clients = results[0].data || [], meets = results[1].data || [];
-  const remCount = results[2].count || 0;
-  const agg = aggReport(clients, meets, Array.from(S.team.values()));
-
-  const chip = function (p, label) {
-    return '<button class="' + (S.report.period === p ? 'on' : '') + '" data-action="report-period" data-p="' + p + '">' + label + '</button>';
-  };
-  const brk = function (kind, key, label, n) {
-    return '<button class="brk-chip"' + (n ? ' data-action="report-clients" data-k="' + kind + '" data-v="' + esc(key) + '"' : ' style="opacity:.45"') + '>' + esc(label) + ' <b>' + n + '</b></button>';
-  };
-
-  c.innerHTML =
-    '<div class="filter-chips">' + chip('today', 'Today') + chip('7d', '7 days') + chip('30d', '30 days') + chip('all', 'All') + '</div>' +
-
-    '<div class="stat-row">' +
-    '<div class="stat"><div class="st-num">' + clients.length + '</div><div class="st-label">New clients</div></div>' +
-    '<div class="stat"><div class="st-num">' + meets.length + '</div><div class="st-label">Meetings</div></div>' +
-    '<div class="stat"><div class="st-num">' + remCount + '</div><div class="st-label">Reminders open</div></div>' +
-    '</div>' +
-
-    '<div class="section-label">Team activity ' + esc(periodLabel(S.report.period)) + '</div>' +
-    '<div class="card">' +
-    (agg.execRows.length ? agg.execRows.map(function (r) {
-      return '<div class="exec-row" data-action="report-exec" data-id="' + r.id + '" data-name="' + esc(r.name) + '">' +
-        '<div class="ex-name">' + esc(r.name) + '</div>' +
-        '<div class="ex-nums">' + r.meetings + ' meeting' + (r.meetings === 1 ? '' : 's') + ' · ' + r.clients + ' new</div>' +
-        '<div style="color:var(--muted)">›</div></div>';
-    }).join('') : '<div class="empty" style="padding:8px">No team members yet.</div>') +
-    '</div>' +
-
-    '<div class="section-label">Meetings — by outcome</div>' +
-    '<div class="brk-row">' + agg.out.map(function (x) {
-      return '<button class="brk-chip"' + (x[1] ? ' data-action="report-outcome" data-v="' + esc(x[0]) + '"' : ' style="opacity:.45"') + '>' + esc(x[0]) + ' <b>' + x[1] + '</b></button>';
-    }).join('') + '</div>' +
-
-    '<div class="section-label">New clients — by category</div>' +
-    '<div class="brk-row">' + brk('category', 'A', 'Cat A', agg.cat.A) + brk('category', 'B', 'Cat B', agg.cat.B) + brk('category', 'C', 'Cat C', agg.cat.C) + brk('category', 'Undefined', 'Undecided', agg.cat['Undefined']) + '</div>' +
-
-    '<div class="section-label">New clients — by interest</div>' +
-    '<div class="brk-row">' + brk('interest', 'Hot', 'Hot', agg.intr.Hot) + brk('interest', 'Warm', 'Warm', agg.intr.Warm) + brk('interest', 'Cold', 'Cold', agg.intr.Cold) + '</div>' +
-
-    (agg.topCities.length ?
-      '<div class="section-label">Top cities</div><div class="card">' +
-      agg.topCities.map(function (x) {
-        return '<div class="exec-row" data-action="report-clients" data-k="city" data-v="' + esc(x[0]) + '">' +
-          '<div class="ex-name">' + esc(x[0]) + '</div><div class="ex-nums">' + x[1] + ' client' + (x[1] === 1 ? '' : 's') + '</div><div style="color:var(--muted)">›</div></div>';
-      }).join('') + '</div>' : '') +
-
-    ((clients.length >= 1000 || meets.length >= 1000) ? '<div class="notice">Showing the most recent 1000 records of this period.</div>' : '') +
-    '<div style="height:6px"></div>';
-}
-
-async function reportExecView(execId, execName) {
-  const startISO = periodStartISO(S.report.period);
-  let q = db.from('interactions').select('id, client_id, happened_at, notes, outcome, clients(trade_name, city)').eq('exec_id', execId).order('happened_at', { ascending: false }).limit(200);
-  if (startISO) q = q.gte('happened_at', startISO);
-  const { data, error } = await q;
-  const c = $('#content');
-  if (!c) return;
-  if (error) { c.innerHTML = '<div class="empty">Could not load.</div>'; return; }
-  const rows = data || [];
-  c.innerHTML =
-    '<div class="card" style="padding:13px 15px"><b>' + esc(execName) + '</b> <span style="color:var(--muted);font-size:13px">· ' + rows.length + ' meeting' + (rows.length === 1 ? '' : 's') + ' ' + esc(periodLabel(S.report.period)) + '</span></div>' +
-    (rows.length ? rows.map(function (it) {
-      const cl = it.clients || {};
-      const note = String(it.notes || '');
-      return '<div class="timeline-item">' +
-        '<div class="t-meta"><span class="rem-client" data-action="open-client" data-id="' + it.client_id + '">' + esc(cl.trade_name || 'Client') + ' ›</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
-        (it.outcome ? '<div style="margin:2px 0 5px">' + outcomeChip(it.outcome) + '</div>' : '') +
-        '<div class="t-notes">' + esc(note.slice(0, 160)) + (note.length > 160 ? '…' : '') + '</div>' +
-        '</div>';
-    }).join('') : '<div class="empty">No meetings recorded ' + esc(periodLabel(S.report.period)) + '.</div>');
-}
-
-async function reportMeetsView(v) {
-  const startISO = periodStartISO(S.report.period);
-  let q = db.from('interactions').select('id, client_id, exec_id, happened_at, notes, clients(trade_name, city)').eq('outcome', v).order('happened_at', { ascending: false }).limit(200);
-  if (startISO) q = q.gte('happened_at', startISO);
-  const { data, error } = await q;
-  const c = $('#content');
-  if (!c) return;
-  if (error) { c.innerHTML = '<div class="empty">Could not load.</div>'; return; }
-  const rows = data || [];
-  c.innerHTML =
-    '<div class="card" style="padding:13px 15px">' + outcomeChip(v) + ' <span style="color:var(--muted);font-size:13px">' + rows.length + ' meeting' + (rows.length === 1 ? '' : 's') + ' ' + esc(periodLabel(S.report.period)) + '</span></div>' +
-    (rows.length ? rows.map(function (it) {
-      const cl = it.clients || {};
-      const note = String(it.notes || '');
-      return '<div class="timeline-item">' +
-        '<div class="t-meta"><span class="rem-client" data-action="open-client" data-id="' + it.client_id + '">' + esc(cl.trade_name || 'Client') + ' ›</span><span>' + fmtDT(it.happened_at) + '</span></div>' +
-        '<div class="t-notes">' + esc(nameOf(it.exec_id)) + (note ? ' — ' + esc(note.slice(0, 140)) + (note.length > 140 ? '…' : '') : '') + '</div>' +
-        '</div>';
-    }).join('') : '<div class="empty">No meetings with this outcome ' + esc(periodLabel(S.report.period)) + '.</div>');
-}
-
-async function reportClientsView(k, v) {
-  const startISO = periodStartISO(S.report.period);
-  let q = db.from('clients').select('id, trade_name, company_name, contact_person, city, category, interest').eq(k, v).order('created_at', { ascending: false }).limit(300);
-  if (startISO) q = q.gte('created_at', startISO);
-  const { data, error } = await q;
-  const c = $('#content');
-  if (!c) return;
-  if (error) { c.innerHTML = '<div class="empty">Could not load.</div>'; return; }
-  const rows = data || [];
-  c.innerHTML = rows.length ? rows.map(function (cl) {
-    return '<div class="list-item" data-action="open-client" data-id="' + cl.id + '">' +
-      '<div class="li-main">' +
-      '<div class="li-title">' + esc(cl.trade_name) + '</div>' +
-      '<div class="li-sub">' + esc([cl.contact_person, cl.city].filter(Boolean).join(' · ') || cl.company_name || '') + '</div>' +
-      '<div class="li-chips">' + chipCat(cl.category) + chipInterest(cl.interest) + '</div>' +
-      '</div><div style="color:var(--muted)">›</div></div>';
-  }).join('') : '<div class="empty">No matching clients ' + esc(periodLabel(S.report.period)) + '.</div>';
-}
-
-/* ============================================================
-   EXPORT (owner backup — 3 Excel-ready CSV files)
-   ============================================================ */
-async function fetchAll(table, orderCol) {
-  const all = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from(table).select('*').order(orderCol, { ascending: true }).range(from, from + 999);
-    if (error) throw new Error(table + ': ' + error.message);
-    for (const row of data || []) all.push(row);
-    if (!data || data.length < 1000) break;
-  }
-  return all;
-}
-
-function csvVal(v) {
-  if (v === null || v === undefined) return '';
-  const s = String(v).replace(/"/g, '""');
-  return /[",\n\r]/.test(s) ? '"' + s + '"' : s;
-}
-function buildCsv(headers, rows) {
-  return '﻿' + headers.map(csvVal).join(',') + '\r\n' +
-    rows.map((r) => r.map(csvVal).join(',')).join('\r\n');
-}
-function downloadFile(name, text) {
-  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-}
-function fmtExp(iso) { return iso ? fmtDT(iso) : ''; }
-function ynExp(b) { return b === true ? 'Yes' : b === false ? 'No' : ''; }
-
-async function exportAllData() {
-  const btn = $('#export-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
-  try {
-    const results = await Promise.all([
-      fetchAll('clients', 'created_at'),
-      fetchAll('interactions', 'happened_at'),
-      fetchAll('followups', 'created_at'),
-      fetchAll('profiles', 'created_at'),
-    ]);
-    const clients = results[0], interactions = results[1], followups = results[2], profiles = results[3];
-    const pName = new Map(profiles.map((p) => [p.id, p.full_name || p.email || '']));
-    const cName = new Map(clients.map((c) => [c.id, c.trade_name]));
-
-    // 7-day photo links
-    const paths = [];
-    clients.forEach((c) => {
-      if (c.card_image_path) paths.push(c.card_image_path);
-      if (c.card_image_back_path) paths.push(c.card_image_back_path);
-    });
-    const urlMap = new Map();
-    for (let i = 0; i < paths.length; i += 100) {
-      const { data } = await db.storage.from('cards').createSignedUrls(paths.slice(i, i + 100), 604800);
-      (data || []).forEach((d) => { if (d.signedUrl) urlMap.set(d.path, d.signedUrl); });
-    }
-
-    const today = todayStr();
-    downloadFile('bj-clients-' + today + '.csv', buildCsv(
-      ['Trade name', 'Company', 'Contact person', 'Designation', 'Mobile', 'Other mobiles', 'Email', 'Website', 'Social profiles', 'Scanned code', "Owner's name", 'Address', 'Area', 'City', 'State', 'Polki jewellery', 'Category', 'Order type', 'Interest', 'Entry', 'Added by', 'Added on', 'Card front (7-day link)', 'Card back (7-day link)'],
-      clients.map((c) => [c.trade_name, c.company_name, c.contact_person, c.designation, c.mobile, c.phone_other, c.email, c.website, c.social_links, c.card_code, c.owner_name, c.address, c.area, c.city, c.state, ynExp(c.is_polki_buyer), c.category, c.order_type, c.interest, c.entry_source, pName.get(c.created_by) || '', fmtExp(c.created_at), urlMap.get(c.card_image_path) || '', urlMap.get(c.card_image_back_path) || ''])));
-
-    await new Promise((r) => setTimeout(r, 450));
-    downloadFile('bj-meetings-' + today + '.csv', buildCsv(
-      ['Date', 'Client', 'Executive', 'Outcome', 'What happened', 'Interest after'],
-      interactions.map((it) => [fmtExp(it.happened_at), cName.get(it.client_id) || '', pName.get(it.exec_id) || '', it.outcome, it.notes, it.interest_after])));
-
-    await new Promise((r) => setTimeout(r, 450));
-    downloadFile('bj-followups-' + today + '.csv', buildCsv(
-      ['Client', 'Type', 'Details', 'Due date', 'Status', 'Assigned to', 'Created by', 'Created on', 'Done on'],
-      followups.map((f) => [cName.get(f.client_id) || '', f.type, f.content, f.due_date || '', f.status, pName.get(f.assigned_to) || '', pName.get(f.created_by) || '', fmtExp(f.created_at), fmtExp(f.done_at)])));
-
-    toast('3 files downloaded — clients, meetings, follow-ups ✓', 'ok');
-  } catch (e) {
-    toast('Export failed — please try again.', 'err');
-  }
-  if (btn) { btn.disabled = false; btn.textContent = '⬇ Export all data'; }
-}
-
-/* ============================================================
-   MORE (profile / team / settings)
-   ============================================================ */
-async function renderMore() {
-  setHeader('More', false);
-  const isOwner = S.me.role === 'owner';
-  let html =
-    '<div class="card"><h3>' + esc(S.me.full_name || 'Me') + '</h3>' +
-    '<span class="chip chip-role">' + (isOwner ? 'Owner' : 'Marketing Executive') + '</span>' +
-    '<div style="margin-top:12px"><button class="btn btn-small btn-danger-ghost" data-action="logout">Sign out</button></div></div>';
-
-  if (isOwner) {
-    html += '<div class="section-label">Team</div><div class="card" id="team-card"><div class="empty" style="padding:8px">Loading…</div></div>' +
-      '<button class="btn btn-secondary" data-action="team-add" style="margin-bottom:14px">＋ Add team member</button>' +
-
-      '<div class="section-label">Card scanning</div>' +
-      '<div class="card" id="gemini-card">' +
-      '<p style="margin:0 0 10px;font-size:14px;color:' + (S.geminiConfigured ? 'var(--green)' : 'var(--muted)') + '">' +
-      (S.geminiConfigured ? '✓ Card scanning is ON.' : 'Not set up yet — executives can still type details and attach card photos.') + '</p>' +
-      '<div class="field"><label>Google AI Studio key ' + (S.geminiConfigured ? '(paste to replace)' : '') + '</label>' +
-      '<input type="password" id="gemini-key" placeholder="AIza…">' +
-      '<div class="hint">Free key from <b>aistudio.google.com/apikey</b> — sign in with Google → Create API key → paste here. Takes 2 minutes, no card required.</div></div>' +
-      '<button class="btn btn-primary" data-action="save-gemini" id="gemini-btn">Save key</button>' +
-      '</div>' +
-
-      '<div class="section-label">Data backup</div>' +
-      '<div class="card">' +
-      '<p style="margin:0 0 10px;font-size:14px;color:var(--muted)">Every entry is saved instantly to the secure database, and an automatic snapshot of everything is kept daily for 30 days. Download your complete data (3 Excel-ready files) any time:</p>' +
-      '<button class="btn btn-primary" data-action="export-data" id="export-btn">⬇ Export all data</button>' +
-      '</div>';
-  }
-  html += '<div class="empty" style="padding-top:6px;font-size:12.5px">Bhagwati Jewels · Marketing app · Phase 2</div>';
-  $('#content').innerHTML = html;
-
-  if (isOwner) renderTeamList();
-}
-
-async function renderTeamList() {
-  const el = $('#team-card');
-  if (!el) return;
-  const { data, error } = await db.from('profiles').select('*').order('created_at', { ascending: true });
-  if (error) { el.innerHTML = '<div class="empty" style="padding:8px">Could not load team.</div>'; return; }
-  S.team = new Map((data || []).map((p) => [p.id, p]));
-  el.innerHTML = (data || []).map((p) => {
-    const me = p.id === S.me.id;
-    return '<div class="member-row">' +
-      '<div class="m-main"><div class="m-name">' + esc(p.full_name || '(no name)') + (me ? ' (you)' : '') + '</div>' +
-      '<div class="m-sub">' + esc(p.email || '') + '</div></div>' +
-      '<span class="chip ' + (p.active ? 'chip-role' : 'chip-off') + '">' + (p.role === 'owner' ? 'Owner' : (p.active ? 'Active' : 'Off')) + '</span>' +
-      (me ? '' :
-        '<div class="m-actions">' +
-        '<button class="btn btn-small btn-ghost" data-action="member-resetpw" data-id="' + p.id + '">Reset PW</button>' +
-        '<button class="btn btn-small ' + (p.active ? 'btn-danger-ghost' : 'btn-ghost') + '" data-action="member-toggle" data-id="' + p.id + '" data-active="' + p.active + '">' + (p.active ? 'Deactivate' : 'Activate') + '</button>' +
-        '</div>') +
-      '</div>';
-  }).join('') || '<div class="empty" style="padding:8px">Only you so far — add your executives.</div>';
-}
-
-function renderTeamAddModal() {
-  const ov = openModal(
-    '<h3>Add team member</h3><p>They sign in with this email &amp; password — share it with them on WhatsApp or in person.</p>' +
-    '<div class="field"><label>Full name</label><input type="text" id="tm-name"></div>' +
-    '<div class="field"><label>Email</label><input type="email" id="tm-email" placeholder="name@gmail.com"></div>' +
-    '<div class="field"><label>Password (min 8 characters)</label><input type="text" id="tm-pass" autocomplete="off"></div>' +
-    '<div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button>' +
-    '<button class="btn btn-primary" data-m="yes">Create login</button></div>');
-  ov.querySelector('[data-m=no]').onclick = closeModal;
-  ov.querySelector('[data-m=yes]').onclick = async (e) => {
-    const name = $('#tm-name').value.trim(), email = $('#tm-email').value.trim(), pass = $('#tm-pass').value;
-    if (!name || !email || pass.length < 8) { toast('Fill name, email, and a password of 8+ characters.', 'err'); return; }
-    e.target.disabled = true; e.target.textContent = 'Creating…';
-    const r = await callAdmin('create_user', { email, password: pass, full_name: name });
-    if (r.error) { e.target.disabled = false; e.target.textContent = 'Create login'; toast(r.error, 'err'); return; }
-    closeModal();
-    toast(name + ' added ✓ — share their email & password with them.', 'ok');
-    renderTeamList();
-  };
-}
-
-function renderResetPwModal(userId) {
-  const ov = openModal(
-    '<h3>Reset password</h3><p>Set a new password for ' + esc(nameOf(userId)) + ' and share it with them.</p>' +
-    '<div class="field"><label>New password (min 8 characters)</label><input type="text" id="rp-pass" autocomplete="off"></div>' +
-    '<div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button>' +
-    '<button class="btn btn-primary" data-m="yes">Set password</button></div>');
-  ov.querySelector('[data-m=no]').onclick = closeModal;
-  ov.querySelector('[data-m=yes]').onclick = async (e) => {
-    const pass = $('#rp-pass').value;
-    if (pass.length < 8) { toast('Password must be at least 8 characters.', 'err'); return; }
-    e.target.disabled = true;
-    const r = await callAdmin('reset_password', { user_id: userId, password: pass });
-    if (r.error) { e.target.disabled = false; toast(r.error, 'err'); return; }
-    closeModal(); toast('Password updated ✓', 'ok');
-  };
-}
-
-function toggleMember(userId, currentlyActive) {
-  confirmModal(
-    currentlyActive ? 'Deactivate this member?' : 'Reactivate this member?',
-    currentlyActive ? 'They will not be able to sign in until you reactivate them. Their records stay safe.' : 'They will be able to sign in again.',
-    currentlyActive ? 'Deactivate' : 'Activate',
-    async () => {
-      const r = await callAdmin('set_active', { user_id: userId, active: !currentlyActive });
-      if (r.error) { toast(r.error, 'err'); return; }
-      toast('Done ✓', 'ok');
-      renderTeamList();
-    }, currentlyActive);
-}
-
-async function saveGeminiKey() {
-  const key = $('#gemini-key').value.trim();
-  if (!key) { toast('Paste the key first.', 'err'); return; }
-  const btn = $('#gemini-btn'); btn.disabled = true; btn.textContent = 'Saving…';
-  const r = await callAdmin('set_secret', { key: 'gemini_key', value: key });
-  btn.disabled = false; btn.textContent = 'Save key';
-  if (r.error) { toast(r.error, 'err'); return; }
-  S.geminiConfigured = true;
-  toast('Card scanning is now ON ✓', 'ok');
-  renderMore();
-}
-
-/* ============================================================
-   BOOT
-   ============================================================ */
-async function enterApp() {
-  // profile may take a moment to exist right after account creation
-  let profile = null;
-  for (let i = 0; i < 3 && !profile; i++) {
-    const { data } = await db.from('profiles').select('*').eq('id', S.session.user.id).maybeSingle();
-    profile = data;
-    if (!profile) await new Promise((r) => setTimeout(r, 700));
-  }
-  if (!profile) { toast('Could not load your profile — please try again.', 'err'); await db.auth.signOut(); showAuth(); return; }
-  if (!profile.active) { toast('Your account is deactivated. Please contact the owner.', 'err'); await db.auth.signOut(); showAuth(); return; }
-  S.me = profile;
-
-  const [teamRes, statusRes] = await Promise.all([
-    db.from('profiles').select('*'),
-    callAdmin('status'),
-  ]);
-  S.team = new Map((teamRes.data || []).map((p) => [p.id, p]));
-  S.geminiConfigured = !!statusRes.gemini_configured;
-
-  renderShell();
-  switchTab('today');
-}
-
-async function boot() {
-  if ('serviceWorker' in navigator) {
-    try { navigator.serviceWorker.register('sw.js'); } catch (e) {}
-  }
-  const { data: { session } } = await db.auth.getSession();
-  S.session = session;
-
-  db.auth.onAuthStateChange((event, sess) => {
-    const had = !!S.session;
-    S.session = sess;
-    if (event === 'SIGNED_IN' && !had) enterApp();
-    if (event === 'SIGNED_OUT') { S.me = null; showAuth(); }
-  });
-
-  if (session) enterApp();
-  else showAuth();
-}
-
-boot();
+"use strict";const CFG=window.BJ_CONFIG;if(!window.supabase||!CFG){const e=document.querySelector("#app .splash p")
+;throw e&&(e.innerHTML='No internet connection.<br><button class="btn btn-primary" style="margin-top:14px" onclick="location.reload()">Retry</button>'),new Error("BJ: supabase-js did not load")}
+const db=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_KEY),S={session:null,me:null,team:new Map,tab:"today",todayScope:"mine",report:{period:"7d"},sub:[],formState:{},fu:[],photos:{front:null,back:null},editingClient:null,
+interactionClient:null,currentClientId:null,searchTimer:null,geminiConfigured:!1,suppressPop:!1};let viewSeq=0,navBusy=!1;async function navOnce(e){if(!navBusy){navBusy=!0;try{await e()}finally{navBusy=!1}}}
+const $=e=>document.querySelector(e),esc=e=>null==e?"":String(e).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");let toastTimer=null;function toast(e,t){const a=$("#toast")
+;a.textContent=e,a.className="show"+(t?" "+t:""),clearTimeout(toastTimer),toastTimer=setTimeout((()=>{a.className=""}),3400)}function fmtDT(e){const t=new Date(e);return t.toLocaleDateString("en-IN",{day:"numeric",month:"short",
+year:"numeric"})+", "+t.toLocaleTimeString("en-IN",{hour:"numeric",minute:"2-digit"})}function fmtD(e){return new Date(e+(10===e.length?"T00:00:00":"")).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}function todayStr(e){
+const t=new Date;e&&t.setDate(t.getDate()+e);const a=e=>String(e).padStart(2,"0");return t.getFullYear()+"-"+a(t.getMonth()+1)+"-"+a(t.getDate())}function dueLabel(e){const t=todayStr();if(e<t){
+const a=Math.round((new Date(t)-new Date(e))/864e5);return"Overdue "+a+(1===a?" day":" days")}return e===t?"Today":e===todayStr(1)?"Tomorrow":fmtD(e)}function normMobile(e){let t=String(e||"").replace(/\D/g,"")
+;return t=t.replace(/^00(?=91)/,""),12===t.length&&t.startsWith("91")?t=t.slice(2):13===t.length&&t.startsWith("910")&&(t=t.slice(3)),11===t.length&&t.startsWith("0")&&(t=t.slice(1)),t}function normPhoneList(e,t){const a=[]
+;return String(e||"").split(/[,;\/]+/).forEach((e=>{const n=e.trim();if(!n)return;const i=codeMobile(n)||n;i!==t&&a.indexOf(i)<0&&a.push(i)})),a.join(", ")}const isIndianMobile=e=>/^[6-9]\d{9}$/.test(e);function nameOf(e){
+const t=S.team.get(e);return t?t.full_name||"Team member":"\u2014"}function chipCat(e){e||(e="Undefined");const t="Undefined"===e?"Cat: \u2014":"Cat "+e;return'<span class="chip chip-cat '+esc(e)+'">'+esc(t)+"</span>"}
+function chipInterest(e){if(!e)return"";return'<span class="chip '+("Hot"===e?"chip-hot":"Warm"===e?"chip-warm":"chip-cold")+'">'+esc(e)+"</span>"}function chipType(e){return'<span class="chip chip-type">'+esc(e)+"</span>"}const IC={
+today:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M8.5 15.5l2.5 2.5 4.5-4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.2"/><path d="M12 8v8M8 12h8" stroke-linecap="round"/></svg>',
+find:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2" stroke-linecap="round"/></svg>',
+more:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none"/><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="4"/></svg>',
+camera:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8.5A2.5 2.5 0 016.5 6h1.2l1.1-1.7c.3-.5.8-.8 1.4-.8h3.6c.6 0 1.1.3 1.4.8L16.3 6h1.2A2.5 2.5 0 0120 8.5v8A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-8z"/><circle cx="12" cy="12.5" r="3.4"/></svg>',
+pen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16"/><path d="M6 16.5L15.5 7a2.1 2.1 0 013 3L9 19.5 5 20l1-3.5z" stroke-linejoin="round"/></svg>',
+back:'<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+mic:'<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9.2" y="3" width="5.6" height="11" rx="2.8"/><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3" stroke-linecap="round"/></svg>',
+chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 20v-7M12 20V5M19 20v-11" stroke-linecap="round"/><path d="M3 20.5h18" stroke-linecap="round"/></svg>'};async function callAdmin(e,t){try{
+const{data:a,error:n}=await db.functions.invoke("admin-users",{body:Object.assign({action:e},t||{})});return n?{error:"Network problem \u2014 please try again."}:a||{error:"Empty response"}}catch(e){return{
+error:"Network problem \u2014 please try again."}}}async function callScan(e,t){try{const a={image_base64:e.base64,mime_type:e.mime};t&&(a.image_back_base64=t.base64,a.back_mime_type=t.mime)
+;const{data:n,error:i}=await db.functions.invoke("scan-card",{body:a});return i?{error:"network"}:n||{error:"empty"}}catch(e){return{error:"network"}}}function openModal(e){closeModal();const t=document.createElement("div")
+;return t.className="modal-overlay",t.id="modal-ov",t.innerHTML='<div class="modal">'+e+"</div>",t.addEventListener("click",(e=>{e.target===t&&closeModal()})),document.body.appendChild(t),t}function closeModal(){const e=$("#modal-ov")
+;e&&e.remove()}function confirmModal(e,t,a,n,i){
+const o=openModal("<h3>"+esc(e)+"</h3><p>"+esc(t)+'</p><div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button><button class="btn btn-primary" data-m="yes"'+(i?' style="background:#b3372f"':"")+">"+esc(a)+"</button></div>")
+;o.querySelector("[data-m=no]").onclick=closeModal,o.querySelector("[data-m=yes]").onclick=()=>{closeModal(),n()}}let lastActiveCheck=0;async function checkStillActive(){if(!S.me||!S.session)return!0;let e;lastActiveCheck=Date.now();try{
+e=await db.from("profiles").select("id, active").eq("id",S.me.id).maybeSingle()}catch(e){return!0}if(e.error)return!0;if(e.data&&e.data.active)return!0;toast("Your account has been deactivated. Please contact the owner.","err");try{
+await db.auth.signOut()}catch(e){}return!1}async function writeFailed(e){await checkStillActive()&&toast(e,"err")}document.addEventListener("visibilitychange",(()=>{
+"visible"===document.visibilityState&&S.me&&Date.now()-lastActiveCheck>6e4&&checkStillActive()}));let authSeq=0;async function showAuth(){const e=++authSeq;viewSeq++
+;$("#app").innerHTML='<div class="auth-wrap"><div class="auth-head"><div class="logo-badge" style="margin:0 auto">BJ</div><h1>Bhagwati Jewels</h1><p>Marketing &amp; Lead Capture</p></div><div class="auth-card" id="auth-card"><p class="sub">Checking\u2026</p></div></div>'
+;const t=await callAdmin("status");e===authSeq&&$("#auth-card")&&(S.geminiConfigured=!!t.gemini_configured,
+t.error?$("#auth-card").innerHTML='<h2>Cannot reach the server</h2><p class="sub">'+esc(t.error)+'</p><button class="btn btn-primary" onclick="location.reload()">Retry</button>':t.initialized?renderLogin():renderOwnerSetup())}
+function renderLogin(){
+$("#auth-card").innerHTML='<h2>Sign in</h2><p class="sub">Use the login given to you by the owner.</p><form id="login-form"><div class="field"><label>Email</label><input type="email" id="li-email" autocomplete="username" required></div><div class="field"><label>Password</label><input type="password" id="li-pass" autocomplete="current-password" required></div><button class="btn btn-primary" type="submit" id="li-btn">Sign in</button></form>',
+$("#login-form").addEventListener("submit",(async e=>{e.preventDefault();const t=$("#li-btn");let a;t.disabled=!0,t.textContent="Signing in\u2026";try{({error:a}=await db.auth.signInWithPassword({email:$("#li-email").value.trim(),
+password:$("#li-pass").value}))}catch(e){a={message:"Network problem \u2014 please try again."}}a&&(t.disabled=!1,t.textContent="Sign in",toast("Invalid login credentials"===a.message?"Wrong email or password.":a.message,"err"))}))}
+function renderOwnerSetup(){
+$("#auth-card").innerHTML='<h2>First-time setup</h2><p class="sub">Create the <b>owner</b> account. This screen appears only once \u2014 after this, only the owner can add team logins.</p><form id="setup-form"><div class="field"><label>Your name</label><input type="text" id="su-name" required placeholder="e.g. Ravi"></div><div class="field"><label>Email</label><input type="email" id="su-email" required></div><div class="field"><label>Password <span class="req">(min 8 characters)</span></label><input type="password" id="su-pass" minlength="8" required autocomplete="new-password"></div><button class="btn btn-primary" type="submit" id="su-btn">Create owner account</button></form>',
+$("#setup-form").addEventListener("submit",(async e=>{e.preventDefault();const t=$("#su-btn");t.disabled=!0,t.textContent="Creating\u2026"
+;const a=$("#su-email").value.trim(),n=$("#su-pass").value,i=$("#su-name").value.trim(),o=await callAdmin("bootstrap",{email:a,password:n,full_name:i});if(o.error)return t.disabled=!1,t.textContent="Create owner account",
+void toast(o.error,"err");const{error:s}=await db.auth.signInWithPassword({email:a,password:n});s&&(toast("Account created \u2014 please sign in.","ok"),renderLogin())}))}function renderShell(){
+$("#app").innerHTML='<header id="appbar"><button class="back-btn" data-action="back">'+IC.back+'</button><div class="mini-badge">BJ</div><div class="titles"><div class="app-name">Bhagwati Jewels</div><div class="screen-name" id="screen-name">Today</div></div></header><main id="content"></main><nav id="tabbar"><button data-action="tab" data-tab="today">'+IC.today+'<span>Today</span></button><button data-action="tab" data-tab="new">'+IC.plus+'<span>New</span></button><button data-action="tab" data-tab="find">'+IC.find+"<span>Find</span></button>"+(S.me&&"owner"===S.me.role?'<button data-action="tab" data-tab="report">'+IC.chart+"<span>Report</span></button>":"")+'<button data-action="tab" data-tab="more">'+IC.more+"<span>More</span></button></nav>",
+bindDelegates()}function setHeader(e,t){$("#screen-name").textContent=e,$("#appbar").classList.toggle("has-back",!!t)}function switchTab(e){viewSeq++,document.body.classList.remove("typing"),S.tab=e,S.sub=[],
+document.querySelectorAll("#tabbar button").forEach((t=>t.classList.toggle("active",t.dataset.tab===e))),"today"===e?renderToday():"new"===e?renderNewChoice():"find"===e?renderFind():"report"===e?renderReport():renderMore(),
+window.scrollTo(0,0)}function showSub(e,t,a){if(viewSeq++,document.body.classList.remove("typing"),a&&S.sub.length)S.sub[S.sub.length-1]={title:e,renderFn:t};else{S.sub.push({title:e,renderFn:t});try{history.pushState({sub:S.sub.length},"")
+}catch(e){}}setHeader(e,!0),t(),window.scrollTo(0,0)}function goBack(){if(S.sub.length){if(viewSeq++,S.sub.pop(),S.sub.length){const e=S.sub[S.sub.length-1];setHeader(e.title,!0),e.renderFn()}else switchTab(S.tab);window.scrollTo(0,0)}}
+window.addEventListener("popstate",(()=>{S.suppressPop?S.suppressPop=!1:$("#modal-ov")?closeModal():S.sub.length&&goBack()}));let maxVH=0;const COARSE=!(!window.matchMedia||!matchMedia("(pointer: coarse)").matches);function kbSync(){
+if(!COARSE)return;const e=document.activeElement;let t=!!(e&&e.matches&&e.matches("#content input:not([type=file]), #content textarea, #content select"));const a=window.visualViewport;a&&(maxVH=Math.max(maxVH,a.height),
+t&&a.height>maxVH-120&&kbSync.seenOpen&&(t=!1),a.height<=maxVH-120&&(kbSync.seenOpen=!0)),t||(kbSync.seenOpen=!1),document.body.classList.toggle("typing",t)}function bindDelegates(){if(COARSE){const e=()=>setTimeout(kbSync,300)
+;$("#content").addEventListener("focusin",(t=>{t.target.matches("input, textarea, select")?kbSync():e()})),$("#content").addEventListener("focusout",e)}$("#content").addEventListener("click",onDelegatedClick),
+$("#tabbar").addEventListener("click",onDelegatedClick),$("#appbar").addEventListener("click",onDelegatedClick),$("#content").addEventListener("input",(e=>{const t=e.target.closest("[data-fuf]");if(t){const e=+t.dataset.idx
+;S.fu[e]&&(S.fu[e][t.dataset.fuf]=t.value)}}))}async function onDelegatedClick(e){const t=e.target.closest("[data-action]");if(!t)return;const a=t.dataset.action;if("A"===t.tagName&&"#"===t.getAttribute("href")&&e.preventDefault(),
+"tab"===a)switchTab(t.dataset.tab);else if("back"===a){if(S.sub.length){S.suppressPop=!0;try{history.back()}catch(e){}goBack()}}else if("seg"===a){const e=t.dataset.group,a=S.formState[e]===t.dataset.val
+;if(S.formState[e]=a?null:t.dataset.val,t.parentElement.querySelectorAll("button").forEach((e=>e.classList.toggle("on",!a&&e===t))),"desig"===e){const e=$("#desig-other-wrap");e&&(e.style.display="Other"===S.formState.desig?"block":"none")}
+if("int_outcome"===e){const e=$("#outcome-other-wrap");e&&(e.style.display="Other"===S.formState.int_outcome?"block":"none")}}else if("open-client"===a)navOnce((()=>openClient(t.dataset.id)));else if("scan-start"===a)resetPhotos(),
+S.editingClient=null,showSub("Scan Card",renderScanCapture);else if("scan-run"===a)runScan();else if("scan-type-instead"===a)showSub("New Client",(()=>renderClientForm(null,{},"manual")),!0);else if("manual-start"===a)resetPhotos(),
+S.editingClient=null,showSub("New Client",(()=>renderClientForm(null,{},"manual")));else if("attach-photo"===a)attachPhoto(t.dataset.side||"front");else if("remove-photo"===a)dropPhoto(t.dataset.side||"front"),
+redrawPhotos();else if("save-client"===a)saveClient(t.dataset.editId||null);else if("fu-add"===a)S.fu.push({type:t.dataset.type,content:"",due_date:"reminder"===t.dataset.type?todayStr(1):""}),
+redrawFuRows();else if("fu-del"===a)S.fu.splice(+t.dataset.idx,1),redrawFuRows();else if("save-interaction"===a)saveInteraction();else if("new-interaction"===a)navOnce((async()=>{const e=viewSeq,a=await fetchClient(t.dataset.id)
+;a&&e===viewSeq&&openInteractionForm(a)}));else if("edit-client"===a)navOnce((async()=>{const e=viewSeq,a=await fetchClient(t.dataset.id);a&&e===viewSeq&&(resetPhotos(),showSub("Edit Client",(()=>renderClientForm(a,a,a.entry_source))))
+}));else if("fu-done"===a||"fu-tomorrow"===a){if(t.disabled)return;t.disabled=!0;const e="fu-done"===a?{status:"done",done_at:(new Date).toISOString()}:{due_date:todayStr(1)
+},{data:n,error:i}=await db.from("followups").update(e).eq("id",t.dataset.id).select("id");if(i||!n||!n.length)return t.disabled=!1,void writeFailed("Could not update \u2014 try again.")
+;toast("fu-done"===a?"Marked done \u2713":"Moved to tomorrow","ok"),S.sub.length&&S.currentClientId?openClient(S.currentClientId,!0):renderToday()}else if("today-scope"===a)S.todayScope=t.dataset.scope,
+renderToday();else if("logout"===a)confirmModal("Sign out?","You will need your email and password to sign in again.","Sign out",(async()=>{await db.auth.signOut(),location.reload()
+}));else if("team-add"===a)renderTeamAddModal();else if("member-toggle"===a)toggleMember(t.dataset.id,"true"===t.dataset.active);else if("member-resetpw"===a)renderResetPwModal(t.dataset.id);else if("save-gemini"===a)saveGeminiKey();else if("export-data"===a)exportAllData();else if("report-period"===a)S.report.period=t.dataset.p,
+renderReport();else if("report-exec"===a){const e=t.dataset.id,a=t.dataset.name;showSub(a,(function(){$("#content").innerHTML='<div class="empty">Loading\u2026</div>',reportExecView(e,a)}))}else if("report-clients"===a){
+const e=t.dataset.k,a=t.dataset.v;showSub("Clients \u2014 "+a,(function(){$("#content").innerHTML='<div class="empty">Loading\u2026</div>',reportClientsView(e,a)}))}else if("report-outcome"===a){const e=t.dataset.v;showSub(e,(function(){
+$("#content").innerHTML='<div class="empty">Loading\u2026</div>',reportMeetsView(e)}))}}async function renderToday(){const e=++viewSeq;setHeader("Today",!1);const t=$("#content");t.innerHTML='<div class="empty">Loading\u2026</div>'
+;let a=db.from("followups").select("id, content, due_date, client_id, assigned_to, clients(trade_name, city)").eq("type","reminder").eq("status","pending").order("due_date",{ascending:!0}).limit(200)
+;"owner"===S.me.role&&"all"===S.todayScope||(a=a.eq("assigned_to",S.me.id));const{data:n,error:i}=await a;if(e!==viewSeq)return
+;if(i)return void(t.innerHTML='<div class="empty">Could not load reminders.<br>Check the internet and try again.<br><button class="btn btn-small btn-secondary" style="margin-top:12px" data-action="tab" data-tab="today">Retry</button></div>')
+;const o=todayStr(),s=todayStr(7),r=[],l=[],c=[],d=[];(n||[]).forEach((e=>{!e.due_date||e.due_date<o?r.push(e):e.due_date===o?l.push(e):e.due_date<=s?c.push(e):d.push(e)}));let u=""
+;"owner"===S.me.role&&(u+='<div class="filter-chips"><button class="'+("mine"===S.todayScope?"on":"")+'" data-action="today-scope" data-scope="mine">My reminders</button><button class="'+("all"===S.todayScope?"on":"")+'" data-action="today-scope" data-scope="all">Whole team</button></div>')
+;const p=e=>{const t="owner"===S.me.role&&"all"===S.todayScope&&e.assigned_to!==S.me.id?" \xb7 "+esc(nameOf(e.assigned_to)):""
+;return'<div class="rem-item"><div class="rem-content">'+esc(e.content)+'</div><div class="rem-client" data-action="open-client" data-id="'+e.client_id+'">'+esc(e.clients?e.clients.trade_name:"Client")+' \u203a</div><div class="rem-meta">'+esc(dueLabel(e.due_date||o))+t+'</div><div class="rem-actions"><button class="btn btn-small btn-secondary" data-action="fu-tomorrow" data-id="'+e.id+'">\u2192 Tomorrow</button><button class="btn btn-small btn-primary" data-action="fu-done" data-id="'+e.id+'">\u2713 Done</button></div></div>'
+},m=(e,t,a)=>a.length?'<div class="due-group-label '+t+'">'+e+" ("+a.length+")</div>"+a.map(p).join(""):"";u+=m("Overdue","overdue",r),u+=m("Today","today",l),u+=m("Next 7 days","soon",c),
+d.length&&(u+='<div class="due-group-label soon">Later</div><div class="empty" style="padding:10px">+ '+d.length+" more further out</div>"),
+r.length||l.length||c.length||d.length||(u+='<div class="empty"><div class="big">\ud83c\udf24\ufe0f</div>No pending reminders.<br>Log an interaction and add follow-ups \u2014 they will appear here.</div>'),t.innerHTML=u}
+function renderNewChoice(){
+setHeader("New Client",!1),$("#content").innerHTML='<div class="section-label">How do you want to add them?</div><button class="choice-btn" data-action="scan-start"><span class="ico">'+IC.camera+'</span><span><span class="ch-title">Scan visiting card</span><br><span class="ch-sub">Front &amp; back photos \u2192 details filled in for you'+(S.geminiConfigured?"":" (setup pending \u2014 photos still saved)")+'</span></span></button><button class="choice-btn" data-action="manual-start"><span class="ico">'+IC.pen+'</span><span><span class="ch-title">Enter manually</span><br><span class="ch-sub">No card? Type the details in a minute</span></span></button><div class="notice">Tip: after saving the client, you will be asked to record the meeting \u2014 reminders you add will show on the Today screen.</div>'
+}function pickImage(e,t){const a=document.createElement("input");a.type="file",a.accept="image/*",t||a.setAttribute("capture","environment"),a.onchange=()=>{a.files&&a.files[0]&&e(a.files[0])},a.click()}function downscale(e,t){
+return new Promise(((a,n)=>{const i=new Image,o=URL.createObjectURL(e);i.onload=()=>{const e=Math.min(1,t/Math.max(i.width,i.height)),s=Math.round(i.width*e),r=Math.round(i.height*e),l=document.createElement("canvas");l.width=s,l.height=r,
+l.getContext("2d").drawImage(i,0,0,s,r),URL.revokeObjectURL(o),l.toBlob((e=>{if(!e)return n(new Error("image"));const t=new FileReader;t.onload=()=>a({blob:e,base64:String(t.result).split(",")[1],mime:"image/jpeg"}),
+t.onerror=()=>n(new Error("image")),t.readAsDataURL(e)}),"image/jpeg",.82)},i.onerror=()=>{URL.revokeObjectURL(o),n(new Error("image"))},i.src=o}))}window.visualViewport&&window.visualViewport.addEventListener("resize",kbSync),
+window.addEventListener("orientationchange",(()=>{maxVH=0}));const CODE_1D=["code_128","code_39","code_93","codabar","ean_13","ean_8","itf","upc_a","upc_e"],CODE_2D=["qr_code","data_matrix","aztec","pdf417"];let jsqrPromise=null
+;function loadJsQR(){return window.jsQR?Promise.resolve(window.jsQR):jsqrPromise||(jsqrPromise=new Promise((e=>{const t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js",t.async=!0;let a=0
+;const n=t=>{clearTimeout(a),e(t)};a=setTimeout((()=>n(null)),8e3),t.onload=()=>n(window.jsQR||null),t.onerror=()=>n(null),document.head.appendChild(t)})),jsqrPromise)}function imageDataFor(e,t){return new Promise((a=>{
+const n=new Image,i=URL.createObjectURL(e);n.onload=()=>{let e=null;try{const a=Math.min(1,t/Math.max(n.width,n.height)),i=Math.max(1,Math.round(n.width*a)),o=Math.max(1,Math.round(n.height*a)),s=document.createElement("canvas");s.width=i,
+s.height=o;const r=s.getContext("2d",{willReadFrequently:!0});r.drawImage(n,0,0,i,o),e=r.getImageData(0,0,i,o)}catch(t){e=null}URL.revokeObjectURL(i),a(e)},n.onerror=()=>{URL.revokeObjectURL(i),a(null)},n.src=i}))}
+async function readCodes(e){const t=[],a=Object.create(null),n=(e,n)=>{const i=String(null==n?"":n).trim();i&&!a[i]&&(a[i]=1,t.push({format:e||"qr_code",raw:i}))};try{if(window.BarcodeDetector&&window.createImageBitmap){
+let t=CODE_2D.concat(CODE_1D);try{const e=await window.BarcodeDetector.getSupportedFormats();e&&e.length&&(t=t.filter((t=>e.indexOf(t)>=0)))}catch(e){}if(t.length){const a=new window.BarcodeDetector({formats:t
+}),i=await createImageBitmap(e),o=await a.detect(i);try{i.close()}catch(e){}(o||[]).forEach((e=>n(e.format,e.rawValue)))}}}catch(e){}if(!t.length)try{const t=await loadJsQR();if(t){const a=[1600,1e3];for(let i=0;i<a.length;i++){
+const o=await imageDataFor(e,a[i]);if(!o)continue;const s=t(o.data,o.width,o.height,{inversionAttempts:"attemptBoth"});if(s&&s.data){n("qr_code",s.data);break}}}}catch(e){}return t}function codesFor(e){const t=S.photos[e]
+;return t&&t.codesP?t.codesP.then((e=>e||[])).catch((()=>[])):Promise.resolve([])}function qpDecode(e){try{const t=[]
+;for(let a=0;a<e.length;a++)"="===e.charAt(a)&&/^[0-9A-Fa-f]{2}$/.test(e.substr(a+1,2))?(t.push(parseInt(e.substr(a+1,2),16)),a+=2):t.push(255&e.charCodeAt(a));return new TextDecoder("utf-8").decode(new Uint8Array(t))}catch(t){return e}}
+function vcUnesc(e){let t="";const a=String(null==e?"":e);for(let e=0;e<a.length;e++){const n=a.charAt(e);if("\\"===n&&e+1<a.length){const n=a.charAt(e+1);t+="n"===n||"N"===n?" ":n,e++}else t+=n}return t.replace(/\s+/g," ").trim()}
+function vcLines(e){return String(e).replace(/\r\n/g,"\n").replace(/\r/g,"\n").replace(/\n[ \t]/g,"").split("\n").map((e=>e.trim())).filter(Boolean)}function splitEsc(e,t){const a=[];let n="";for(let i=0;i<e.length;i++){const o=e.charAt(i)
+;"\\"===o&&i+1<e.length?(n+=e.charAt(i+1),i++):o===t?(a.push(n),n=""):n+=o}return a.push(n),a}function parseVCard(e){const t={tels:[],emails:[],urls:[]};return vcLines(e).forEach((e=>{const a=e.indexOf(":");if(a<0)return
+;const n=e.slice(0,a).toUpperCase();let i=e.slice(a+1);if(n.indexOf("QUOTED-PRINTABLE")>=0&&(i=qpDecode(i)),!i.trim())return;const o=n.split(";")[0].replace(/^ITEM\d+\./,""),s=()=>splitEsc(i,";").map((e=>vcUnesc(e))),r=()=>vcUnesc(i)
+;if("FN"===o){const e=r();e&&!t.name&&(t.name=e)}else if("N"===o){if(!t.name){const e=s(),a=[e[3],e[1],e[2],e[0],e[4]].filter(Boolean).join(" ").replace(/\s+/g," ").trim();a&&(t.name=a)}}else if("ORG"===o){
+const e=s().filter(Boolean).join(" ").trim();e&&!t.org&&(t.org=e)}else if("TITLE"===o||"ROLE"===o){const e=r();e&&!t.title&&(t.title=e)}else if("TEL"===o){const e=r(),a=/CELL|MOBILE|HANDY/.test(n),i=!a&&/FAX|WORK|HOME|MAIN|PAGER/.test(n)
+;e&&t.tels.push({v:e,cell:a,line:i})}else if("EMAIL"===o){const e=r();e&&t.emails.push(e)}else if("URL"===o){const e=r();e&&t.urls.push(e)}else if("ADR"===o){const e=s(),a=[e[1],e[2]].filter(Boolean).join(" ").trim(),n={street:a,
+city:String(e[3]||"").trim(),state:String(e[4]||"").trim(),pin:String(e[5]||"").trim()},i=[a,n.city,n.state,n.pin].filter(Boolean).join(", ");i&&!t.address&&(t.adr=n,t.address=i)}})),t}function parseMeCard(e){const t={tels:[],emails:[],
+urls:[]};return splitEsc(String(e).replace(/^MECARD:/i,"").replace(/;;\s*$/,""),";").forEach((e=>{const a=e.indexOf(":");if(a<0)return;const n=e.slice(0,a).trim().toUpperCase(),i=e.slice(a+1).trim()
+;i&&("N"===n?t.name||(t.name=splitEsc(i,",").reverse().filter(Boolean).join(" ").replace(/\s+/g," ").trim()):"ORG"===n?t.org||(t.org=i):"TEL"===n?t.tels.push({v:i,cell:!0
+}):"EMAIL"===n?t.emails.push(i):"URL"===n?t.urls.push(i):"ADR"===n&&(t.address=splitEsc(i,",").map((e=>e.trim())).filter(Boolean).join(", ")))})),t}const SOCIAL_SITES=[{host:"instagram.com",label:"Instagram"},{host:"facebook.com",
+label:"Facebook"},{host:"fb.com",label:"Facebook"},{host:"fb.me",label:"Facebook"},{host:"linkedin.com",label:"LinkedIn"},{host:"twitter.com",label:"X"},{host:"x.com",label:"X"},{host:"youtube.com",label:"YouTube"},{host:"youtu.be",
+label:"YouTube"},{host:"pinterest.com",label:"Pinterest"},{host:"t.me",label:"Telegram"},{host:"telegram.me",label:"Telegram"},{host:"threads.net",label:"Threads"},{host:"threads.com",label:"Threads"},{host:"snapchat.com",label:"Snapchat"
+},{host:"tiktok.com",label:"TikTok"}],HANDLE_SITES={instagram:"instagram.com",insta:"instagram.com",ig:"instagram.com",facebook:"facebook.com",fb:"facebook.com",linkedin:"linkedin.com/in",twitter:"x.com",x:"x.com",youtube:"youtube.com",
+threads:"threads.net",pinterest:"pinterest.com",telegram:"t.me",snapchat:"snapchat.com",tiktok:"tiktok.com"};function hostOf(e){try{return new URL(e).hostname.toLowerCase().replace(/^www\./,"")}catch(e){return""}}function normUrl(e){
+let t,a=String(null==e?"":e).trim().replace(/[),.;:]+$/,"");if(!a||/\s/.test(a))return"";if(!/^https?:\/\//i.test(a)){if(/^[a-z][a-z0-9+.-]*:/i.test(a)&&!/^[a-z0-9.-]+:\d+([/?#]|$)/i.test(a))return"";a="https://"+a.replace(/^\/+/,"")}try{
+t=new URL(a)}catch(e){return""}return"http:"!==t.protocol&&"https:"!==t.protocol||!t.hostname||t.hostname.indexOf(".")<0?"":a}function socialOf(e){const t=hostOf(e);if(!t)return null;for(let e=0;e<SOCIAL_SITES.length;e++){
+const a=SOCIAL_SITES[e];if(t===a.host||t.slice(-(a.host.length+1))==="."+a.host)return a.label}return null}function normSocial(e){let t=String(null==e?"":e).trim();if(!t)return"";let a=""
+;const n=t.match(/^([A-Za-z][A-Za-z ]{1,14}?)\s*[:\-\u2013\u2014]\s*(.+)$/);if(n){const e=n[1].trim().toLowerCase().replace(/\s+/g,"");HANDLE_SITES[e]&&(a=e,t=n[2].trim())}
+if(/^[a-z][a-z0-9+.-]*:\/\//i.test(t)||/^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/|$)/i.test(t)){const e=normUrl(t);if(e)return e}const i=t.replace(/^@/,"").replace(/^\/+/,"").trim();return i?a?"https://"+HANDLE_SITES[a]+"/"+i:t:""}
+function codeMobile(e){let t=String(null==e?"":e).replace(/\D/g,"");if(t=t.replace(/^0{2,}/,""),12===t.length&&"91"===t.slice(0,2))t=t.slice(2);else if(11===t.length&&"0"===t.charAt(0))return"";return isIndianMobile(t)?t:""}
+function classifyCode(e){const t=String(e.raw||"").trim();if(!t)return{kind:"none"};if(CODE_1D.indexOf(e.format)>=0)return{kind:"code",text:e.format.replace(/_/g,"-").toUpperCase()+": "+t};const a=t.slice(0,12).toUpperCase()
+;if(0===a.indexOf("BEGIN:VCARD"))return{kind:"vcard",card:parseVCard(t)};if(0===a.indexOf("MECARD:"))return{kind:"vcard",card:parseMeCard(t)};if(/^upi:\/\//i.test(t)){let e="";try{e=new URL(t).searchParams.get("pa")||""}catch(e){}return{
+kind:"code",text:"UPI: "+(e||t)}}if(/^mailto:/i.test(t))return{kind:"email",value:t.slice(7).split("?")[0].trim()};if(/^(tel|sms|smsto):/i.test(t))return{kind:"phone",value:t.replace(/^[a-z]+:/i,"").split(/[?:,]/)[0].trim()}
+;if(/^(https?:\/\/|www\.)/i.test(t)||/^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+(\/|\?|$)/i.test(t)){const e=normUrl(t);if(!e)return{kind:"code",text:t};const a=hostOf(e)
+;if("wa.me"===a||"api.whatsapp.com"===a||"whatsapp.com"===a||"chat.whatsapp.com"===a){let t="";try{const a=new URL(e);t=(a.searchParams.get("phone")||a.pathname).replace(/\D/g,"")}catch(e){}return"chat.whatsapp.com"===a?{kind:"code",text:e
+}:t?{kind:"phone",value:t}:{kind:"code",text:e}}return socialOf(e)?{kind:"social",value:e}:/(^|\.)(goo\.gl|g\.page)$/.test(a)||/google\./.test(a)&&/\/maps/i.test(e)?{kind:"code",text:e}:{kind:"website",value:e}}const n=t.replace(/\D/g,"")
+;return/^\+?[\d\s().-]{8,20}$/.test(t)&&n.length>=10&&n.length<=13?{kind:"phone",value:n}:{kind:"code",text:t}}function mergeCodes(e){const t={website:"",social:[],codes:[],phones:[],emails:[],vcard:null,found:0};return(e||[]).forEach((e=>{
+const a=classifyCode(e);if("none"!==a.kind)if(t.found++,"vcard"===a.kind){const e=a.card||{};t.vcard||(t.vcard=e),(e.tels||[]).forEach((e=>t.phones.push(e))),(e.emails||[]).forEach((e=>t.emails.push(e))),(e.urls||[]).forEach((e=>{
+const a=normUrl(e);a&&(socialOf(a)?t.social.push(a):t.website||(t.website=a))}))}else if("website"===a.kind)t.website||(t.website=a.value);else if("social"===a.kind)t.social.push(a.value);else if("phone"===a.kind)t.phones.push({v:a.value,
+cell:!0});else if("email"===a.kind)t.emails.push(a.value);else if("code"===a.kind){const e=String(a.text);t.codes.push(e.length>200?e.slice(0,200)+"\u2026":e)}})),t}function linkHTML(e){
+const t=normUrl(e),a=String(e).replace(/^https?:\/\//i,"").replace(/\/+$/,"");return t?'<a href="'+esc(t)+'" target="_blank" rel="noopener">'+esc(a)+"</a>":esc(e)}function socialHTML(e){return String(e).split(",").map((e=>{const t=e.trim()
+;if(!t)return"";const a=normUrl(t);if(!a)return esc(t);const n=socialOf(a);return'<a href="'+esc(a)+'" target="_blank" rel="noopener">'+esc(n||a.replace(/^https?:\/\//i,"").replace(/\/+$/,""))+"</a>"})).filter(Boolean).join(" \xb7 ")}
+function codeHTML(e){return String(e).split(" | ").map((e=>{const t=e.trim();return t?/^https?:\/\//i.test(t)?linkHTML(t):esc(t):""})).filter(Boolean).join("<br>")}function renderScanCapture(){
+$("#content").innerHTML='<div class="section-label">Card photos</div><div class="card" id="photo-wrap">'+photosSectionHTML(null)+'</div><div class="notice">Add the <b>front</b> photo, and the <b>back</b> too if the card has details there \u2014 the scanner reads both sides together.</div><button class="btn btn-primary" data-action="scan-run" id="scan-run-btn">Scan & fill details</button><div style="height:8px"></div><button class="btn btn-secondary" data-action="scan-type-instead">Type the details instead</button><div style="height:10px"></div>'
+}async function runScan(){if(!S.photos.front)return void toast("Add the front photo first.","err");const e=document.createElement("div");e.className="scan-overlay",e.innerHTML='<div class="spinner"></div><div>Reading the card\u2026</div>',
+document.body.appendChild(e);const t=viewSeq,a=Promise.all([codesFor("front"),codesFor("back")]).then((e=>e[0].concat(e[1]))).catch((()=>[]));let n=0;const i=await Promise.race([callScan(S.photos.front,S.photos.back),new Promise((e=>{
+n=setTimeout((()=>e({error:"timeout"})),6e4)}))]);clearTimeout(n);let o=[];try{o=await a}catch(e){o=[]}if(e.remove(),t!==viewSeq||!$("#scan-run-btn"))return
+;const s=i.ok&&i.fields?i.fields:{},r=mergeCodes(o),l=r.vcard,c=r.website||normUrl(s.website||"")||String(s.website||"").trim(),d=[],u=e=>{const t=normSocial(e);if(!t)return;const a=t.toLowerCase().replace(/\/+$/,"")
+;for(let e=0;e<d.length;e++)if(d[e].toLowerCase().replace(/\/+$/,"")===a)return;d.push(t)};r.social.forEach(u),String(s.social||"").split(/[,;|]/).forEach(u);const p=[],m=e=>{e&&p.indexOf(e)<0&&p.push(e)},h=e=>m(codeMobile(e))
+;l&&(l.tels||[]).filter((e=>e.cell)).forEach((e=>h(e.v))),(e=>{const t=normMobile(e);isIndianMobile(t)&&m(t)})(s.mobile||""),r.phones.forEach((e=>h(e.v))),l&&(l.tels||[]).filter((e=>!e.cell&&!e.line)).forEach((e=>h(e.v))),
+String(s.phone_other||"").split(",").forEach(h);const v={trade_name:s.trade_name||l&&l.org||"",company_name:s.company_name||s.trade_name||l&&l.org||"",contact_person:l&&l.name||s.contact_person||"",designation:l&&l.title||s.designation||"",
+mobile:p[0]||normMobile(s.mobile||""),phone_other:p.slice(1).join(", "),email:String(r.emails[0]||s.email||"").trim(),city:s.city||(l&&l.adr?l.adr.city:"")||"",area:s.area||"",address:s.address||l&&l.address||"",
+state:s.state||(l&&l.adr?l.adr.state:"")||"",website:c,social_links:d.join(", "),card_code:r.codes.join(" | ")},f=Object.keys(v).some((e=>String(v[e]||"").trim()))
+;return i.ok&&i.fields?(toast(r.found?"Card read \u2713 \u2014 code on the card read too":"Card read \u2713 \u2014 please check the details","ok"),
+void showSub("New Client",(()=>renderClientForm(null,v,"scan")),!0)):f?(toast("Read the code on the card \u2713 \u2014 please check the details","ok"),
+void showSub("New Client",(()=>renderClientForm(null,v,"scan")),!0)):("not_configured"===i.error?toast("Card scanning is not set up yet \u2014 the photos will still be saved with the client."):"quota"===i.error?toast("Daily scan limit reached \u2014 please type the details; the photos will still be saved."):toast("Could not read the card \u2014 please type the details; the photos will still be saved."),
+void showSub("New Client",(()=>renderClientForm(null,{},"manual")),!0))}function attachPhoto(e){
+const t=openModal("<h3>"+("back"===e?"Back side":"Front side")+' photo</h3><p>Take a fresh photo, or pick one already saved on this phone.</p><div style="display:flex;flex-direction:column;gap:10px"><button class="btn btn-primary" data-m="cam">\ud83d\udcf7 Take photo</button><button class="btn btn-secondary" data-m="gal">\ud83d\uddbc\ufe0f Choose from gallery</button></div>'),a=function(t){
+closeModal(),pickImage((async t=>{let a;try{a=await downscale(t,1600)}catch(e){return void toast("Could not read that image \u2014 try again.","err")}dropPhoto(e),S.photos[e]=a,S.photos[e].codesP=readCodes(t).catch((()=>[])),redrawPhotos()
+}),t)};t.querySelector("[data-m=cam]").onclick=function(){a(!1)},t.querySelector("[data-m=gal]").onclick=function(){a(!0)}}function photoUrl(e){return e.url||(e.url=URL.createObjectURL(e.blob)),e.url}function dropPhoto(e){
+const t=S.photos[e];if(t&&t.url)try{URL.revokeObjectURL(t.url)}catch(e){}S.photos[e]=null}function resetPhotos(){dropPhoto("front"),dropPhoto("back")}function photoSlotHTML(e,t){const a=S.photos[e],n="front"===e?"Front side":"Back side"
+;if(a){
+return'<div class="photo-slot"><div class="ps-label">'+n+'</div><img class="cardphoto" src="'+photoUrl(a)+'" alt="'+n+'"><div class="photo-row"><button type="button" class="btn btn-small btn-secondary" data-action="attach-photo" data-side="'+e+'">Retake</button><button type="button" class="btn btn-small btn-ghost" data-action="remove-photo" data-side="'+e+'">Remove</button></div></div>'
+}
+return'<div class="photo-slot"><div class="ps-label">'+n+(t?' <span class="ps-saved">saved \u2713</span>':"")+'</div><button type="button" class="btn btn-secondary" data-action="attach-photo" data-side="'+e+'">\uff0b '+(t?"Replace":"Add photo")+"</button></div>"
+}function photosSectionHTML(e){return'<div class="photo-grid">'+photoSlotHTML("front",e&&e.card_image_path)+photoSlotHTML("back",e&&e.card_image_back_path)+"</div>"}function redrawPhotos(){const e=$("#photo-wrap")
+;e&&(e.innerHTML=photosSectionHTML(S.editingClient))}function segHTML(e,t,a,n){
+return'<div class="seg">'+t.map((t=>'<button type="button" class="'+((n&&n[t]?n[t]:"")+(a===t?" on":"")).trim()+'" data-action="seg" data-group="'+e+'" data-val="'+esc(t)+'">'+esc(t)+"</button>")).join("")+"</div>"}
+const OUTCOMES=["Meeting","Job work order","Outright order","Person not available","Other"];function outcomeChip(e){return e?'<span class="chip" style="background:#f3ead9;color:#7a5a15">'+esc(e)+"</span>":""}
+const INDIAN_STATES=["Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh","Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal","Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli and Daman and Diu","Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"],INDIAN_CITIES=["Agartala","Agra","Ahmedabad","Aizawl","Ajmer","Akola","Aligarh","Alwar","Ambala","Amravati","Amritsar","Anand","Anantapur","Asansol","Aurangabad","Ballari","Bareilly","Bathinda","Belagavi","Bengaluru","Bhagalpur","Bharuch","Bhavnagar","Bhilai","Bhilwara","Bhopal","Bhubaneswar","Bikaner","Bilaspur","Bokaro","Chandigarh","Chennai","Coimbatore","Cuttack","Davangere","Dehradun","Delhi","Dewas","Dhanbad","Dhule","Dimapur","Durg","Durgapur","Erode","Faridabad","Gandhinagar","Gangtok","Gaya","Ghaziabad","Gorakhpur","Guntur","Gurugram","Guwahati","Gwalior","Haldwani","Haridwar","Himmatnagar","Hisar","Hosur","Howrah","Hubballi","Hyderabad","Ichalkaranji","Imphal","Indore","Itanagar","Jabalpur","Jaipur","Jalandhar","Jalgaon","Jammu","Jamnagar","Jamshedpur","Jhansi","Jodhpur","Junagadh","Kakinada","Kalaburagi","Kanpur","Karimnagar","Karnal","Kharagpur","Khammam","Kochi","Kolhapur","Kolkata","Kota","Kozhikode","Kurnool","Latur","Lucknow","Ludhiana","Madurai","Mangaluru","Margao","Meerut","Mehsana","Moradabad","Mumbai","Muzaffarpur","Mysuru","Nagpur","Nanded","Nashik","Navsari","Nellore","Nizamabad","Noida","Palanpur","Pali","Panaji","Panipat","Patan","Patiala","Patna","Prayagraj","Puducherry","Pune","Raipur","Rajahmundry","Rajkot","Ranchi","Ratlam","Rohtak","Sagar","Saharanpur","Salem","Sangli","Satara","Secunderabad","Shillong","Shimla","Sikar","Siliguri","Solapur","Srinagar","Surat","Thane","Thiruvananthapuram","Thrissur","Tiruchirappalli","Tirunelveli","Tirupati","Tumakuru","Udaipur","Ujjain","Vadodara","Valsad","Vapi","Varanasi","Vellore","Vijayawada","Visakhapatnam","Warangal"]
+;function comboFilter(e,t){if(!(t=String(t||"").trim().toLowerCase()))return e;const a=e.filter((function(e){return 0===e.toLowerCase().indexOf(t)})),n=e.filter((function(e){return e.toLowerCase().indexOf(t)>0}));return a.concat(n)}
+function attachCombo(e,t,a){const n=$(e),i=$(t);if(!n||!i)return;const o=n.parentElement.querySelector(".combo-arr");let s=!1;const r=function(){i.classList.remove("open")},l=function(){const e=comboFilter(a,n.value).slice(0,s?400:8)
+;i.innerHTML=e.length?e.map((function(e){return'<button type="button" data-v="'+esc(e)+'">'+esc(e)+"</button>"})).join(""):'<div class="combo-none">Not in the list \u2014 what you typed will be saved as is.</div>',i.classList.add("open")}
+;n.addEventListener("input",(function(){s=!1,l()})),n.addEventListener("focus",(function(){s=!1,l()})),n.addEventListener("blur",(function(){setTimeout(r,200)})),o&&(o.addEventListener("mousedown",(function(e){e.preventDefault()})),
+o.addEventListener("click",(function(){i.classList.contains("open")&&s?r():(s=!0,l())}))),i.addEventListener("mousedown",(function(e){e.preventDefault()})),i.addEventListener("click",(function(e){const t=e.target.closest("button[data-v]")
+;t&&(n.value=t.dataset.v,r())}))}function missingFields(e,t){const a=[];return e.company||a.push(["Company name","#f-company"]),e.person||a.push(["Contact person","#f-person"]),e.mobile||a.push(["Mobile number","#f-mobile"]),
+t.polki||a.push(["Buys Polki?",null]),t.order_type||a.push(["Order type",null]),t.interest||a.push(["Client interest",null]),e.city||a.push(["City","#f-city"]),e.address||a.push(["Full address","#f-address"]),a}
+function renderClientForm(e,t,a){
+const n=$("#content"),i=e||{},o=e=>esc(null!=t[e]?t[e]:null!=i[e]?i[e]:""),s=String(t.company_name||t.trade_name||i.company_name||i.trade_name||"").trim(),r=esc(s),l=String(null!=t.card_code?t.card_code:null!=i.card_code?i.card_code:"").trim(),c=String((null!=t.designation?t.designation:i.designation)||"").trim(),d=["Partner","Owner","Founder","Staff"].find((e=>e.toLowerCase()===c.toLowerCase()))
+;S.formState={polki:!0===i.is_polki_buyer?"Yes":!1===i.is_polki_buyer?"No":e?"Undefined":null,category:i.category||"Undefined",order_type:i.order_type||null,interest:i.interest||null,entry_source:a||i.entry_source||"manual",
+desig:c?d||"Other":null,desig_other:c&&!d?c:"",company_orig:e&&i.trade_name&&i.company_name&&i.trade_name!==i.company_name?s:null},S.editingClient=e||null,
+n.innerHTML='<div class="section-label">Visiting card</div><div class="card" id="photo-wrap">'+photosSectionHTML(e)+'</div><div class="section-label">Basic details</div><div class="card"><div class="field"><label>Company / firm name <span class="req">*</span></label><input type="text" id="f-company" value="'+r+'" placeholder="Shop / company name"></div><div class="field"><label>Contact person <span class="req">*</span></label><input type="text" id="f-person" value="'+o("contact_person")+'"></div><div class="field"><label>Designation</label>'+segHTML("desig",["Partner","Owner","Founder","Staff","Other"],S.formState.desig)+'<div id="desig-other-wrap" style="display:'+("Other"===S.formState.desig?"block":"none")+';margin-top:8px"><input type="text" id="f-desig-other" value="'+esc(S.formState.desig_other)+'" placeholder="Type the designation"></div></div><div class="field"><label>Mobile number <span class="req">*</span></label><input type="tel" id="f-mobile" inputmode="numeric" value="'+o("mobile")+'" placeholder="10-digit mobile"><div id="mobile-note"></div></div><div class="field"><label>Other mobile numbers</label><input type="text" id="f-phone2" autocomplete="off" inputmode="tel" value="'+o("phone_other")+'" placeholder="Extra mobile numbers, if any"></div><div class="field"><label>Email</label><input type="email" id="f-email" autocomplete="off" inputmode="email" value="'+o("email")+'" placeholder="name@gmail.com"></div><div class="field"><label>Website</label><input type="text" id="f-website" autocomplete="off" inputmode="url" value="'+o("website")+'" placeholder="www.example.com"></div><div class="field"><label>Social profiles</label><input type="text" id="f-social" autocomplete="off" value="'+o("social_links")+'" placeholder="Instagram / Facebook link"><div class="hint">More than one? Separate them with a comma</div></div>'+(l?'<div class="field"><label>Scanned code</label><input type="text" id="f-code" autocomplete="off" value="'+o("card_code")+'"><div class="hint">Read from the QR / barcode printed on the card</div></div>':"")+'<div class="field"><label>Owner\'s name</label><input type="text" id="f-owner" value="'+o("owner_name")+'"></div></div><div class="section-label">Business profile</div><div class="card"><div class="field"><label>Buys Polki jewellery? <span class="req">*</span></label>'+segHTML("polki",["Yes","No","Undefined"],S.formState.polki)+'</div><div class="field"><label>Customer category (volume of work)</label>'+segHTML("category",["A","B","C","Undefined"],S.formState.category)+'<div class="hint">A = highest volume \xb7 C = lowest</div></div><div class="field"><label>Order type <span class="req">*</span></label>'+segHTML("order_type",["Job work","Outright","Both"],S.formState.order_type)+'</div><div class="field"><label>Client interest (lead quality) <span class="req">*</span></label>'+segHTML("interest",["Hot","Warm","Cold"],S.formState.interest,{
+Hot:"hot",Warm:"warm",Cold:"cold"
+})+'<div class="hint">Hot = high interest \xb7 Warm = medium \xb7 Cold = low</div></div></div><div class="section-label">Location</div><div class="card"><div class="field"><label>City <span class="req">*</span></label><div class="combo"><input type="text" id="f-city" autocomplete="off" value="'+o("city")+'" placeholder="Type or pick a city"><button type="button" class="combo-arr" tabindex="-1" aria-label="Show cities">\u25be</button><div class="combo-list" id="cl-city"></div></div></div><div class="field"><label>State</label><div class="combo"><input type="text" id="f-state" autocomplete="off" value="'+o("state")+'" placeholder="Type or pick a state"><button type="button" class="combo-arr" tabindex="-1" aria-label="Show states">\u25be</button><div class="combo-list" id="cl-state"></div></div></div><div class="field"><label>Area / locality</label><input type="text" id="f-area" value="'+o("area")+'" placeholder="Market / locality"></div><div class="field"><label>Full address <span class="req">*</span></label><textarea id="f-address" style="min-height:70px" placeholder="Shop no., street, market, city, PIN">'+o("address")+'</textarea></div></div><button class="btn btn-primary" data-action="save-client"'+(e?' data-edit-id="'+e.id+'"':"")+' id="save-client-btn">'+(e?"Save changes":"Save client")+'</button><div style="height:10px"></div>'
+;const u=$("#f-mobile");u.addEventListener("blur",(async()=>{const e=$("#mobile-note");e.innerHTML="";const t=normMobile(u.value);if(t&&(u.value=t,
+isIndianMobile(t)||(e.innerHTML='<div class="warn">This does not look like a 10-digit mobile number (landline?). You can still save it.</div>'),10===t.length)){
+const{data:a}=await db.from("clients").select("id, trade_name, contact_person").eq("mobile",t).neq("id",i.id||"00000000-0000-0000-0000-000000000000").limit(1);if(u.value!==t||!e.isConnected)return
+;a&&a.length&&!e.querySelector(".dup")&&(e.innerHTML+='<div class="dup">\u26a0 This number is already saved for <b>'+esc(a[0].trade_name)+'</b>. <a href="#" data-action="open-client" data-id="'+a[0].id+'">Open that client</a> instead of creating a duplicate.</div>')
+}})),attachCombo("#f-city","#cl-city",INDIAN_CITIES),attachCombo("#f-state","#cl-state",INDIAN_STATES)}async function saveClient(e){const t=$("#save-client-btn"),a=normMobile($("#f-mobile").value),n={company:$("#f-company").value.trim(),
+person:$("#f-person").value.trim(),mobile:a,city:$("#f-city").value.trim(),address:$("#f-address").value.trim()},i=missingFields(n,S.formState);if(i.length){toast("Please fill: "+i.map((e=>e[0])).join(", "),"err");const e=i.find((e=>e[1]))
+;if(e){const t=$(e[1]);if(t){t.focus();try{t.scrollIntoView({block:"center",behavior:"smooth"})}catch(e){}}}return}
+const o=$("#f-website").value.trim(),s=normUrl(o)||o,r=$("#f-social").value.split(",").map((e=>normSocial(e)||e.trim())).filter(Boolean).join(", "),l=$("#f-code")?$("#f-code").value.trim():S.editingClient&&S.editingClient.card_code?S.editingClient.card_code:"",c="Other"===S.formState.desig?$("#f-desig-other")?$("#f-desig-other").value.trim():"":S.formState.desig||"",d={
+trade_name:n.company,company_name:n.company,contact_person:n.person,designation:c||null,mobile:a,phone_other:normPhoneList($("#f-phone2").value,a)||null,email:$("#f-email").value.trim()||null,website:s||null,social_links:r||null,
+card_code:l||null,owner_name:$("#f-owner").value.trim()||null,address:n.address,is_polki_buyer:"Yes"===S.formState.polki||"No"!==S.formState.polki&&null,category:S.formState.category||"Undefined",order_type:S.formState.order_type,
+interest:S.formState.interest,city:n.city,state:$("#f-state").value.trim()||null,area:$("#f-area").value.trim()||null,entry_source:S.formState.entry_source}
+;e&&null!=S.formState.company_orig&&n.company===S.formState.company_orig&&(delete d.trade_name,delete d.company_name);const u=async()=>{if(t.disabled)return;t.disabled=!0,t.textContent="Saving\u2026";let a=e;if(e){
+const{data:a,error:n}=await db.from("clients").update(d).eq("id",e).select("id");if(n||!a||!a.length)return t.disabled=!1,t.textContent="Save changes",void writeFailed("Could not save \u2014 please try again.")}else{d.created_by=S.me.id
+;const{data:e,error:n}=await db.from("clients").insert(d).select("id").single();if(n||!e)return t.disabled=!1,t.textContent="Save client",void writeFailed("Could not save \u2014 please try again.");a=e.id}const n=[]
+;for(const e of[["front","card_image_path"],["back","card_image_back_path"]]){const t=e[0],i=e[1],o=S.photos[t];if(!o)continue;const s=a+"/"+t+"-"+Date.now()+".jpg";let r=!1;try{
+const{error:e}=await db.storage.from("cards").upload(s,o.blob,{contentType:"image/jpeg"});if(!e){const e={};e[i]=s;const{data:t,error:n}=await db.from("clients").update(e).eq("id",a).select("id");r=!n&&t&&t.length>0}}catch(e){r=!1}
+r||n.push(t),dropPhoto(t)}
+if(n.length?toast((e?"Client updated":"Client saved")+", but the "+n.join(" & ")+" card photo could not be uploaded \u2014 add it again with Edit.","err"):toast(e?"Client updated \u2713":"Client saved \u2713","ok"),
+e)return void openClient(e,!0)
+;const i=await fetchClient(a),o=openModal('<h3>Client saved \ud83c\udf89</h3><p>Record the meeting now? Reminders and instructions you add will appear on the Today screen.</p><div class="modal-actions"><button class="btn btn-secondary" data-m="later">Later</button><button class="btn btn-primary" data-m="now">Record meeting</button></div>')
+;o.querySelector("[data-m=later]").onclick=()=>{closeModal(),openClient(a,!0)},o.querySelector("[data-m=now]").onclick=()=>{closeModal(),i?openInteractionForm(i,!0):openClient(a,!0)}}
+;a&&!isIndianMobile(a)?confirmModal("Not a mobile number?",'The number "'+a+'" does not look like a 10-digit Indian mobile. Save anyway?',"Save anyway",u):u()}function renderFind(){setHeader("Find Client",!1),
+$("#content").innerHTML='<div class="search-box"><input type="text" id="search-input" placeholder="Search name, shop, mobile, city\u2026" autocomplete="off"></div><div id="search-results"><div class="empty">Loading recent clients\u2026</div></div>'
+;const e=$("#search-input");e.addEventListener("input",(()=>{clearTimeout(S.searchTimer),S.searchTimer=setTimeout((()=>runSearch(e.value)),280)})),runSearch("")}let searchSeq=0;async function runSearch(e){const t=$("#search-results")
+;if(!t)return;const a=++searchSeq;let n=String(e||"").trim().replace(/[,%()"\\*]/g," ").replace(/\s+/g," ").trim();/^[+\d][\d\s().-]*$/.test(n)&&n.replace(/\D/g,"").length>=4&&(n=normMobile(n))
+;let i=db.from("clients").select("id, trade_name, company_name, contact_person, city, area, category, interest, mobile");if(n){const e="%"+n+"%"
+;i=i.or("trade_name.ilike."+e+",company_name.ilike."+e+",contact_person.ilike."+e+",mobile.ilike."+e+",phone_other.ilike."+e+",city.ilike."+e+",owner_name.ilike."+e+",email.ilike."+e+",website.ilike."+e+",social_links.ilike."+e).limit(50)
+}else i=i.order("created_at",{ascending:!1}).limit(25);const{data:o,error:s}=await i
+;a===searchSeq&&t===$("#search-results")&&(s?t.innerHTML='<div class="empty">Search failed \u2014 try again.</div>':o&&o.length?t.innerHTML=(n?"":'<div class="section-label">Recently added</div>')+o.map((e=>'<div class="list-item" data-action="open-client" data-id="'+e.id+'"><div class="li-main"><div class="li-title">'+esc(e.trade_name)+'</div><div class="li-sub">'+esc([e.contact_person,e.city].filter(Boolean).join(" \xb7 ")||e.company_name||"")+'</div><div class="li-chips">'+chipCat(e.category)+chipInterest(e.interest)+'</div></div><div style="color:var(--muted)">\u203a</div></div>')).join(""):t.innerHTML='<div class="empty"><div class="big">\ud83d\udd0e</div>'+(n?'No client matches "'+esc(n)+'".<br>Check the spelling, or add them as a new client.':"No clients yet \u2014 add your first from the New Client tab.")+"</div>")
+}async function fetchClient(e){const{data:t,error:a}=await db.from("clients").select("*").eq("id",e).maybeSingle();return a||!t?(toast("Could not open client.","err"),null):t}async function openClient(e,t){
+const a=viewSeq,n=await fetchClient(e);n&&a===viewSeq&&(S.currentClientId=e,showSub(n.trade_name,(()=>renderClientPage(n)),t),loadClientHistory(n))}function renderClientPage(e){const t=[],a=(e,a)=>{
+a&&t.push('<div class="detail-row"><div class="dk">'+e+'</div><div class="dv">'+a+"</div></div>")};e.company_name&&e.company_name!==e.trade_name&&a("Company",esc(e.company_name)),
+a("Contact person",esc([e.contact_person,e.designation].filter(Boolean).join(" \u2014 "))),e.mobile&&a("Mobile",'<a href="tel:'+esc(e.mobile)+'" data-action="call">'+esc(e.mobile)+"</a>"),
+e.phone_other&&a("Other mobiles",esc(e.phone_other)),e.email&&a("Email",'<a href="mailto:'+esc(e.email)+'">'+esc(e.email)+"</a>"),e.website&&a("Website",linkHTML(e.website)),e.social_links&&a("Social",socialHTML(e.social_links)),
+e.card_code&&a("Scanned code",codeHTML(e.card_code)),a("Owner",esc(e.owner_name)),a("Location",esc([e.area,e.city,e.state].filter(Boolean).join(", "))),a("Address",esc(e.address)),
+a("Polki jewellery",!0===e.is_polki_buyer?"Yes":!1===e.is_polki_buyer?"No":""),a("Order type",esc(e.order_type)),a("Added by",esc(nameOf(e.created_by))+" \xb7 "+fmtD(e.created_at)),
+$("#content").innerHTML='<div class="client-head"><h2>'+esc(e.trade_name)+"</h2>"+(e.company_name&&e.company_name!==e.trade_name?'<div class="co">'+esc(e.company_name)+"</div>":"")+'<div class="chips">'+chipCat(e.category)+chipInterest(e.interest)+(e.order_type?'<span class="chip">'+esc(e.order_type)+"</span>":"")+'</div></div><div class="action-row"><button class="btn btn-primary" data-action="new-interaction" data-id="'+e.id+'">\uff0b Record meeting</button><button class="btn btn-secondary" data-action="edit-client" data-id="'+e.id+'">Edit</button></div><div class="card">'+(t.join("")||'<div class="empty" style="padding:6px">No details yet</div>')+'</div><div id="client-card-photo"></div><div id="client-followups"></div><div id="client-history"><div class="empty">Loading history\u2026</div></div>'
+;const n=[["Front",e.card_image_path],["Back",e.card_image_back_path]].filter((e=>e[1]));if(n.length){const e=viewSeq
+;Promise.all(n.map((e=>db.storage.from("cards").createSignedUrl(e[1],3600).then((({data:t})=>[e[0],t&&t.signedUrl]))))).then((t=>{const a=$("#client-card-photo");if(!a||e!==viewSeq)return
+;const n=t.filter((e=>e[1])).map((e=>'<div class="photo-slot"><div class="ps-label">'+e[0]+'</div><img class="cardphoto" src="'+esc(e[1])+'" alt="Visiting card '+e[0]+'"></div>')).join("")
+;n&&(a.innerHTML='<div class="section-label">Visiting card</div><div class="card"><div class="photo-grid">'+n+"</div></div>")})).catch((()=>{}))}}async function loadClientHistory(e){const t=viewSeq;let a,n;try{
+[a,n]=await Promise.all([db.from("interactions").select("*").eq("client_id",e.id).order("happened_at",{ascending:!1}).limit(100),db.from("followups").select("*").eq("client_id",e.id).order("created_at",{ascending:!0}).limit(300)])}catch(e){
+a=n={error:{message:"network"}}}const i=$("#client-followups"),o=$("#client-history");if(!i||!o||t!==viewSeq)return
+;if(a.error||n.error)return void(o.innerHTML='<div class="empty">Could not load the meeting history \u2014 check the internet and open the client again.</div>');const s=n.data||[],r=s.filter((e=>"pending"===e.status))
+;r.length?i.innerHTML='<div class="section-label">Pending follow-ups</div><div class="card">'+r.map((e=>'<div class="fu-line">'+chipType(e.type)+'<span style="flex:1">'+esc(e.content)+"</span>"+(e.due_date?'<span class="fu-due">'+esc(dueLabel(e.due_date))+"</span>":"")+'<button class="btn btn-small btn-ghost" data-action="fu-done" data-id="'+e.id+'">\u2713</button></div>')).join("")+"</div>":i.innerHTML=""
+;const l={};s.forEach((e=>{e.interaction_id&&(l[e.interaction_id]=l[e.interaction_id]||[]).push(e)}));const c=(a.data||[]).map((e=>{
+const t=(l[e.id]||[]).map((e=>'<div class="fu-line'+("done"===e.status?" done":"")+'">'+chipType(e.type)+'<span style="flex:1">'+esc(e.content)+"</span>"+(e.due_date&&"pending"===e.status?'<span class="fu-due">'+esc(dueLabel(e.due_date))+"</span>":"")+"</div>")).join("")
+;return'<div class="timeline-item"><div class="t-meta"><span>'+esc(nameOf(e.exec_id))+"</span><span>"+fmtDT(e.happened_at)+"</span></div>"+(e.outcome?'<div style="margin:2px 0 5px">'+outcomeChip(e.outcome)+"</div>":"")+'<div class="t-notes">'+esc(e.notes)+"</div>"+(e.interest_after?'<div style="margin-top:7px">'+chipInterest(e.interest_after)+' <span style="font-size:12px;color:var(--muted)">after this meeting</span></div>':"")+(t?'<div class="t-fus">'+t+"</div>":"")+"</div>"
+}));o.innerHTML='<div class="section-label">Meeting history</div>'+(c.length?c.join(""):'<div class="empty">No meetings recorded yet.<br>Tap \u201cRecord meeting\u201d after you speak with them.</div>')}function openInteractionForm(e,t){
+S.interactionClient=e,S.fu=[],S.formState.int_interest=e.interest||null,S.formState.int_outcome=null,showSub("Record Meeting",renderInteractionForm,t)}function renderInteractionForm(){const e=S.interactionClient
+;$("#content").innerHTML='<div class="card" style="padding:13px 15px"><b>'+esc(e.trade_name)+"</b>"+(e.city?' <span style="color:var(--muted);font-size:13px">\xb7 '+esc(e.city)+"</span>":"")+'</div><div class="section-label">Meeting outcome</div><div class="card"><div class="field" style="margin-bottom:2px">'+segHTML("int_outcome",OUTCOMES,S.formState.int_outcome)+'<div id="outcome-other-wrap" style="display:'+("Other"===S.formState.int_outcome?"block":"none")+';margin-top:8px"><input type="text" id="f-outcome-other" placeholder="What was the outcome?"></div></div></div><div class="section-label">What happened in the meeting?</div><div class="card"><div class="field"><textarea id="int-notes" placeholder="e.g. Showed the new antique collection. Wants a quotation for 200 gm job work\u2026"></textarea><div class="mic-hint">'+IC.mic+' Tip: tap the mic on your keyboard and just speak.</div></div></div><div class="section-label">Follow-ups (optional)</div><div class="fu-add-row"><button class="btn btn-small btn-secondary" data-action="fu-add" data-type="reminder">\uff0b Reminder</button><button class="btn btn-small btn-secondary" data-action="fu-add" data-type="note">\uff0b Note</button><button class="btn btn-small btn-secondary" data-action="fu-add" data-type="instruction">\uff0b Instruction</button></div><div id="fu-rows"></div><div class="section-label">Client interest after this meeting</div><div class="card"><div class="field" style="margin-bottom:2px">'+segHTML("int_interest",["Hot","Warm","Cold"],S.formState.int_interest,{
+Hot:"hot",Warm:"warm",Cold:"cold"})+'</div></div><button class="btn btn-primary" data-action="save-interaction" id="save-int-btn">Save meeting</button><div style="height:10px"></div>',redrawFuRows()}function redrawFuRows(){
+const e=$("#fu-rows")
+;e&&(e.innerHTML=S.fu.map(((e,t)=>'<div class="fu-row"><div class="fu-top">'+chipType(e.type)+'<button type="button" class="fu-x" data-action="fu-del" data-idx="'+t+'">\u2715</button></div><input type="text" data-fuf="content" data-idx="'+t+'" value="'+esc(e.content)+'" placeholder="'+("reminder"===e.type?"e.g. Call about the quotation":"note"===e.type?"e.g. Prefers antique finish":"e.g. Send catalogue by courier")+'">'+("reminder"===e.type?'<input type="date" data-fuf="due_date" data-idx="'+t+'" value="'+esc(e.due_date||todayStr(1))+'" min="'+todayStr()+'">':"")+"</div>")).join(""))
+}async function saveInteraction(){
+const e=S.interactionClient,t=$("#int-notes").value.trim(),a=S.fu.filter((e=>e.content&&e.content.trim())),n="Other"===S.formState.int_outcome?$("#f-outcome-other")?$("#f-outcome-other").value.trim():"":S.formState.int_outcome||""
+;if(!t&&!a.length&&!n)return void toast("Choose an outcome, write what happened, or add a follow-up.","err");const i=$("#save-int-btn");if(i.disabled)return;i.disabled=!0,i.textContent="Saving\u2026"
+;const o=S.formState.int_interest||null,{data:s,error:r}=await db.from("interactions").insert({client_id:e.id,exec_id:S.me.id,notes:t||(n?"("+n+")":"(follow-ups only)"),outcome:n||null,interest_after:o!==e.interest?o:null
+}).select("id").single();if(r||!s)return i.disabled=!1,i.textContent="Save meeting",void writeFailed("Could not save \u2014 please try again.");const l=[];if(a.length){const t=a.map((t=>({client_id:e.id,interaction_id:s.id,type:t.type,
+content:t.content.trim(),due_date:"reminder"===t.type?t.due_date||todayStr(1):null,assigned_to:S.me.id,created_by:S.me.id}))),{error:n}=await db.from("followups").insert(t);n&&l.push("the follow-ups were not saved")}if(o&&o!==e.interest){
+const{data:t,error:a}=await db.from("clients").update({interest:o}).eq("id",e.id).select("id");!a&&t&&t.length||l.push("the client's interest was not updated")}
+l.length?toast("Meeting saved, but "+l.join(" and ")+".","err"):toast("Meeting recorded \u2713","ok"),openClient(e.id,!0)}function periodStartISO(e){if("all"===e)return null;const t=new Date;if("today"===e)return t.setHours(0,0,0,0),
+t.toISOString();const a="7d"===e?7:30;return t.setDate(t.getDate()-a),t.toISOString()}function periodLabel(e){return"today"===e?"today":"7d"===e?"in the last 7 days":"30d"===e?"in the last 30 days":"overall"}function aggReport(e,t,a){
+const n=new Map;a.forEach((function(e){e.active&&n.set(e.id,{name:e.full_name||e.email||"\u2014",meetings:0,clients:0})}));const i=function(e,t){if(e){if(!n.has(e)){const t=S.team.get(e);n.set(e,{name:t&&(t.full_name||t.email)||"\u2014",
+meetings:0,clients:0})}n.get(e)[t]+=1}};t.forEach((function(e){i(e.exec_id,"meetings")})),e.forEach((function(e){i(e.created_by,"clients")}));const o={A:0,B:0,C:0,Undefined:0},s={Hot:0,Warm:0,Cold:0},r=new Map;e.forEach((function(e){
+const t=e.category||"Undefined";if(o[t]=(o[t]||0)+1,e.interest&&(s[e.interest]=(s[e.interest]||0)+1),e.city&&e.city.trim()){const t=e.city.trim();r.set(t,(r.get(t)||0)+1)}}));const l=Array.from(n.entries()).map((function(e){return{id:e[0],
+name:e[1].name,meetings:e[1].meetings,clients:e[1].clients}})).sort((function(e,t){return t.meetings-e.meetings||t.clients-e.clients||(e.name<t.name?-1:1)})),c=Array.from(r.entries()).sort((function(e,t){return t[1]-e[1]
+})).slice(0,5),d=new Map;t.forEach((function(e){const t=String(e.outcome||"").trim();t&&d.set(t,(d.get(t)||0)+1)}));const u=OUTCOMES.slice(0,OUTCOMES.length-1),p=u.map((function(e){return[e,d.get(e)||0]
+})).concat(Array.from(d.entries()).filter((function(e){return-1===u.indexOf(e[0])})).sort((function(e,t){return t[1]-e[1]})).slice(0,6));return{execRows:l,cat:o,intr:s,topCities:c,out:p}}async function renderReport(){
+if(!S.me||"owner"!==S.me.role)return void switchTab("today");const e=++viewSeq;setHeader("Report",!1);const t=$("#content");t.innerHTML='<div class="empty">Loading\u2026</div>';const a=periodStartISO(S.report.period)
+;let n=db.from("clients").select("id, trade_name, city, category, interest, created_by, created_at").order("created_at",{ascending:!1
+}).limit(1e3),i=db.from("interactions").select("id, exec_id, client_id, happened_at, outcome").order("happened_at",{ascending:!1}).limit(1e3);a&&(n=n.gte("created_at",a),i=i.gte("happened_at",a))
+;const o=await Promise.all([n,i,db.from("followups").select("id",{count:"exact",head:!0}).eq("type","reminder").eq("status","pending")]);if(e!==viewSeq)return
+;if(o[0].error||o[1].error)return void(t.innerHTML='<div class="empty">Could not load the report \u2014 try again.</div>');const s=o[0].data||[],r=o[1].data||[],l=o[2].count||0,c=aggReport(s,r,Array.from(S.team.values())),d=function(e,t){
+return'<button class="'+(S.report.period===e?"on":"")+'" data-action="report-period" data-p="'+e+'">'+t+"</button>"},u=function(e,t,a,n){
+return'<button class="brk-chip"'+(n?' data-action="report-clients" data-k="'+e+'" data-v="'+esc(t)+'"':' style="opacity:.45"')+">"+esc(a)+" <b>"+n+"</b></button>"}
+;t.innerHTML='<div class="filter-chips">'+d("today","Today")+d("7d","7 days")+d("30d","30 days")+d("all","All")+'</div><div class="stat-row"><div class="stat"><div class="st-num">'+s.length+'</div><div class="st-label">New clients</div></div><div class="stat"><div class="st-num">'+r.length+'</div><div class="st-label">Meetings</div></div><div class="stat"><div class="st-num">'+l+'</div><div class="st-label">Reminders open</div></div></div><div class="section-label">Team activity '+esc(periodLabel(S.report.period))+'</div><div class="card">'+(c.execRows.length?c.execRows.map((function(e){
+return'<div class="exec-row" data-action="report-exec" data-id="'+e.id+'" data-name="'+esc(e.name)+'"><div class="ex-name">'+esc(e.name)+'</div><div class="ex-nums">'+e.meetings+" meeting"+(1===e.meetings?"":"s")+" \xb7 "+e.clients+' new</div><div style="color:var(--muted)">\u203a</div></div>'
+})).join(""):'<div class="empty" style="padding:8px">No team members yet.</div>')+'</div><div class="section-label">Meetings \u2014 by outcome</div><div class="brk-row">'+c.out.map((function(e){
+return'<button class="brk-chip"'+(e[1]?' data-action="report-outcome" data-v="'+esc(e[0])+'"':' style="opacity:.45"')+">"+esc(e[0])+" <b>"+e[1]+"</b></button>"
+})).join("")+'</div><div class="section-label">New clients \u2014 by category</div><div class="brk-row">'+u("category","A","Cat A",c.cat.A)+u("category","B","Cat B",c.cat.B)+u("category","C","Cat C",c.cat.C)+u("category","Undefined","Undecided",c.cat.Undefined)+'</div><div class="section-label">New clients \u2014 by interest</div><div class="brk-row">'+u("interest","Hot","Hot",c.intr.Hot)+u("interest","Warm","Warm",c.intr.Warm)+u("interest","Cold","Cold",c.intr.Cold)+"</div>"+(c.topCities.length?'<div class="section-label">Top cities</div><div class="card">'+c.topCities.map((function(e){
+return'<div class="exec-row" data-action="report-clients" data-k="city" data-v="'+esc(e[0])+'"><div class="ex-name">'+esc(e[0])+'</div><div class="ex-nums">'+e[1]+" client"+(1===e[1]?"":"s")+'</div><div style="color:var(--muted)">\u203a</div></div>'
+})).join("")+"</div>":"")+(s.length>=1e3||r.length>=1e3?'<div class="notice">Showing the most recent 1000 records of this period.</div>':"")+'<div style="height:6px"></div>'}async function reportExecView(e,t){
+const a=viewSeq,n=periodStartISO(S.report.period);let i=db.from("interactions").select("id, client_id, happened_at, notes, outcome, clients(trade_name, city)").eq("exec_id",e).order("happened_at",{ascending:!1}).limit(200)
+;n&&(i=i.gte("happened_at",n));const{data:o,error:s}=await i,r=$("#content");if(!r||a!==viewSeq)return;if(s)return void(r.innerHTML='<div class="empty">Could not load.</div>');const l=o||[]
+;r.innerHTML='<div class="card" style="padding:13px 15px"><b>'+esc(t)+'</b> <span style="color:var(--muted);font-size:13px">\xb7 '+l.length+" meeting"+(1===l.length?"":"s")+" "+esc(periodLabel(S.report.period))+"</span></div>"+(l.length?l.map((function(e){
+const t=e.clients||{},a=String(e.notes||"")
+;return'<div class="timeline-item"><div class="t-meta"><span class="rem-client" data-action="open-client" data-id="'+e.client_id+'">'+esc(t.trade_name||"Client")+" \u203a</span><span>"+fmtDT(e.happened_at)+"</span></div>"+(e.outcome?'<div style="margin:2px 0 5px">'+outcomeChip(e.outcome)+"</div>":"")+'<div class="t-notes">'+esc(a.slice(0,160))+(a.length>160?"\u2026":"")+"</div></div>"
+})).join(""):'<div class="empty">No meetings recorded '+esc(periodLabel(S.report.period))+".</div>")}async function reportMeetsView(e){const t=viewSeq,a=periodStartISO(S.report.period)
+;let n=db.from("interactions").select("id, client_id, exec_id, happened_at, notes, clients(trade_name, city)").eq("outcome",e).order("happened_at",{ascending:!1}).limit(200);a&&(n=n.gte("happened_at",a))
+;const{data:i,error:o}=await n,s=$("#content");if(!s||t!==viewSeq)return;if(o)return void(s.innerHTML='<div class="empty">Could not load.</div>');const r=i||[]
+;s.innerHTML='<div class="card" style="padding:13px 15px">'+outcomeChip(e)+' <span style="color:var(--muted);font-size:13px">'+r.length+" meeting"+(1===r.length?"":"s")+" "+esc(periodLabel(S.report.period))+"</span></div>"+(r.length?r.map((function(e){
+const t=e.clients||{},a=String(e.notes||"")
+;return'<div class="timeline-item"><div class="t-meta"><span class="rem-client" data-action="open-client" data-id="'+e.client_id+'">'+esc(t.trade_name||"Client")+" \u203a</span><span>"+fmtDT(e.happened_at)+'</span></div><div class="t-notes">'+esc(nameOf(e.exec_id))+(a?" \u2014 "+esc(a.slice(0,140))+(a.length>140?"\u2026":""):"")+"</div></div>"
+})).join(""):'<div class="empty">No meetings with this outcome '+esc(periodLabel(S.report.period))+".</div>")}async function reportClientsView(e,t){const a=viewSeq,n=periodStartISO(S.report.period)
+;let i=db.from("clients").select("id, trade_name, company_name, contact_person, city, category, interest");i="category"===e&&"Undefined"===t?i.or("category.is.null,category.eq.Undefined"):i.eq(e,t),i=i.order("created_at",{ascending:!1
+}).limit(300),n&&(i=i.gte("created_at",n));const{data:o,error:s}=await i,r=$("#content");if(!r||a!==viewSeq)return;if(s)return void(r.innerHTML='<div class="empty">Could not load.</div>');const l=o||[]
+;r.innerHTML=l.length?l.map((function(e){
+return'<div class="list-item" data-action="open-client" data-id="'+e.id+'"><div class="li-main"><div class="li-title">'+esc(e.trade_name)+'</div><div class="li-sub">'+esc([e.contact_person,e.city].filter(Boolean).join(" \xb7 ")||e.company_name||"")+'</div><div class="li-chips">'+chipCat(e.category)+chipInterest(e.interest)+'</div></div><div style="color:var(--muted)">\u203a</div></div>'
+})).join(""):'<div class="empty">No matching clients '+esc(periodLabel(S.report.period))+".</div>"}async function fetchAll(e,t){const a=[];for(let n=0;;n+=1e3){const{data:i,error:o}=await db.from(e).select("*").order(t,{ascending:!0
+}).range(n,n+999);if(o)throw new Error(e+": "+o.message);for(const e of i||[])a.push(e);if(!i||i.length<1e3)break}return a}function csvVal(e){if(null==e)return"";let t=String(e);return/^[=+\-@\t\r]/.test(t)&&(t="'"+t),
+t=t.replace(/"/g,'""'),/[",\n\r]/.test(t)?'"'+t+'"':t}function buildCsv(e,t){return"\ufeff"+e.map(csvVal).join(",")+"\r\n"+t.map((e=>e.map(csvVal).join(","))).join("\r\n")}function downloadFile(e,t){const a=new Blob([t],{
+type:"text/csv;charset=utf-8"}),n=document.createElement("a");n.href=URL.createObjectURL(a),n.download=e,document.body.appendChild(n),n.click(),setTimeout((()=>{URL.revokeObjectURL(n.href),n.remove()}),2e3)}function fmtExp(e){
+return e?fmtDT(e):""}function ynExp(e){return!0===e?"Yes":!1===e?"No":""}async function exportAllData(){const e=$("#export-btn");e&&(e.disabled=!0,e.textContent="Preparing\u2026");try{
+const e=await Promise.all([fetchAll("clients","created_at"),fetchAll("interactions","happened_at"),fetchAll("followups","created_at"),fetchAll("profiles","created_at")]),t=e[0],a=e[1],n=e[2],i=e[3],o=new Map(i.map((e=>[e.id,e.full_name||e.email||""]))),s=new Map(t.map((e=>[e.id,e.trade_name]))),r=[]
+;t.forEach((e=>{e.card_image_path&&r.push(e.card_image_path),e.card_image_back_path&&r.push(e.card_image_back_path)}));const l=new Map;for(let e=0;e<r.length;e+=100){
+const{data:t}=await db.storage.from("cards").createSignedUrls(r.slice(e,e+100),604800);(t||[]).forEach((e=>{e&&e.signedUrl&&l.set(e.path,e.signedUrl)}))}const c=todayStr()
+;downloadFile("bj-clients-"+c+".csv",buildCsv(["Trade name","Company","Contact person","Designation","Mobile","Other mobiles","Email","Website","Social profiles","Scanned code","Owner's name","Address","Area","City","State","Polki jewellery","Category","Order type","Interest","Entry","Added by","Added on","Card front (7-day link)","Card back (7-day link)"],t.map((e=>[e.trade_name,e.company_name,e.contact_person,e.designation,e.mobile,e.phone_other,e.email,e.website,e.social_links,e.card_code,e.owner_name,e.address,e.area,e.city,e.state,ynExp(e.is_polki_buyer),e.category,e.order_type,e.interest,e.entry_source,o.get(e.created_by)||"",fmtExp(e.created_at),l.get(e.card_image_path)||"",l.get(e.card_image_back_path)||""])))),
+await new Promise((e=>setTimeout(e,450))),
+downloadFile("bj-meetings-"+c+".csv",buildCsv(["Date","Client","Executive","Outcome","What happened","Interest after"],a.map((e=>[fmtExp(e.happened_at),s.get(e.client_id)||"",o.get(e.exec_id)||"",e.outcome,e.notes,e.interest_after])))),
+await new Promise((e=>setTimeout(e,450))),
+downloadFile("bj-followups-"+c+".csv",buildCsv(["Client","Type","Details","Due date","Status","Assigned to","Created by","Created on","Done on"],n.map((e=>[s.get(e.client_id)||"",e.type,e.content,e.due_date||"",e.status,o.get(e.assigned_to)||"",o.get(e.created_by)||"",fmtExp(e.created_at),fmtExp(e.done_at)])))),
+toast("3 files downloaded \u2014 clients, meetings, follow-ups \u2713","ok")}catch(e){toast("Export failed \u2014 please try again.","err")}e&&(e.disabled=!1,e.textContent="\u2b07 Export all data")}async function renderMore(){
+setHeader("More",!1);const e="owner"===S.me.role
+;let t='<div class="card"><h3>'+esc(S.me.full_name||"Me")+'</h3><span class="chip chip-role">'+(e?"Owner":"Marketing Executive")+'</span><div style="margin-top:12px"><button class="btn btn-small btn-danger-ghost" data-action="logout">Sign out</button></div></div>'
+;e&&(t+='<div class="section-label">Team</div><div class="card" id="team-card"><div class="empty" style="padding:8px">Loading\u2026</div></div><button class="btn btn-secondary" data-action="team-add" style="margin-bottom:14px">\uff0b Add team member</button><div class="section-label">Card scanning</div><div class="card" id="gemini-card"><p style="margin:0 0 10px;font-size:14px;color:'+(S.geminiConfigured?"var(--green)":"var(--muted)")+'">'+(S.geminiConfigured?"\u2713 Card scanning is ON.":"Not set up yet \u2014 executives can still type details and attach card photos.")+'</p><div class="field"><label>Google AI Studio key '+(S.geminiConfigured?"(paste to replace)":"")+'</label><input type="password" id="gemini-key" placeholder="AIza\u2026"><div class="hint">Free key from <b>aistudio.google.com/apikey</b> \u2014 sign in with Google \u2192 Create API key \u2192 paste here. Takes 2 minutes, no card required.</div></div><button class="btn btn-primary" data-action="save-gemini" id="gemini-btn">Save key</button></div><div class="section-label">Data backup</div><div class="card"><p style="margin:0 0 10px;font-size:14px;color:var(--muted)">Every entry is saved instantly to the secure database, and an automatic snapshot of everything is kept daily for 30 days. Download your complete data (3 Excel-ready files) any time:</p><button class="btn btn-primary" data-action="export-data" id="export-btn">\u2b07 Export all data</button></div>'),
+t+='<div class="empty" style="padding-top:6px;font-size:12.5px">Bhagwati Jewels \xb7 Marketing app \xb7 Phase 2</div>',$("#content").innerHTML=t,e&&renderTeamList()}async function renderTeamList(){const e=$("#team-card");if(!e)return
+;const{data:t,error:a}=await db.from("profiles").select("*").order("created_at",{ascending:!0});a?e.innerHTML='<div class="empty" style="padding:8px">Could not load team.</div>':(S.team=new Map((t||[]).map((e=>[e.id,e]))),
+e.innerHTML=(t||[]).map((e=>{const t=e.id===S.me.id
+;return'<div class="member-row"><div class="m-main"><div class="m-name">'+esc(e.full_name||"(no name)")+(t?" (you)":"")+'</div><div class="m-sub">'+esc(e.email||"")+'</div></div><span class="chip '+(e.active?"chip-role":"chip-off")+'">'+("owner"===e.role?"Owner":e.active?"Active":"Off")+"</span>"+(t?"":'<div class="m-actions"><button class="btn btn-small btn-ghost" data-action="member-resetpw" data-id="'+e.id+'">Reset PW</button><button class="btn btn-small '+(e.active?"btn-danger-ghost":"btn-ghost")+'" data-action="member-toggle" data-id="'+e.id+'" data-active="'+e.active+'">'+(e.active?"Deactivate":"Activate")+"</button></div>")+"</div>"
+})).join("")||'<div class="empty" style="padding:8px">Only you so far \u2014 add your executives.</div>')}function renderTeamAddModal(){
+const e=openModal('<h3>Add team member</h3><p>They sign in with this email &amp; password \u2014 share it with them on WhatsApp or in person.</p><div class="field"><label>Full name</label><input type="text" id="tm-name"></div><div class="field"><label>Email</label><input type="email" id="tm-email" placeholder="name@gmail.com"></div><div class="field"><label>Password (min 8 characters)</label><input type="text" id="tm-pass" autocomplete="off"></div><div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button><button class="btn btn-primary" data-m="yes">Create login</button></div>')
+;e.querySelector("[data-m=no]").onclick=closeModal,e.querySelector("[data-m=yes]").onclick=async e=>{const t=$("#tm-name").value.trim(),a=$("#tm-email").value.trim(),n=$("#tm-pass").value
+;if(!t||!a||n.length<8)return void toast("Fill name, email, and a password of 8+ characters.","err");e.target.disabled=!0,e.target.textContent="Creating\u2026";const i=await callAdmin("create_user",{email:a,password:n,full_name:t})
+;if(i.error)return e.target.disabled=!1,e.target.textContent="Create login",void toast(i.error,"err");closeModal(),toast(t+" added \u2713 \u2014 share their email & password with them.","ok"),renderTeamList()}}
+function renderResetPwModal(e){
+const t=openModal("<h3>Reset password</h3><p>Set a new password for "+esc(nameOf(e))+' and share it with them.</p><div class="field"><label>New password (min 8 characters)</label><input type="text" id="rp-pass" autocomplete="off"></div><div class="modal-actions"><button class="btn btn-secondary" data-m="no">Cancel</button><button class="btn btn-primary" data-m="yes">Set password</button></div>')
+;t.querySelector("[data-m=no]").onclick=closeModal,t.querySelector("[data-m=yes]").onclick=async t=>{const a=$("#rp-pass").value;if(a.length<8)return void toast("Password must be at least 8 characters.","err");t.target.disabled=!0
+;const n=await callAdmin("reset_password",{user_id:e,password:a});if(n.error)return t.target.disabled=!1,void toast(n.error,"err");closeModal(),toast("Password updated \u2713","ok")}}function toggleMember(e,t){
+confirmModal(t?"Deactivate this member?":"Reactivate this member?",t?"They will not be able to sign in until you reactivate them. Their records stay safe.":"They will be able to sign in again.",t?"Deactivate":"Activate",(async()=>{
+const a=await callAdmin("set_active",{user_id:e,active:!t});a.error?toast(a.error,"err"):(toast("Done \u2713","ok"),renderTeamList())}),t)}async function saveGeminiKey(){const e=$("#gemini-key").value.trim()
+;if(!e)return void toast("Paste the key first.","err");const t=$("#gemini-btn");t.disabled=!0,t.textContent="Saving\u2026";const a=await callAdmin("set_secret",{key:"gemini_key",value:e});t.disabled=!1,t.textContent="Save key",
+a.error?toast(a.error,"err"):(S.geminiConfigured=!0,toast("Card scanning is now ON \u2713","ok"),renderMore())}async function enterApp(){let e=null,t=!1;for(let a=0;a<3&&!e;a++){let a;try{
+a=await db.from("profiles").select("*").eq("id",S.session.user.id).maybeSingle()}catch(e){a={error:{message:"network"}}}e=a.data||null,t=!!a.error,e||await new Promise((e=>setTimeout(e,700)))}
+if(!e&&t)return void($("#app").innerHTML='<div class="auth-wrap"><div class="auth-head"><div class="logo-badge" style="margin:0 auto">BJ</div><h1>Bhagwati Jewels</h1><p>Marketing &amp; Lead Capture</p></div><div class="auth-card"><h2>No internet connection</h2><p class="sub">You are still signed in. Connect to the internet and tap Retry.</p><button class="btn btn-primary" onclick="location.reload()">Retry</button></div></div>')
+;if(!e||!e.active){toast(e?"Your account is deactivated. Please contact the owner.":"Your login is not active \u2014 please contact the owner.","err");try{await db.auth.signOut()}catch(e){}return void showAuth()}S.me=e,
+lastActiveCheck=Date.now();const[a,n]=await Promise.all([db.from("profiles").select("*"),callAdmin("status")]);S.team=new Map((a.data||[]).map((e=>[e.id,e]))),S.geminiConfigured=!!n.gemini_configured,renderShell(),switchTab("today")}
+async function boot(){if("serviceWorker"in navigator)try{navigator.serviceWorker.register("sw.js").catch((()=>{}))}catch(e){}let e=null;try{e=(await db.auth.getSession()).data.session}catch(t){e=null}S.session=e,
+db.auth.onAuthStateChange(((e,t)=>{const a=!!S.session;S.session=t,"SIGNED_IN"!==e||a||setTimeout(enterApp,0),"SIGNED_OUT"===e&&(S.me=null,setTimeout(showAuth,0))})),e?enterApp():showAuth()}boot();

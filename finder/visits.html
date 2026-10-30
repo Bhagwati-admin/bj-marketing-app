@@ -1,1716 +1,463 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#7b1e3c">
-  <title>Bhagwati Jewels — US Visits</title>
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="manifest" href="visits-manifest.json">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="US Visits">
-  <link rel="stylesheet" href="../styles.css">
-  <style>
-    :root { --mar: var(--maroon, #7b1e3c); --cd: var(--card, #fff); --mu: var(--muted, #6b6b6b);
-            --rd: var(--radius, 12px); --sh: var(--shadow, 0 1px 3px rgba(0,0,0,.12)); }
-    * { -webkit-tap-highlight-color: transparent; }
-    /* the header is sticky; without this, tapping a field lets iOS scroll it under the header */
-    html { scroll-padding-top: 104px; }
-    body { margin: 0; background: #f6f3f4; color: #1c1c1c;
-           font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           padding-bottom: env(safe-area-inset-bottom); }
-    .v-hd { position: sticky; top: 0; z-index: 30; background: var(--mar); color: #fff;
-            padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; }
-    .v-hd h1 { margin: 0; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-    .v-hd .sp { flex: 1; }
-    .v-back { background: none; border: 0; color: #fff; font-size: 20px; padding: 2px 8px 2px 0; cursor: pointer; }
-    .v-out { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 8px; }
-    .v-sync { display: block; margin-top: 7px; font-size: 12.5px; border-radius: 20px; padding: 4px 11px;
-              background: rgba(255,255,255,.16); border: 0; color: #fff; cursor: pointer; }
-    .v-sync.warn { background: #fbe1df; color: #a12b24; font-weight: 600; }
-    .v-sync.wait { background: #fcefd2; color: #7a4a02; font-weight: 600; }
-    .v-tabs { display: flex; background: var(--cd); border-bottom: 1px solid #e6e0e2; position: sticky;
-              top: 0; z-index: 20; }
-    .v-tabs button { flex: 1; background: none; border: 0; padding: 12px 4px 10px; font-size: 13.5px;
-                     color: var(--mu); cursor: pointer; border-bottom: 2.5px solid transparent; }
-    .v-tabs button.on { color: var(--mar); font-weight: 600; border-bottom-color: var(--mar); }
-    .wrap { padding: 13px; max-width: 720px; margin: 0 auto; }
-    .card { background: var(--cd); border-radius: var(--rd); box-shadow: var(--sh); padding: 13px 14px; margin-bottom: 11px; }
-    .card h3 { margin: 0 0 3px; font-size: 15.5px; }
-    .card .sub { font-size: 12.5px; color: var(--mu); }
-    .sec-t { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--mu);
-             margin: 18px 2px 8px; font-weight: 600; }
-    .field { margin-bottom: 12px; }
-    .field label { display: block; font-size: 12.5px; color: var(--mu); margin-bottom: 5px; font-weight: 600; }
-    .field input[type=text], .field input[type=email], .field input[type=tel],
-    .field input[type=date], .field input[type=number], .field textarea, .field select {
-      width: 100%; box-sizing: border-box; padding: 11px 12px; font-size: 16px; font-family: inherit;
-      border: 1px solid #d9d2d4; border-radius: 9px; background: #fff; color: inherit; }
-    .field textarea { min-height: 96px; resize: vertical; }
-    .field input:focus, .field textarea:focus { outline: 2px solid var(--mar); outline-offset: -1px; border-color: var(--mar); }
-    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
-    .chip { border: 1px solid #d9d2d4; background: #fff; color: #333; border-radius: 20px;
-            padding: 8px 13px; font-size: 13.5px; cursor: pointer; font-family: inherit; }
-    .chip.on { background: var(--mar); border-color: var(--mar); color: #fff; font-weight: 600; }
-    .chip.hot.on { background: #c0392b; border-color: #c0392b; }
-    .chip.warm.on { background: #b8860b; border-color: #b8860b; }
-    .chip.cold.on { background: #4a6b8a; border-color: #4a6b8a; }
-    .btn { display: block; width: 100%; box-sizing: border-box; padding: 14px; font-size: 16px;
-           font-weight: 600; font-family: inherit; border: 0; border-radius: 11px;
-           background: var(--mar); color: #fff; cursor: pointer; }
-    .btn.ghost { background: #fff; color: var(--mar); border: 1.5px solid var(--mar); }
-    .btn:disabled { opacity: .55; }
-    .row { display: flex; gap: 9px; }
-    .row .field { flex: 1; }
-    .q { display: flex; align-items: center; gap: 9px; padding: 11px 12px; background: var(--cd);
-         border-radius: var(--rd); box-shadow: var(--sh); margin-bottom: 8px; }
-    .q .body { flex: 1; min-width: 0; }
-    .q .nm { font-size: 14.5px; font-weight: 600; }
-    .q .mt { font-size: 12.5px; color: var(--mu); }
-    .q a.go, .q button.go { border: 1px solid var(--mar); background: #fff; color: var(--mar);
-         border-radius: 8px; padding: 7px 10px; font-size: 13px; text-decoration: none; font-family: inherit; cursor: pointer; }
-    .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
-    .pill.overdue { background: #fbe1df; color: #a12b24; }
-    .pill.today { background: #fcefd2; color: #7a4a02; }
-    .pill.next7 { background: #eee9f2; color: #5b4a6b; }
-    .pill.later { background: #eee; color: #666; }
-    .pill.hot { background: #fbe1df; color: #a12b24; }
-    .pill.warm { background: #fcefd2; color: #7a4a02; }
-    .pill.cold { background: #e7eef5; color: #2c4a68; }
-    .empty { text-align: center; color: var(--mu); font-size: 13.5px; padding: 26px 14px; }
-    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 90;
-             background: #222; color: #fff; padding: 11px 16px; border-radius: 22px; font-size: 13.5px;
-             max-width: 90%; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-    .toast.ok { background: #16663c; } .toast.err { background: #a12b24; }
-    .toast-act { background: none; border: 0; color: #9fe0b8; font-weight: 700; font-size: 13.5px;
-                 margin-left: 10px; padding: 2px 4px; text-decoration: underline; cursor: pointer;
-                 font-family: inherit; }
-    .banner { background: #fcefd2; color: #7a4a02; padding: 9px 13px; font-size: 12.5px; text-align: center; }
-    .banner.off { background: #4a4a4a; color: #fff; }
-    #gate { max-width: 340px; margin: 12vh auto; padding: 0 20px; }
-    #gate h2 { text-align: center; color: var(--mar); font-size: 19px; }
-    .hist { border-left: 2.5px solid #e6e0e2; padding-left: 12px; margin-left: 3px; }
-    .hist .v { margin-bottom: 14px; }
-    .hist .v .when { font-size: 12px; color: var(--mu); }
-    .hist .v .fb { font-size: 13.5px; margin-top: 3px; white-space: pre-wrap; }
-    .tags { font-size: 12px; color: var(--mu); margin-top: 4px; }
-    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: #fff;
-      border-bottom: 1px solid #e7e0e6; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
-      color: #7a7280; background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
-    .bjnav a.on { background: #7b1e3c; color: #fff; }
-    .bjback { display: block; background: #f6e7c4; color: #7a5410; border: 0; border-bottom: 1px solid #e6d4a8;
-      width: 100%; text-align: left; padding: 10px 14px; font-size: 13.5px; font-weight: 650;
-      cursor: pointer; text-decoration: none; }
-  </style>
-</head>
-<body>
-
-<div id="gate" style="display:none">
-  <h2>US Visits</h2>
-  <p style="text-align:center;color:#6b6b6b;font-size:13px;margin-top:-6px">Bhagwati Jewels — United States</p>
-  <div class="field"><label>Email</label><input id="g-em" type="email" autocomplete="username"></div>
-  <div class="field"><label>Password</label><input id="g-pw" type="password" autocomplete="current-password"></div>
-  <button class="btn" id="g-go">Sign in</button>
-  <p id="g-err" style="color:#a12b24;font-size:13px;text-align:center"></p>
-</div>
-
-<div id="app" style="display:none">
-  <div class="v-hd">
-    <h1><button class="v-back" id="hd-back" style="display:none" onclick="goBack()">‹</button>
-        <span id="hd-title">US Visits</span><span class="sp"></span>
-        <button class="v-out" onclick="signOut()">Sign out</button></h1>
-    <button class="v-sync" id="sync-b" onclick="flush(true)">✓ All saved</button>
-  </div>
-  <nav class="bjnav">
-    <a href="./">🔎 Leads</a><a href="trips.html">🗺️ Trips</a>
-    <a href="visits.html" class="on" aria-current="page">📝 Visits</a><a href="approve.html">✅ Approve</a>
-  </nav>
-  <a class="bjback" id="back-day" style="display:none" href="#">‹ Back to the trip day</a>
-  <div class="banner off" id="off-b" style="display:none">No signal — visits are being saved on this phone</div>
-  <div class="v-tabs" id="tabs">
-    <button data-t="today" class="on" onclick="tab('today')">Today</button>
-    <button data-t="log" onclick="tab('log')">Log a visit</button>
-    <button data-t="clients" onclick="tab('clients')">Clients</button>
-  </div>
-  <div class="wrap" id="view"></div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
-<script src="../config.js"></script>
-<script>
-(function () {
-  'use strict';
-  // Boot guard. The Supabase library comes from a CDN; the service worker caches it after the
-  // first online visit, but a cold first load with no signal would otherwise show a blank screen.
-  if (!window.supabase || !window.supabase.createClient || typeof BJ_CONFIG === 'undefined') {
-    document.addEventListener('DOMContentLoaded', function () {
-      document.body.innerHTML =
-        '<div style="max-width:340px;margin:16vh auto;padding:0 24px;text-align:center;' +
-        'font:15px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;color:#1c1c1c">' +
-        '<h2 style="color:#7b1e3c;font-size:19px">Could not finish loading</h2>' +
-        '<p>One of the app files did not download. This happens on a first open with no signal.</p>' +
-        '<p style="color:#6b6b6b;font-size:13.5px">Get a bar of signal and reload once. After that ' +
-        'the app opens offline on its own.</p>' +
-        '<button onclick="location.reload()" style="padding:13px 22px;font-size:16px;font-weight:600;' +
-        'border:0;border-radius:11px;background:#7b1e3c;color:#fff">Reload</button></div>';
-    });
-    return;
-  }
-  const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
-
-  const S = { tab: 'today', view: null, stack: [], queue: [], work: [], pack: null,
-              engaged: [], recent: [], place: null, form: null, client: null, busy: false,
-              backDay: '', backTrip: '' };
-
-  /* ---------------- small helpers ---------------- */
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const digits = (s) => String(s || '').replace(/[^\d+]/g, '');
-  function uuid() {
-    if (crypto && crypto.randomUUID) return crypto.randomUUID();
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
-      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-    });
-  }
-  // Local calendar date. NEVER toISOString() on a local midnight — from India that lands a day early.
-  function todayISO() {
-    const d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  }
-  function addDaysISO(iso, n) {
-    const d = new Date(iso + 'T12:00:00Z');
-    d.setUTCDate(d.getUTCDate() + n);
-    return d.toISOString().slice(0, 10);
-  }
-  function fmtDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso + 'T12:00:00Z');
-    return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-  }
-  // Local-day key, same shape as todayISO(), so a visit logged at 6pm New York time
-  // is filed under that evening and not pushed into tomorrow by UTC.
-  function dayKey(ts) {
-    const d = new Date(ts);
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  }
-  function dayLabel(key) {
-    const t = todayISO();
-    if (key === t) return 'Today';
-    if (key === addDaysISO(t, -1)) return 'Yesterday';
-    return new Date(key + 'T12:00:00').toLocaleDateString(undefined,
-      { weekday: 'short', day: 'numeric', month: 'short' });
-  }
-  function timeOf(ts) {
-    return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  }
-  const OUT_SHORT = { met: 'met the buyer', order: 'placed an order', buyer_out: 'buyer was out',
-    not_interested: 'not interested', closed: 'closed', no_answer: 'no answer' };
-
-  function fmtWhen(ts) {
-    if (!ts) return '';
-    const d = new Date(ts);
-    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) + ', ' +
-           d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  }
-  function toastAction(msg, label, fn) {
-    const old = document.querySelector('.toast'); if (old) old.remove();
-    const el = document.createElement('div');
-    el.className = 'toast ok';
-    el.textContent = msg;
-    const b = document.createElement('button');
-    b.className = 'toast-act'; b.textContent = label;
-    b.onclick = () => { el.remove(); clearTimeout(toastT); fn(); };
-    el.appendChild(b);
-    document.body.appendChild(el);
-    clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 8000);
-  }
-  let toastT;
-  function toast(msg, kind) {
-    const old = document.querySelector('.toast'); if (old) old.remove();
-    const el = document.createElement('div');
-    el.className = 'toast' + (kind ? ' ' + kind : ''); el.textContent = msg;
-    document.body.appendChild(el);
-    clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 3400);
-  }
-
-  /* ---------------- offline queue ---------------- */
-  // IndexedDB where available, localStorage where Safari blocks it (private tabs).
-  const DBN = 'bj_us_visits', STORE = 'queue', LSK = 'bj_us_queue';
-  let backend = null;
-  function openDB() {
-    return new Promise((res, rej) => {
-      let r; try { r = indexedDB.open(DBN, 1); } catch (e) { return rej(e); }
-      r.onupgradeneeded = () => { const db = r.result;
-        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' }); };
-      r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
-      r.onblocked = () => rej(new Error('idb blocked'));
-    });
-  }
-  function idbTx(db, mode, fn) {
-    return new Promise((res, rej) => {
-      const t = db.transaction(STORE, mode); const rq = fn(t.objectStore(STORE));
-      t.oncomplete = () => res(rq ? rq.result : undefined);
-      t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
-    });
-  }
-  const lsAll = () => { try { return JSON.parse(localStorage.getItem(LSK) || '[]'); } catch (e) { return []; } };
-  const lsSave = (a) => { try { localStorage.setItem(LSK, JSON.stringify(a)); } catch (e) {} };
-  const Q = {
-    async pick() {
-      if (backend) return backend;
-      try { const db = await openDB(); await idbTx(db, 'readonly', (s) => s.count()); backend = { db }; }
-      catch (e) { backend = { ls: true }; }
-      return backend;
-    },
-    async all() {
-      const b = await Q.pick();
-      if (b.ls) return lsAll();
-      try { return (await idbTx(b.db, 'readonly', (s) => s.getAll())) || []; }
-      catch (e) { return lsAll(); }
-    },
-    async put(item) {
-      const b = await Q.pick();
-      if (b.ls) { const a = lsAll().filter((x) => x.id !== item.id); a.push(item); lsSave(a); return; }
-      try { await idbTx(b.db, 'readwrite', (s) => s.put(item)); }
-      catch (e) { const a = lsAll().filter((x) => x.id !== item.id); a.push(item); lsSave(a); }
-    },
-    async del(id) {
-      const b = await Q.pick();
-      if (b.ls) { lsSave(lsAll().filter((x) => x.id !== id)); return; }
-      try { await idbTx(b.db, 'readwrite', (s) => s.delete(id)); }
-      catch (e) { lsSave(lsAll().filter((x) => x.id !== id)); }
-    }
-  };
-
-  function isNetErr(e) {
-    const m = String((e && (e.message || e.error_description)) || e || '').toLowerCase();
-    return !navigator.onLine || m.includes('failed to fetch') || m.includes('networkerror') ||
-           m.includes('load failed') || m.includes('network request failed') || m.includes('timeout');
-  }
-
-  async function refreshQueue() { S.queue = await Q.all(); renderSync(); }
-
-  function renderSync() {
-    const b = $('sync-b'); if (!b) return;
-    const stuck = S.queue.filter((q) => q.stuck).length;
-    const wait = S.queue.length - stuck;
-    const off = $('off-b');
-    if (off) {
-      if (S.degraded) {
-        off.style.display = 'block';
-        off.textContent = 'Cannot reach the server — keep logging. Everything is saved on this phone and syncs when you are back.';
-      } else if (!navigator.onLine) {
-        off.style.display = 'block';
-        off.textContent = 'No signal — visits are being saved on this phone';
-      } else off.style.display = 'none';
-    }
-    b.className = 'v-sync';
-    if (stuck) { b.classList.add('warn'); b.textContent = '⚠️ ' + stuck + ' could not be saved — tap'; }
-    else if (wait) { b.classList.add('wait');
-      b.textContent = '⏳ ' + wait + (wait === 1 ? ' visit' : ' visits') + ' waiting to sync — tap to retry'; }
-    else b.textContent = navigator.onLine ? '✓ All saved' : '✓ All saved on this phone';
-  }
-
-  let flushing = false;
-  async function flush(manual) {
-    if (flushing) return;
-    flushing = true;
-    try {
-      await refreshQueue();
-      if (!S.queue.length) { if (manual) toast('Nothing waiting — everything is saved', 'ok'); return; }
-      if (!navigator.onLine) { if (manual) toast('Still no signal. Your visits are safe on this phone.'); return; }
-      let done = 0, failed = 0;
-      const items = S.queue.slice().sort((a, b) => (a.created || 0) - (b.created || 0));
-      for (const it of items) {
-        try {
-          const { error } = await sb.rpc('lf_log_visit', { p: it.payload });
-          if (error) throw error;
-          await Q.del(it.id); done++;
-        } catch (e) {
-          if (isNetErr(e)) { break; }                       // offline again — stop, keep everything
-          it.tries = (it.tries || 0) + 1;
-          it.lastError = String((e && e.message) || e);
-          if (it.tries >= 3) it.stuck = true;               // a real rejection, not a dropped signal
-          await Q.put(it); failed++;
-        }
-      }
-      await refreshQueue();
-      if (done && manual) toast(done + (done === 1 ? ' visit synced' : ' visits synced'), 'ok');
-      else if (done) toast(done + (done === 1 ? ' visit synced ✓' : ' visits synced ✓'), 'ok');
-      if (failed && manual) showStuck();
-      if (done) refreshAll();
-    } finally { flushing = false; }
-  }
-  function showStuck() {
-    const bad = S.queue.filter((q) => q.stuck);
-    if (!bad.length) { toast('Retrying…'); return; }
-    alert('These visits were rejected by the server and need attention:\n\n' +
-      bad.map((b) => '• ' + (b.label || 'visit') + '\n  ' + (b.lastError || '')).join('\n\n') +
-      '\n\nNothing has been lost — they are still on this phone.');
-  }
-
-  /* ---------------- trip pack (so the shop list works offline) ---------------- */
-  const PACK = 'bj_us_trippack';
-  function loadPackLocal() { try { S.pack = JSON.parse(localStorage.getItem(PACK) || 'null'); } catch (e) { S.pack = null; } }
-  async function refreshPack() {
-    if (!navigator.onLine) return;
-    try {
-      const { data: trips } = await sb.from('lf_trips').select('*').order('start_date', { ascending: true });
-      if (!trips || !trips.length) return;
-      const t = trips.find((x) => x.status !== 'done') || trips[trips.length - 1];
-      const { data: days } = await sb.from('lf_trip_days').select('*').eq('trip_id', t.id).order('day_index');
-      const dayIds = (days || []).map((d) => d.id);
-      let stops = [];
-      if (dayIds.length) {
-        const { data } = await sb.from('lf_stops')
-          .select('id,day_id,place_id,seq,status,visited_at,lf_places(id,name,city,region,address,phone,website,priority,pitch_angle,approach_msg)')
-          .in('day_id', dayIds).order('seq');
-        stops = data || [];
-      }
-      S.pack = { at: Date.now(), trip: t, days: days || [],
-        stops: stops.map((s) => ({ id: s.id, day_id: s.day_id, place_id: s.place_id, seq: s.seq,
-          status: s.status, visited_at: s.visited_at, place: s.lf_places })) };
-      try { localStorage.setItem(PACK, JSON.stringify(S.pack)); } catch (e) {}
-    } catch (e) { /* keep whatever pack we already had */ }
-  }
-
-  // THE BUG this fixes: bringing the app back to the foreground called flush(), and
-  // flush() only reloads the lists when it actually syncs something. Once the queue had
-  // drained, nothing was ever re-read — so the screen kept showing the lists as they
-  // stood when the FIRST visit of the evening synced, and ten later ones were invisible.
-  let refreshing = false;
-  async function refreshAll() {
-    if (refreshing || !navigator.onLine) return;
-    refreshing = true;
-    try {
-      await Promise.all([loadWork(), loadEngaged(), loadRecent(), refreshPack()]);
-      if (!S.stack.length) render();      // never redraw over a form he is filling in
-    } finally { refreshing = false; }
-  }
-
-  async function loadWork() {
-    if (!navigator.onLine) return;
-    try {
-      const { data } = await sb.from('lf_work_queue').select('*').order('due_date').limit(500);
-      S.work = data || [];
-      try { localStorage.setItem('bj_us_work', JSON.stringify(S.work)); } catch (e) {}
-    } catch (e) {
-      try { S.work = JSON.parse(localStorage.getItem('bj_us_work') || '[]'); } catch (e2) { S.work = []; }
-    }
-  }
-
-  /* ---------------- option lists ---------------- */
-  const ROLES = ['Owner', 'Buyer', 'Manager', 'Staff', 'Other'];
-  // Same A/B/C the India app grades its clients with. Unset means not graded yet —
-  // the US side keeps that as NULL rather than the India app's literal 'Undefined'.
-  const GRADES = ['A', 'B', 'C'];
-  // Asked face to face. Different thing from priority 5, which came off a website.
-  const BUYS_LAB = [['yes', 'Yes'], ['no', 'No']];
-  const LAB_STOCK = [['stock', 'Keeps stock'], ['on_demand', 'Only on demand']];
-  const OUTCOMES = [['met', '✓ Met the buyer'], ['order', '🧾 Placed an order'],
-    ['buyer_out', '↻ Buyer was out'], ['not_interested', '✗ Not interested'],
-    ['no_answer', '— Closed / no answer'], ['other', 'Other']];
-  const INTEREST = [['hot', '🔥 Hot'], ['warm', 'Warm'], ['cold', 'Cold']];
-  const ASKED = ['Studs & solitaires', 'Engagement rings', 'Bridal sets', 'Tennis bracelets',
-    'Necklaces & pendants', 'Bangles & bracelets', "Men's jewellery", 'Loose stones',
-    'Custom / bespoke', 'IGI certificates', 'Price list', 'Memo / consignment',
-    'Credit terms', 'Ready stock', 'Overnight from NY'];
-  const OBJECTIONS = ['Price too high', 'Already has a supplier', 'Natural diamonds only',
-    'Minimum order too big', 'Wants longer credit', 'Not buying this season',
-    'Wants to see quality first', 'Worried about resale', 'Must ask a partner', 'Other'];
-  const ORDER_TYPES = [['none', 'No order yet'], ['memo', 'On memo'], ['trial', 'Trial order'],
-    ['outright', 'Outright order'], ['custom', 'Custom order']];
-  const NEXT = ['Appointment', 'Send price list', 'Send samples', 'Send on memo', 'Call back',
-    'Visit again', 'Visit next trip', 'Send IGI certificates', 'Nothing for now'];
-  const NO_DATE = 'Visit next trip';   // no date: surfaces whenever a day is planned in that city
-  const APPT = 'Appointment';          // the one next step that carries a time of day
-
-  /* ---------------- navigation ---------------- */
-  function tab(t) { S.tab = t; S.stack = []; S.client = null;
-    [...document.querySelectorAll('#tabs button')].forEach((b) => b.classList.toggle('on', b.dataset.t === t));
-    render(); }
-  function push(v) { S.stack.push(v); render(); }
-  function goBack() { S.stack.pop(); render(); }
-
-  function render() {
-    const v = $('view'); if (!v) return;
-    const top = S.stack[S.stack.length - 1];
-    $('hd-back').style.display = top ? '' : 'none';
-    $('tabs').style.display = top ? 'none' : 'flex';
-    if (top === 'form') { $('hd-title').textContent = 'Log a visit'; return v.innerHTML = formHtml(); }
-    if (top === 'client') { $('hd-title').textContent = 'Client'; return v.innerHTML = clientHtml(); }
-    $('hd-title').textContent = 'US Visits';
-    if (S.tab === 'today') return v.innerHTML = todayHtml();
-    if (S.tab === 'log') return v.innerHTML = pickHtml();
-    return v.innerHTML = clientsHtml();
-  }
-
-  /* ---------------- TODAY ---------------- */
-  function bucketOf(due) {
-    const t = todayISO();
-    if (due < t) return 'overdue';
-    if (due === t) return 'today';
-    if (due <= addDaysISO(t, 7)) return 'next7';
-    return 'later';
-  }
-  function todayHtml() {
-    const t = todayISO();
-    const day = S.pack && (S.pack.days || []).find((d) => d.day_date === t);
-    const stops = day ? (S.pack.stops || []).filter((s) => s.day_id === day.id) : [];
-    const pend = stops.filter((s) => s.status === 'planned');
-    const loggedIds = new Set(S.queue.map((q) => q.payload && q.payload.stop_id).filter(Boolean));
-
-    let h = '';
-    if (day) {
-      h += '<div class="sec-t">Today on the road — ' + esc(S.pack.trip.name) + ', day ' + day.day_index + '</div>';
-      if (!stops.length) h += '<div class="empty">No stops planned for today.</div>';
-      h += stops.map((s) => {
-        const p = s.place || {}; const done = s.status !== 'planned' || loggedIds.has(s.id);
-        return '<div class="q"><div class="body"><div class="nm">' + s.seq + '. ' + esc(p.name || 'Shop') +
-          (done ? ' <span class="pill next7">logged</span>' : '') + '</div>' +
-          '<div class="mt">' + esc([p.address, p.city].filter(Boolean).join(', ') || 'no address') + '</div></div>' +
-          (p.phone ? '<a class="go" href="tel:' + esc(digits(p.phone)) + '">Call</a>' : '') +
-          '<button class="go" onclick="openForm(' + JSON.stringify(JSON.stringify({ place: p, stop_id: s.id, trip_id: S.pack.trip.id })).replace(/"/g, '&quot;') + ')">' +
-          (done ? 'Log again' : 'Log visit') + '</button></div>';
-      }).join('');
-    } else {
-      h += '<div class="sec-t">Today</div>' +
-        '<div class="card"><h3>No trip day set for today</h3><div class="sub">You can still log any visit — use the ' +
-        '<b>Log a visit</b> tab and search for the shop.</div></div>';
-    }
-
-    h += loggedHtml();
-
-    // An appointment is a promise made to someone at a time. It leads its day.
-    const apptFirst = (a, b) => {
-      const aa = a.kind === 'appointment', bb = b.kind === 'appointment';
-      if (aa !== bb) return aa ? -1 : 1;
-      if (aa && bb) return String(a.due_time || '').localeCompare(String(b.due_time || ''));
-      return 0;
-    };
-    const groups = [['overdue', 'Overdue'], ['today', 'Due today'], ['next7', 'Next 7 days']];
-    const cityOnes = S.work.filter((w) => w.kind === 'next_city_visit' || !w.due_date);
-    const open = S.work.filter((w) => w.due_date && w.kind !== 'next_city_visit');
-    h += '<div class="sec-t">Follow-ups to work on' + (open.length ? ' (' + open.length + ')' : '') + '</div>';
-    let any = false;
-    for (const [k, label] of groups) {
-      const rows = open.filter((w) => bucketOf(w.due_date) === k).sort(apptFirst);
-      if (!rows.length) continue;
-      any = true;
-      h += '<div style="margin:0 2px 6px"><span class="pill ' + k + '">' + label + ' · ' + rows.length + '</span></div>';
-      h += rows.map(workRow).join('');
-    }
-    const later = open.filter((w) => bucketOf(w.due_date) === 'later').sort(apptFirst);
-    if (later.length) { any = true;
-      h += '<div style="margin:10px 2px 6px"><span class="pill later">Later · ' + later.length + '</span></div>' +
-           later.slice(0, 20).map(workRow).join(''); }
-    if (!any) h += '<div class="empty">Nothing dated. Follow-ups you set while logging visits appear here.</div>';
-
-    if (cityOnes.length) {
-      const byCity = {};
-      cityOnes.forEach(function (w) { const c = w.city || 'Unknown'; (byCity[c] = byCity[c] || []).push(w); });
-      h += '<div class="sec-t">Call in when you are next in these cities (' + cityOnes.length + ')</div>';
-      h += Object.keys(byCity).sort().map(function (c) {
-        return '<div style="margin:10px 2px 6px"><span class="pill next7">' + esc(c) + ' · ' +
-          byCity[c].length + (byCity[c].length === 1 ? ' shop' : ' shops') + '</span></div>' +
-          byCity[c].map(workRow).join('');
-      }).join('');
-    }
-    return h;
-  }
-  function loggedHtml() {
-    const shops = new Map((S.engaged || []).map((r) => [r.id, r]));
-    const pend = (S.queue || []).slice().sort((a, b) => (b.created || 0) - (a.created || 0));
-    const rows = (S.recent || []).slice(0, 30);
-    if (!rows.length && !pend.length) {
-      return '<div class="sec-t">Visits you have logged</div>' +
-        '<div class="empty">Nothing yet. Every visit you log shows up here.</div>';
-    }
-    let h = '<div class="sec-t">Visits you have logged</div>';
-    if (pend.length) {
-      h += '<div style="margin:0 2px 6px"><span class="pill later">⏳ ' + pend.length +
-        ' saved on this phone, waiting for signal</span></div>' +
-        pend.map((q) => '<div class="q"><div class="body"><div class="nm">' +
-          esc(String(q.label || 'Visit').split(' · ')[0]) + '</div>' +
-          '<div class="mt">on this phone — syncs the moment you have a bar</div></div></div>').join('');
-    }
-    let lastKey = '';
-    for (const v of rows) {
-      const key = dayKey(v.visited_at);
-      if (key !== lastKey) {
-        lastKey = key;
-        const cnt = rows.filter((x) => dayKey(x.visited_at) === key).length;
-        h += '<div style="margin:10px 2px 6px"><span class="pill next7">' + esc(dayLabel(key)) +
-          ' · ' + cnt + (cnt === 1 ? ' visit' : ' visits') + '</span></div>';
-      }
-      const p = shops.get(v.place_id) || {};
-      h += '<div class="q"><div class="body"><div class="nm">' + esc(p.name || 'Shop') +
-        (v.interest ? ' <span class="pill ' + esc(v.interest) + '">' + esc(v.interest) + '</span>' : '') +
-        '</div><div class="mt">' +
-        esc([p.city, OUT_SHORT[v.outcome] || v.outcome || '', timeOf(v.visited_at)].filter(Boolean).join(' · ')) +
-        '</div></div>' +
-        '<button class="go" onclick="openClient(\'' + v.place_id + '\')">Open</button></div>';
-    }
-    return h;
-  }
-
-  // "10:00" -> "10:00 am", without dragging a date into it
-  function prettyTime(hhmm) {
-    const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
-    if (!m) return String(hhmm || '');
-    const d = new Date(); d.setHours(+m[1], +m[2], 0, 0);
-    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  }
-
-  function workRow(w) {
-    const appt = w.kind === 'appointment';
-    return '<div class="q"' + (appt ? ' style="border-left:3px solid var(--mar)"' : '') +
-      '><div class="body"><div class="nm">' + (appt ? '📅 ' : '') + esc(w.name || 'Shop') +
-      (w.interest ? ' <span class="pill ' + esc(w.interest) + '">' + esc(w.interest) + '</span>' : '') + '</div>' +
-      '<div class="mt">' + esc(w.what) +
-      (w.kind === 'next_city_visit' ? ' · no date, next time you are there'
-                                    : ' · ' + (appt ? '' : 'due ') + esc(fmtDate(w.due_date)) +
-                                      (appt && w.due_time ? ' at ' + esc(prettyTime(w.due_time)) : '')) +
-      (w.city ? ' · ' + esc(w.city) : '') + '</div></div>' +
-      (w.phone ? '<a class="go" href="tel:' + esc(digits(w.phone)) + '">Call</a>' : '') +
-      /* Done was the only action, so anything he could not do that day had nowhere to go
-         and simply sat there — 15 follow-ups were a fortnight overdue by 28 Sept 2026.
-         A follow-up you cannot move is one you learn to ignore. */
-      (w.kind === 'next_city_visit' ? ''
-        : '<button class="go" onclick="pushFollowup(\'' + w.id + '\',7)">+1wk</button>') +
-      '<button class="go" onclick="doneFollowup(\'' + w.id + '\')">Done</button></div>';
-  }
-  function afterFollowupChange() {
-    if (S.stack[S.stack.length - 1] === 'client' && S.client && S.client.id) openClient(S.client.id);
-    else render();
-  }
-  async function doneFollowup(id) {
-    if (!navigator.onLine) return toast('Needs signal to tick a follow-up off', 'err');
-    const row = S.work.find((w) => w.id === id);          // keep it so Undo can restore instantly
-    const { error } = await sb.from('lf_followups')
-      .update({ status: 'done', done_at: new Date().toISOString() }).eq('id', id);
-    if (error) return toast(error.message, 'err');
-    S.work = S.work.filter((w) => w.id !== id);
-    afterFollowupChange();
-    toastAction('Done ✓', 'Undo', () => reopenFollowup(id, row));
-  }
-  /* Push a follow-up forward. Always counted from TODAY, never from the old due date —
-     pushing an overdue item "by a week" must land next week, not in the past. */
-  async function pushFollowup(id, days) {
-    if (!navigator.onLine) return toast('Needs signal to move a follow-up', 'err');
-    const row = S.work.find((w) => w.id === id);
-    if (!row) return;
-    const was = row.due_date;
-    const to = addDaysISO(todayISO(), days);
-    const { error } = await sb.from('lf_followups').update({ due_date: to }).eq('id', id);
-    if (error) return toast(error.message, 'err');
-    row.due_date = to;
-    afterFollowupChange();
-    toastAction('Moved to ' + fmtDate(to), 'Undo', () => undoPush(id, was));
-  }
-  async function undoPush(id, was) {
-    const { error } = await sb.from('lf_followups').update({ due_date: was }).eq('id', id);
-    if (error) return toast(error.message, 'err');
-    const row = S.work.find((w) => w.id === id);
-    if (row) row.due_date = was;
-    afterFollowupChange();
-    toast('Put back to ' + fmtDate(was), 'ok');
-  }
-  async function reopenFollowup(id, row) {
-    const { error } = await sb.from('lf_followups')
-      .update({ status: 'open', done_at: null }).eq('id', id);
-    if (error) return toast(error.message, 'err');
-    if (row && !S.work.some((w) => w.id === id)) S.work.push(row);
-    afterFollowupChange();
-    toast('Put back on your list', 'ok');
-    loadWork().then(afterFollowupChange);
-  }
-
-  /* ---------------- PICK A SHOP ---------------- */
-  let searchT;
-  function pickHtml() {
-    return '<div class="field"><label>Which shop did you visit?</label>' +
-      '<input id="pk" type="text" placeholder="Type a shop name or city" ' +
-      'oninput="onPick(this.value)" autocomplete="off"></div>' +
-      '<div id="pk-res"></div>' +
-      (navigator.onLine ? '' : '<div class="empty">No signal — search only covers this trip right now, ' +
-        'but you can still type a name and log a dealer who is not in the app.</div>');
-  }
-
-  // Dealers he met who were never in the list. Typing the name is the whole entry cost —
-  // the card scan fills in the address, the phone and the website.
-  function newLeadCard(term) {
-    return '<div class="q" style="border-left:3px solid var(--mar);margin-top:12px">' +
-      '<div class="body"><div class="nm">＋ ' + esc(term) + '</div>' +
-      '<div class="mt">Not in the app — I will add them as a new lead. ' +
-      'Scan their card and the rest fills itself in.</div></div>' +
-      '<button class="go" data-nm="' + esc(term) + '" onclick="newLead(this.dataset.nm)">Log visit</button></div>';
-  }
-
-  function newLead(name) {
-    const nm = String(name || '').trim();
-    if (!nm) return;
-    const day = S.pack && (S.pack.days || []).find((d) => d.day_date === todayISO());
-    const trip = day && S.pack.trip ? S.pack.trip : null;
-    openForm({
-      place: { id: uuid(), name: nm, address: '', city: '', region: (trip && trip.region) || '',
-               postcode: '', phone: '', website: '', segment: '', priority: null, pitch_angle: '' },
-      stop_id: '', trip_id: trip ? trip.id : '', isNew: true
-    });
-  }
-  function onPick(q) { clearTimeout(searchT); searchT = setTimeout(() => doPick(q), 260); }
-  async function doPick(q) {
-    const box = $('pk-res'); if (!box) return;
-    const term = (q || '').trim();
-    if (term.length < 2) { box.innerHTML = ''; return; }
-    let rows = [];
-    const packRows = ((S.pack && S.pack.stops) || [])
-      .map((s) => Object.assign({}, s.place, { _stop: s.id }))
-      .filter((p) => p && ((p.name || '') + ' ' + (p.city || '')).toLowerCase().includes(term.toLowerCase()));
-    if (navigator.onLine) {
-      try {
-        const { data } = await sb.from('lf_places').select('id,name,city,region,address,phone,website,priority,pitch_angle')
-          .eq('hidden', false).is('skip_reason', null)
-          .or('name.ilike.%' + term + '%,city.ilike.%' + term + '%')
-          .order('priority', { ascending: false }).limit(40);
-        rows = data || [];
-      } catch (e) { rows = []; }
-    }
-    const seen = new Set(); const all = [];
-    for (const r of packRows.concat(rows)) { if (r && r.id && !seen.has(r.id)) { seen.add(r.id); all.push(r); } }
-    if (!all.length) {
-      box.innerHTML = '<div class="empty" style="padding:18px 14px 4px">Nobody by that name in the app.</div>' +
-        newLeadCard(term);
-      return;
-    }
-    box.innerHTML = all.slice(0, 40).map((p) => {
-      const arg = JSON.stringify(JSON.stringify({ place: p, stop_id: p._stop || '', trip_id: (S.pack && S.pack.trip && p._stop) ? S.pack.trip.id : '' })).replace(/"/g, '&quot;');
-      return '<div class="q"><div class="body"><div class="nm">' + esc(p.name) +
-        (p.priority >= 5 ? ' ⭐' : '') + '</div><div class="mt">' +
-        esc([p.address, p.city, p.region].filter(Boolean).join(', ')) + '</div></div>' +
-        '<button class="go" onclick="openForm(' + arg + ')">Log visit</button></div>';
-    }).join('') + newLeadCard(term);
-  }
-
-  /* ---------------- THE VISIT FORM ---------------- */
-  function openForm(json) {
-    const a = typeof json === 'string' ? JSON.parse(json) : json;
-    S.place = a.place;
-    const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
-    S.form = {
-      id: uuid(), place_id: a.place.id, stop_id: a.stop_id || '', trip_id: a.trip_id || '',
-      visited_at: new Date().toISOString(), channel: 'in_person',
-      outcome: '', interest: '', met_name: '', met_role: '', met_mobile: '', met_email: '',
-      save_contact: true, asked: [], asked_notes: '', objections: [], objection_notes: '',
-      order_type: '', order_value: '', feedback: '',
-      next_step: '', next_due: tripEnd ? addDaysISO(tripEnd, 3) : addDaysISO(todayISO(), 7),
-      card: null, card_used: false,
-      cardFrontB64: null, cardBackB64: null, cardFrontPath: null, cardBackPath: null,
-      is_new_place: !!a.isNew,
-      category: a.place.category || '',            // grade lives on the shop; this is its current value
-      shop_phone_other: a.place.phone_other || '',
-      met_mobile_other: '',
-      buys_lab: a.place.buys_lab || '', lab_stock: a.place.lab_stock || '',
-      next_time: '',
-      booth: a.place.booth || '', social: a.place.social || '',
-      card_code: a.place.card_code || '', codes: []
-    };
-    push('form');
-  }
-  function fset(k, v) { S.form[k] = v; render(); }
-  function ftoggle(k, v) {
-    const a = S.form[k]; const i = a.indexOf(v);
-    if (i < 0) a.push(v); else a.splice(i, 1);
-    render();
-  }
-  function fraw(k, v) { S.form[k] = v; }          // text inputs: no re-render, keeps the keyboard up
-
-  function chipRow(list, sel, onclick, cls) {
-    return '<div class="chips">' + list.map((it) => {
-      const [val, label] = Array.isArray(it) ? it : [it, it];
-      const on = Array.isArray(sel) ? sel.indexOf(val) >= 0 : sel === val;
-      return '<button type="button" class="chip ' + (cls || '') + (on ? ' on' : '') + '" onclick="' +
-        onclick + '(' + JSON.stringify(val).replace(/"/g, '&quot;') + ')">' + esc(label) + '</button>';
-    }).join('') + '</div>';
-  }
-
-  function formHtml() {
-    const f = S.form, p = S.place || {};
-    const nudging = !!f.nudged && (visitIsBlank(f) || visitNoNext(f)) && visitNeedsMore(f);
-    const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
-    const dueChips = [['__t', 'Tomorrow'], ['__3', 'In 3 days']];
-    if (tripEnd) dueChips.push(['__trip', 'After the trip']);
-    return '<div class="card"><h3>' + esc(p.name || 'Shop') + (p.priority >= 5 ? ' ⭐' : '') + '</h3>' +
-      '<div class="sub">' + (f.is_new_place
-        ? 'New — not in the app before. Saving this visit adds them to your leads.'
-        : esc([p.address, p.city, p.region].filter(Boolean).join(', ') || 'no address on file')) + '</div>' +
-      (p.pitch_angle ? '<div class="sub" style="margin-top:6px;color:var(--mar)">🎯 ' + esc(String(p.pitch_angle).split('. ')[0]) + '.</div>' : '') +
-      '</div>' +
-
-      '<div class="sec-t">How did it go?</div>' +
-      chipRow(OUTCOMES, f.outcome, 'setOutcomeF') +
-
-      '<div class="sec-t">How interested are they?</div>' +
-      '<div class="chips">' + INTEREST.map(([v, l]) =>
-        '<button type="button" class="chip ' + v + (f.interest === v ? ' on' : '') +
-        '" onclick="setInterest(\'' + v + '\')">' + esc(l) + '</button>').join('') + '</div>' +
-
-      '<div class="sec-t">About this shop</div>' +
-      '<div class="sub" style="margin:-3px 0 7px">The grade stays on the shop — change it on any visit.</div>' +
-      chipRow(GRADES, f.category, 'setGrade') +
-
-      '<div class="sub" style="margin:13px 0 6px">Do they buy lab-grown jewellery?</div>' +
-      chipRow(BUYS_LAB, f.buys_lab, 'setBuysLab') +
-      (f.buys_lab === 'yes'
-        ? '<div class="sub" style="margin:11px 0 6px">Do they keep it in stock?</div>' +
-          chipRow(LAB_STOCK, f.lab_stock, 'setLabStock')
-        : '') +
-
-      '<div class="field" style="margin-top:11px"><label>Booth / suite number</label>' +
-        '<input type="text" value="' + esc(f.booth) +
-        '" oninput="fraw(\'booth\',this.value)" placeholder="e.g. Seybold #114"></div>' +
-      '<div class="field" style="margin-top:11px"><label>Shop\'s other phone line</label>' +
-        '<input type="tel" inputmode="tel" value="' + esc(f.shop_phone_other) +
-        '" oninput="fraw(\'shop_phone_other\',this.value)" placeholder="showroom or second line"></div>' +
-
-      '<div class="sec-t">Who did you meet?</div>' +
-      '<button type="button" class="btn ghost" style="margin-bottom:12px" onclick="scanCard(\'front\')">' +
-        (f.card ? '📇 Scan a different card' : '📇 Scan their card') + '</button>' +
-      '<input type="file" id="card-front" accept="image/*" style="display:none" onchange="cardChosen(this,\'front\')">' +
-      '<input type="file" id="card-back" accept="image/*" style="display:none" onchange="cardChosen(this,\'back\')">' +
-      (f.card ? cardPanel(f.card) : '') + codePanel() +
-      '<div class="field"><label>Name</label><input type="text" value="' + esc(f.met_name) +
-        '" oninput="fraw(\'met_name\',this.value)" placeholder="e.g. Daniel Alvarez"></div>' +
-      chipRow(ROLES, f.met_role, 'setRole') +
-      '<div class="row" style="margin-top:11px">' +
-        '<div class="field"><label>Their mobile</label><input type="tel" inputmode="tel" value="' + esc(f.met_mobile) +
-          '" oninput="fraw(\'met_mobile\',this.value)" placeholder="direct number"></div>' +
-        '<div class="field"><label>Their email</label><input type="text" inputmode="email" value="' + esc(f.met_email) +
-          '" oninput="fraw(\'met_email\',this.value)"></div></div>' +
-      '<div class="field" style="margin-top:11px"><label>Their other number</label>' +
-        '<input type="tel" inputmode="tel" value="' + esc(f.met_mobile_other) +
-        '" oninput="fraw(\'met_mobile_other\',this.value)" placeholder="WhatsApp, desk line, second cell"></div>' +
-
-      '<div class="sec-t">What did they ask about?</div>' +
-      chipRow(ASKED, f.asked, 'toggleAsked') +
-      '<div class="field" style="margin-top:11px"><label>Sizes, price points, anything specific</label>' +
-        '<input type="text" value="' + esc(f.asked_notes) + '" oninput="fraw(\'asked_notes\',this.value)" ' +
-        'placeholder="e.g. 1ct–2ct studs under $900"></div>' +
-
-      '<div class="sec-t">What held them back?</div>' +
-      chipRow(OBJECTIONS, f.objections, 'toggleObj') +
-      '<div class="field" style="margin-top:11px"><label>In their words</label>' +
-        '<input type="text" value="' + esc(f.objection_notes) + '" oninput="fraw(\'objection_notes\',this.value)"></div>' +
-
-      '<div class="sec-t">Did they commit to anything?</div>' +
-      chipRow(ORDER_TYPES, f.order_type, 'setOrderType') +
-      (f.order_type && f.order_type !== 'none'
-        ? '<div class="field" style="margin-top:11px"><label>Rough value (USD)</label>' +
-          '<input type="number" inputmode="decimal" step="1" min="0" value="' + esc(f.order_value) +
-          '" oninput="fraw(\'order_value\',this.value)" placeholder="e.g. 4500"></div>' : '') +
-
-      '<div class="sec-t">Their feedback — the part you will want later</div>' +
-      '<div class="field"><textarea oninput="fraw(\'feedback\',this.value)" placeholder="What they actually said. Tap the microphone on your keyboard to dictate.">' +
-        esc(f.feedback) + '</textarea></div>' +
-
-      '<div class="sec-t">What happens next?</div>' +
-      chipRow(NEXT, f.next_step, 'setNext') +
-      (f.next_step === NO_DATE
-        ? '<div class="card" style="margin-top:11px"><div class="sub">No date needed. ' +
-          esc(p.name || 'This shop') + ' will come up again whenever you plan a day in ' +
-          esc(p.city || 'this city') + '.</div></div>' : '') +
-      (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE
-        ? '<div style="margin-top:11px">' + chipRow(dueChips, f.due_pick || '', 'setDue') +
-          '<div class="row" style="margin-top:9px">' +
-          '<div class="field"><label>' + (f.next_step === APPT ? 'Appointment on' : 'Due on') +
-            '</label><input type="date" value="' + esc(f.next_due) +
-            '" oninput="dueTyped(this.value)"></div>' +
-          (f.next_step === APPT
-            ? '<div class="field"><label>At what time</label><input type="time" value="' +
-              esc(f.next_time) + '" oninput="fraw(\'next_time\',this.value)"></div>'
-            : '') +
-          '</div></div>' : '') +
-
-      (nudging
-        ? '<div class="banner" style="border-radius:10px;margin:18px 0 8px;text-align:left">' +
-          esc(nudgeWhy(f)) + '</div>' : '') +
-      '<button class="btn" style="margin:' + (nudging ? '0' : '18px') + ' 0 6px" id="save-b" ' +
-        'onclick="saveVisit()">' + (nudging ? 'Save anyway' : 'Save this visit') + '</button>' +
-      '<button class="btn ghost" style="margin-bottom:26px" onclick="goBack()">Cancel</button>' +
-      '<div class="sub" style="text-align:center;padding-bottom:20px">' +
-        (navigator.onLine ? 'Saves straight to your database.' :
-          'No signal — this will be saved on your phone and synced automatically.') + '</div>';
-  }
-  // A met-the-buyer or order visit with no feedback AND no next step is almost always an
-  // accident of being busy in a shop. Nudge once, never block.
-  function visitNeedsMore(f) { return f.outcome === 'met' || f.outcome === 'order'; }
-  function visitIsBlank(f) {
-    return !String(f.feedback || '').trim() &&
-           (!f.next_step || f.next_step === 'Nothing for now');
-  }
-  /* The gap this closes: a visit WITH feedback but NO next step passed silently, so it
-     never reached the follow-up list and nobody chased it. Measured 28 Sept 2026 — 21 of
-     the logged visits had no next step, including two that took an order. Same discipline
-     as above: prompt once, then let him save. "Nothing for now" is a real answer and
-     satisfies it, which is why that choice is now RECORDED rather than blanked. */
-  function visitNoNext(f) { return visitNeedsMore(f) && !f.next_step; }
-  function nudgeWhy(f) {
-    if (visitIsBlank(f)) return 'Nothing recorded about what they said, and no next step — so this ' +
-      'shop will not appear in your after-trip list. Add either, or save it as it is.';
-    return 'No next step on a shop you met. Nothing will chase this one — pick a step, ' +
-      'or tap “Nothing for now” if there is honestly nothing to do.';
-  }
-  function setOutcomeF(v) { fset('outcome', S.form.outcome === v ? '' : v); }
-  function setInterest(v) { fset('interest', S.form.interest === v ? '' : v); }
-  function setRole(v) { fset('met_role', S.form.met_role === v ? '' : v); }
-  function setGrade(v) { fset('category', S.form.category === v ? '' : v); }
-  function setBuysLab(v) {
-    const f = S.form;
-    f.buys_lab = f.buys_lab === v ? '' : v;
-    // "keeps stock" only means anything alongside a yes
-    if (f.buys_lab !== 'yes') f.lab_stock = '';
-    render();
-  }
-  function setLabStock(v) { fset('lab_stock', S.form.lab_stock === v ? '' : v); }
-  function setOrderType(v) { fset('order_type', S.form.order_type === v ? '' : v); }
-  function setNext(v) { fset('next_step', S.form.next_step === v ? '' : v); }
-  function toggleAsked(v) { ftoggle('asked', v); }
-  function toggleObj(v) { ftoggle('objections', v); }
-  function dueTyped(v) { S.form.next_due = v; S.form.due_pick = ''; }
-  function setDue(k) {
-    const tripEnd = (S.pack && S.pack.trip && S.pack.trip.end_date) || null;
-    if (k === '__t') S.form.next_due = addDaysISO(todayISO(), 1);
-    else if (k === '__3') S.form.next_due = addDaysISO(todayISO(), 3);
-    else if (k === '__trip' && tripEnd) S.form.next_due = addDaysISO(tripEnd, 3);
-    S.form.due_pick = k;          // so the chip you tapped actually lights up
-    render();
-  }
-
-  /* ---------- QR / barcode reading ----------
-     Read off the ORIGINAL photo, before the 1600px downscale that goes to the scanner.
-     A QR on a business card is small: in the stored copy it can be ~90px across, which is
-     borderline for a decoder, but the phone's own 12MP frame has about six times the pixels
-     and reads comfortably. That is the whole reason this runs on the raw file. */
-  const SOCIAL_HOSTS = {
-    'instagram.com': 'Instagram', 'facebook.com': 'Facebook', 'fb.com': 'Facebook',
-    'linkedin.com': 'LinkedIn', 'x.com': 'X', 'twitter.com': 'X', 'youtube.com': 'YouTube',
-    'youtu.be': 'YouTube', 'pinterest.com': 'Pinterest', 't.me': 'Telegram',
-    'threads.net': 'Threads', 'snapchat.com': 'Snapchat', 'tiktok.com': 'TikTok'
-  };
-
-  // A QR that points at a redirector is NOT the shop's website. Writing one into
-  // lf_places.website would send lf-web off to read a link-shortener instead of a
-  // jeweller, so these are kept verbatim as a scanned code and nothing more.
-  // Real case: a Wheaton MD card whose only code was https://vqr.vc/F3N0WfKHv.
-  const REDIRECT_HOSTS = ['vqr.vc', 'qrco.de', 'qrs.ly', 'bit.ly', 'tinyurl.com', 't.co',
-    'goo.gl', 'rebrand.ly', 'cutt.ly', 'lnk.bio', 'linktr.ee', 'shorturl.at', 'ow.ly'];
-
-  let jsqrTried = false;
-  function loadJsQR() {
-    if (window.jsQR) return Promise.resolve(window.jsQR);
-    if (jsqrTried) return Promise.resolve(null);
-    jsqrTried = true;
-    return new Promise((res) => {
-      const sc = document.createElement('script');
-      sc.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-      sc.onload = () => res(window.jsQR || null);
-      sc.onerror = () => res(null);
-      document.head.appendChild(sc);
-      setTimeout(() => res(window.jsQR || null), 8000);   // a dead CDN must not hold up a scan
-    });
-  }
-
-  // Draw a region of the source at up to `cap` px wide and hand back its pixels.
-  function regionData(src, sx, sy, sw, sh, cap) {
-    const w = Math.min(cap, sw), h = Math.max(1, Math.round(sh * (w / sw)));
-    const cv = document.createElement('canvas');
-    cv.width = w; cv.height = h;
-    const cx = cv.getContext('2d', { willReadFrequently: true });
-    cx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
-    return cx.getImageData(0, 0, w, h);
-  }
-
-  async function readCodes(file) {
-    const out = [];
-    let src = null;
-    try { src = await createImageBitmap(file); }
-    catch (e) {
-      try {
-        src = await new Promise((res, rej) => {
-          const im = new Image();
-          im.onload = () => res(im); im.onerror = () => rej(new Error('no image'));
-          im.src = URL.createObjectURL(file);
-        });
-      } catch (e2) { return out; }
-    }
-    const W = src.width || src.naturalWidth, H = src.height || src.naturalHeight;
-    if (!W || !H) return out;
-
-    // The phone's own detector where it exists (Android Chrome); it reads 1D barcodes too.
-    try {
-      if (window.BarcodeDetector) {
-        const det = new window.BarcodeDetector();
-        const found = await det.detect(src);
-        (found || []).forEach((f) => { if (f && f.rawValue) out.push(String(f.rawValue)); });
-        if (out.length) return out;
-      }
-    } catch (e) { /* fall through to jsQR */ }
-
-    const jsqr = await loadJsQR();
-    if (!jsqr) return out;
-    const tryOne = (d) => {
-      try {
-        const r = jsqr(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
-        return r && r.data ? String(r.data) : null;
-      } catch (e) { return null; }
-    };
-
-    const whole = tryOne(regionData(src, 0, 0, W, H, 1200));
-    if (whole) { out.push(whole); return out; }
-
-    // Overlapping 3x3 tiles at NATIVE resolution — a code near a seam is cut in half by a
-    // plain quadrant split, which is exactly how the server-side pass missed things.
-    const tw = Math.floor(W / 2), th = Math.floor(H / 2);
-    const xs = [0, Math.floor((W - tw) / 2), W - tw];
-    const ys = [0, Math.floor((H - th) / 2), H - th];
-    for (const y of ys) {
-      for (const x of xs) {
-        const hit = tryOne(regionData(src, x, y, tw, th, 1200));
-        if (hit) { out.push(hit); return out; }
-      }
-    }
-    return out;
-  }
-
-  /* ---------- what a code payload actually means ---------- */
-  const usPhone = (v) => {
-    const d = String(v || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
-    return d.length === 10 ? d : '';
-  };
-  // Only ever http(s). A "javascript:" or "data:" payload must never become a live link.
-  function safeUrl(v) {
-    const t = String(v || '').trim();
-    if (!t) return '';
-    if (/^https?:\/\//i.test(t)) return t;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return '';        // some other scheme — not a website
-    if (/^[\w-]+(\.[\w-]+)+([\/?#].*)?$/.test(t)) return 'https://' + t;
-    return '';
-  }
-  function hostOf(u) {
-    try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch (e) { return ''; }
-  }
-  function socialOf(u) {
-    const h = hostOf(u);
-    if (!h) return '';
-    for (const k in SOCIAL_HOSTS) {
-      if (h === k || h.endsWith('.' + k)) {
-        let handle = '';
-        try { handle = new URL(u).pathname.replace(/^\/+|\/+$/g, '').split('/')[0]; } catch (e) {}
-        return SOCIAL_HOSTS[k] + ': ' + (handle ? '@' + handle.replace(/^@/, '') : u);
-      }
-    }
-    return '';
-  }
-
-  // Everything a single code payload gives us. Deliberately conservative: anything not
-  // recognised is kept verbatim rather than guessed at.
-  function classifyCode(raw) {
-    const t = String(raw || '').trim();
-    const o = { raw: t, kind: 'other' };
-    if (!t) return o;
-
-    if (/^BEGIN:VCARD/i.test(t)) {
-      o.kind = 'vcard';
-      const lines = t.replace(/\r\n[ \t]/g, '').split(/\r?\n/);
-      const tels = [];
-      for (const ln of lines) {
-        const i = ln.indexOf(':'); if (i < 0) continue;
-        const key = ln.slice(0, i).toUpperCase(), val = ln.slice(i + 1).trim();
-        if (!val) continue;
-        if (/^FN\b/.test(key)) o.name = val;
-        else if (/^N\b/.test(key) && !o.name) o.name = val.split(';').filter(Boolean).reverse().join(' ').trim();
-        else if (/^ORG\b/.test(key)) o.org = val.split(';')[0];
-        else if (/^TITLE\b/.test(key)) o.title = val;
-        else if (/^EMAIL/.test(key)) o.email = val.toLowerCase();
-        else if (/^URL/.test(key)) o.website = safeUrl(val);
-        else if (/^ADR/.test(key)) o.address = val.split(';').filter(Boolean).join(', ');
-        else if (/^TEL/.test(key)) tels.push({ v: val, cell: /CELL|MOBILE/i.test(key) });
-      }
-      const cell = tels.find((x) => x.cell && usPhone(x.v));
-      const any = tels.find((x) => usPhone(x.v));
-      if (cell) o.mobile = usPhone(cell.v);
-      else if (any) o.mobile = usPhone(any.v);
-      const others = tels.map((x) => usPhone(x.v)).filter((x) => x && x !== o.mobile);
-      if (others.length) o.phone_other = others.join(', ');
-      return o;
-    }
-
-    if (/^MECARD:/i.test(t)) {
-      o.kind = 'vcard';
-      t.slice(7).split(';').forEach((part) => {
-        const i = part.indexOf(':'); if (i < 0) return;
-        const k = part.slice(0, i).toUpperCase(), v = part.slice(i + 1).trim();
-        if (!v) return;
-        if (k === 'N') o.name = v.split(',').reverse().join(' ').trim();
-        else if (k === 'ORG') o.org = v;
-        else if (k === 'TEL') { if (!o.mobile) o.mobile = usPhone(v); }
-        else if (k === 'EMAIL') o.email = v.toLowerCase();
-        else if (k === 'URL') o.website = safeUrl(v);
-        else if (k === 'ADR') o.address = v.replace(/,+/g, ', ');
-      });
-      return o;
-    }
-
-    if (/^tel:/i.test(t)) { o.kind = 'phone'; o.mobile = usPhone(t.slice(4)); return o; }
-    if (/^(sms|smsto):/i.test(t)) { o.kind = 'phone'; o.mobile = usPhone(t.split(':')[1] || ''); return o; }
-    if (/^mailto:/i.test(t)) { o.kind = 'email'; o.email = t.slice(7).split('?')[0].toLowerCase(); return o; }
-
-    const url = safeUrl(t);
-    if (url) {
-      const h = hostOf(url);
-      if (h === 'wa.me' || h === 'api.whatsapp.com') {
-        o.kind = 'phone';
-        const m = /(?:wa\.me\/|phone=)(\+?\d+)/i.exec(url);
-        o.mobile = m ? usPhone(m[1]) : '';
-        if (!o.mobile) { o.kind = 'other'; }
-        return o;
-      }
-      const soc = socialOf(url);
-      if (soc) { o.kind = 'social'; o.social = soc; o.url = url; return o; }
-      if (REDIRECT_HOSTS.indexOf(h) >= 0) { o.kind = 'link'; o.link = url; return o; }
-      o.kind = 'website'; o.website = url; return o;
-    }
-    return o;                                   // kept verbatim, never guessed at
-  }
-
-  /* ---------- business-card scanning ---------- */
-  // Their card is the truth. Everything else in this database was scraped off the web.
-  function scanCard(side) {
-    if (!navigator.onLine) {
-      return toast('Scanning needs signal. Type what you can — you can scan the card later.', 'err');
-    }
-    const el = $(side === 'back' ? 'card-back' : 'card-front');
-    if (el) { el.value = ''; el.click(); }
-  }
-
-  async function fileToB64(file, maxPx) {
-    const draw = (w, h, src) => {
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      cv.getContext('2d').drawImage(src, 0, 0, w, h);
-      return cv.toDataURL('image/jpeg', 0.82).split(',')[1];
-    };
-    try {
-      const bmp = await createImageBitmap(file);
-      const k = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
-      return draw(Math.round(bmp.width * k), Math.round(bmp.height * k), bmp);
-    } catch (e) {
-      // older Safari
-      return await new Promise((res, rej) => {
-        const img = new Image();
-        img.onload = () => {
-          const k = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
-          res(draw(Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k), img));
-        };
-        img.onerror = () => rej(new Error('Could not read that photo'));
-        img.src = URL.createObjectURL(file);
-      });
-    }
-  }
-
-  function b64ToBlob(b64, mime) {
-    const bin = atob(b64);
-    const u8 = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    return new Blob([u8], { type: mime || 'image/jpeg' });
-  }
-
-  // The photo is filed under the VISIT: at scan time there is no contact row yet.
-  // lf_log_visit copies the path onto the contact when the visit is saved.
-  async function uploadSide(side, b64) {
-    const f = S.form, vid = f.id;
-    const path = 'us/' + vid + '/' + side + '-' + Date.now() + '.jpg';
-    try {
-      const { error } = await sb.storage.from('cards')
-        .upload(path, b64ToBlob(b64, 'image/jpeg'), { contentType: 'image/jpeg', upsert: true });
-      if (error) throw error;
-      if (S.form && S.form.id !== vid) return;     // he moved on to another visit meanwhile
-      if (side === 'back') S.form.cardBackPath = path; else S.form.cardFrontPath = path;
-    } catch (e) {
-      // The words off the card are the point. A failed upload must never cost him the scan.
-      console.warn('card photo upload failed', e);
-    }
-  }
-
-  async function cardChosen(input, side) {
-    const file = input && input.files && input.files[0];
-    if (!file) return;
-    const back = side === 'back';
-    const f = S.form;
-    toast(back ? 'Reading the back…' : 'Reading the card…');
-    try {
-      const b64 = await fileToB64(file, 1600);
-      if (back) {
-        f.cardBackB64 = b64;
-      } else {
-        // A different card altogether — whatever back we had does not belong to it.
-        f.cardFrontB64 = b64;
-        f.cardBackB64 = null; f.cardFrontPath = null; f.cardBackPath = null;
-      }
-      // Codes come off the RAW file, in parallel with the upload and the scan.
-      const codesP = readCodes(file).catch(() => []);
-      (f.cardUploads = f.cardUploads || []).push(uploadSide(back ? 'back' : 'front', b64));
-      await runScan();                       // printed card first — it wins, by his rule
-      applyCodes(await codesP);              // then the code, filling only what is blank
-    } catch (e) {
-      toast('Could not read that card: ' + String(e.message || e), 'err');
-    } finally {
-      render();
-    }
-  }
-
-  // Both sides go to the reader together, so it sees the card whole — a name on
-  // the front and a cell scribbled on the back belong to the same person.
-  async function runScan() {
-    const f = S.form;
-    if (!f.cardFrontB64) return;
-    const r = await sb.auth.getSession();
-    const tok = r && r.data && r.data.session ? r.data.session.access_token : null;
-    if (!tok) return toast('Sign in again to scan a card', 'err');
-    const body = { image_base64: f.cardFrontB64, mime_type: 'image/jpeg' };
-    if (f.cardBackB64) { body.image_back_base64 = f.cardBackB64; body.back_mime_type = 'image/jpeg'; }
-    const res = await fetch(BJ_CONFIG.SUPABASE_URL + '/functions/v1/scan-card-us', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: BJ_CONFIG.SUPABASE_KEY,
-                 Authorization: 'Bearer ' + tok },
-      body: JSON.stringify(body)
-    });
-    const j = await res.json();
-    if (j.error === 'quota') return toast('Free scanning quota is used up for now — type the details.', 'err');
-    if (j.error === 'not_configured') return toast('No scanning key set up yet.', 'err');
-    if (!j.ok) return toast(j.error || 'Could not read that card', 'err');
-    applyCard(j.fields);
-  }
-
-  const prettyPhone = (d) => {
-    const n = String(d || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
-    return n.length === 10 ? n.slice(0, 3) + '-' + n.slice(3, 6) + '-' + n.slice(6) : String(d || '');
-  };
-
-  // A "social" line is only useful if a real handle/name follows the platform label.
-  // The card scanner has been seen to return "Instagram: @" when it can see the icon on
-  // the card but not read a handle next to it — that looks captured but carries no actual
-  // contact route, and once saved it silently blocks a later, better read (fill-blank-only
-  // treats it as already filled). Reject anything that leaves under 2 characters after the
-  // platform label / leading @.
-  function usableSocial(s) {
-    const t = String(s || '').trim();
-    if (!t) return false;
-    const i = t.indexOf(':');
-    const rest = (i >= 0 ? t.slice(i + 1) : t).replace(/^@+/, '').trim();
-    return rest.length >= 2;
-  }
-
-  function applyCard(c) {
-    const f = S.form;
-    f.card = c; f.card_used = true;
-    if (c.contact_person) f.met_name = c.contact_person;
-    if (c.designation) {
-      const hit = ROLES.find((r) => r.toLowerCase() === String(c.designation).toLowerCase().trim());
-      f.met_role = hit || f.met_role;          // a title we do not have a chip for stays on the card panel
-    }
-    if (c.mobile) f.met_mobile = prettyPhone(c.mobile);
-    else if (c.phone_other) f.met_mobile = prettyPhone(String(c.phone_other).split(',')[0].replace(/^[^:]*:/, ''));
-    if (c.email) f.met_email = String(c.email).toLowerCase();
-    // Everything else printed on the card is the SHOP's — store, showroom, toll free.
-    // Only fill a blank box: never paint over a number already on file or typed.
-    if (c.phone_other && !String(f.shop_phone_other || '').trim()) f.shop_phone_other = String(c.phone_other);
-    // Printed booth number and social handles had nowhere to go before this — they were
-    // read, shown, and dropped. Fill only a blank; never paint over what is on file.
-    if (c.booth && !String(f.booth || '').trim()) f.booth = String(c.booth);
-    if (usableSocial(c.social) && !String(f.social || '').trim()) f.social = String(c.social).trim();
-    const got = ['contact_person', 'designation', 'mobile', 'email', 'website', 'address', 'booth']
-      .filter((k) => c[k]).length;
-    const both = !!f.cardBackB64;
-    toast(got ? 'Read ' + got + ' details off ' + (both ? 'both sides ✓' : 'the card ✓')
-              : 'Card read, but nothing usable on it', got ? 'ok' : 'err');
-  }
-
-  // His rule: the printed card wins. A code only ever fills something still blank, and
-  // anything it holds that we did not use is kept verbatim so nothing is thrown away.
-  function applyCodes(list) {
-    const f = S.form;
-    const fresh = (list || []).map(classifyCode).filter((c) => c.raw);
-    if (!fresh.length) return;
-    f.codes = (f.codes || []).concat(fresh);
-
-    const spare = [];
-    fresh.forEach((c) => {
-      let used = false;
-      if (c.name && !String(f.met_name || '').trim()) { f.met_name = c.name; used = true; }
-      if (c.title && !f.met_role) {
-        const hit = ROLES.find((r) => r.toLowerCase() === String(c.title).toLowerCase().trim());
-        if (hit) { f.met_role = hit; used = true; }
-      }
-      if (c.mobile && !String(f.met_mobile || '').trim()) { f.met_mobile = prettyPhone(c.mobile); used = true; }
-      if (c.email && !String(f.met_email || '').trim()) { f.met_email = String(c.email).toLowerCase(); used = true; }
-      if (c.phone_other && !String(f.met_mobile_other || '').trim()) { f.met_mobile_other = c.phone_other; used = true; }
-      if (usableSocial(c.social) && !String(f.social || '').trim()) { f.social = String(c.social).trim(); used = true; }
-      if (c.website) { f.code_website = c.website; used = true; }
-      // a redirector is kept as a code, never as the shop's website
-      if (c.address && !f.is_new_place) { /* shop address is handled by the card panel */ }
-      if (c.kind === 'website' || c.kind === 'social' || c.kind === 'phone' ||
-          c.kind === 'email' || c.kind === 'vcard') used = true;
-      if (!used) spare.push(c.raw);
-    });
-
-    if (spare.length) {
-      const have = String(f.card_code || '');
-      const add = spare.filter((x) => have.indexOf(x) < 0);
-      if (add.length) f.card_code = (have ? have + ' | ' : '') + add.join(' | ');
-    }
-    toast(fresh.length === 1 ? 'Read a QR code off the card ✓'
-                             : 'Read ' + fresh.length + ' codes off the card ✓', 'ok');
-  }
-
-  // What the code holds, and where it disagrees with the print. The print is never
-  // overwritten — this is here so he can see the difference and decide.
-  function codePanel() {
-    const f = S.form, list = f.codes || [];
-    if (!list.length) return '';
-    const label = (c) => c.kind === 'vcard' ? 'Contact card'
-      : c.kind === 'social' ? 'Social link' : c.kind === 'website' ? 'Website'
-      : c.kind === 'link' ? 'Card link' : c.kind === 'phone' ? 'Phone'
-      : c.kind === 'email' ? 'Email' : 'Code';
-    const shown = (c) => {
-      const bits = [];
-      if (c.name) bits.push(c.name);
-      if (c.org) bits.push(c.org);
-      if (c.mobile) bits.push(prettyPhone(c.mobile));
-      if (c.email) bits.push(c.email);
-      if (c.social) bits.push(c.social);
-      if (c.website) bits.push(c.website);
-      if (c.link) bits.push(c.link);
-      if (c.address) bits.push(c.address);
-      return bits.length ? bits.join(' · ') : c.raw;
-    };
-    const card = f.card || {};
-    const clash = [];
-    list.forEach((c) => {
-      if (c.mobile && card.mobile && usPhone(card.mobile) && usPhone(card.mobile) !== c.mobile) {
-        clash.push('Cell — printed ' + prettyPhone(card.mobile) + ', code says ' + prettyPhone(c.mobile));
-      }
-      if (c.email && card.email && String(card.email).toLowerCase() !== c.email) {
-        clash.push('Email — printed ' + card.email + ', code says ' + c.email);
-      }
-    });
-    return '<div class="card" style="border-left:3px solid #3a6ea5">' +
-      '<h3 style="font-size:14px">📱 What the QR code holds</h3>' +
-      list.map((c) => '<div class="sub" style="margin-top:3px"><b>' + esc(label(c)) + ':</b> ' +
-        esc(shown(c)) + '</div>').join('') +
-      (clash.length
-        ? '<div style="margin-top:10px;padding-top:9px;border-top:1px solid #eee">' +
-          '<div class="sub" style="margin-bottom:5px"><b>The code and the print disagree — ' +
-          'the print was kept:</b></div>' +
-          clash.map((x) => '<div class="sub" style="margin-bottom:3px">' + esc(x) + '</div>').join('') +
-          '</div>'
-        : '<div class="sub" style="margin-top:8px">Used only where the card left a blank.</div>') +
-      '</div>';
-  }
-
-  // What on the card disagrees with what we scraped for the SHOP itself.
-  function cardDiffs() {
-    const c = S.form.card, p = S.place || {};
-    if (!c) return [];
-    // Nothing on file to contradict, and no row to update yet — the card's details
-    // are saved WITH the new shop when the visit is saved.
-    if (S.form.is_new_place) return [];
-    const out = [];
-    const shopPhone = String(p.phone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
-    let cardLine = '';
-    if (c.phone_other) cardLine = String(c.phone_other).split(',')[0].replace(/^[^:]*:/, '');
-    else if (c.mobile) cardLine = c.mobile;
-    const cardPhone = String(cardLine).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
-    if (cardPhone.length === 10 && cardPhone !== shopPhone) {
-      out.push({ k: 'phone', label: 'Phone', was: p.phone || '(none on file)', now: prettyPhone(cardPhone) });
-    }
-    const host = (u) => String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
-    if (c.website && host(c.website) !== host(p.website)) {
-      out.push({ k: 'website', label: 'Website', was: p.website || '(none on file)',
-                 now: /^https?:/i.test(c.website) ? c.website : 'https://' + c.website });
-    }
-    if (c.address && String(c.address).trim().toLowerCase() !== String(p.address || '').trim().toLowerCase()) {
-      out.push({ k: 'address', label: 'Address', was: p.address || '(none on file)', now: c.address });
-    }
-    return out;
-  }
-
-  function cardPanel(c) {
-    const rows = [['contact_person', 'Name'], ['designation', 'Title'], ['business_name', 'Business'],
-      ['mobile', 'Cell'], ['phone_other', 'Other numbers'], ['email', 'Email'],
-      ['website', 'Website'], ['social', 'Social'], ['booth', 'Booth / suite'], ['address', 'Address']]
-      .filter(([k]) => c[k]);
-    const d = cardDiffs();
-    return '<div class="card" style="border-left:3px solid var(--mar)">' +
-      '<h3 style="font-size:14px">📇 What the card says</h3>' +
-      rows.map(([k, l]) => '<div class="sub" style="margin-top:3px"><b>' + esc(l) + ':</b> ' +
-        esc(k === 'mobile' ? prettyPhone(c[k]) : c[k]) + '</div>').join('') +
-      '<div style="margin-top:11px;padding-top:10px;border-top:1px solid #eee">' +
-        '<div class="sub" style="margin-bottom:7px">' +
-          (S.form.cardBackB64
-            ? '✓ Read from both sides of the card.'
-            : 'Read from the front only. A cell number, a branch address or a WhatsApp is often printed on the back.') +
-        '</div>' +
-        '<button type="button" class="btn ghost" onclick="scanCard(\'back\')">' +
-          (S.form.cardBackB64 ? '🔄 Re-take the back' : '➕ Add the back of the card') + '</button>' +
-      '</div>' +
-      (S.form.is_new_place
-        ? '<div class="sub" style="margin-top:9px">New shop — the address, phone and website off this ' +
-          'card are saved with it.</div>'
-        : d.length
-        ? '<div style="margin-top:11px;padding-top:10px;border-top:1px solid #eee">' +
-          '<div class="sub" style="margin-bottom:7px"><b>This disagrees with what we found online:</b></div>' +
-          d.map((x) => '<div class="sub" style="margin-bottom:4px">' + esc(x.label) + ': <s>' +
-            esc(x.was) + '</s> → <b>' + esc(x.now) + '</b></div>').join('') +
-          '<button type="button" class="btn ghost" style="margin-top:9px" onclick="applyShopFix()">' +
-          'Use the card instead — fix ' + d.length + (d.length === 1 ? ' detail' : ' details') +
-          ' on this shop</button></div>'
-        : '<div class="sub" style="margin-top:9px">Matches what we already had on the shop.</div>') +
-      '</div>';
-  }
-
-  async function applyShopFix() {
-    if (S.form.is_new_place) return;
-    const d = cardDiffs();
-    if (!d.length) return;
-    if (!navigator.onLine) return toast('Needs signal to correct the shop record', 'err');
-    const patch = {};
-    d.forEach((x) => { patch[x.k] = x.now; });
-    const before = {};
-    d.forEach((x) => { before[x.k] = (S.place || {})[x.k] || null; });
-    const { error } = await sb.from('lf_places').update(patch).eq('id', S.form.place_id);
-    if (error) return toast(error.message, 'err');
-    Object.assign(S.place, patch);
-    render();
-    toastAction('Shop record corrected from the card ✓', 'Undo', async () => {
-      const { error: e2 } = await sb.from('lf_places').update(before).eq('id', S.form.place_id);
-      if (e2) return toast(e2.message, 'err');
-      Object.assign(S.place, before); render(); toast('Put the old details back', 'ok');
-    });
-  }
-
-  // Everything we know about a shop that did not exist until he met them. His typed name
-  // wins — it is what he will search for — and the card fills every blank around it.
-  function newPlacePayload() {
-    const p = S.place || {}, c = S.form.card || {};
-    // First number printed becomes the shop's line; the rest stay as the other lines,
-    // labels and all, so nothing on the card is thrown away or counted twice.
-    let shopPhone = '', shopOther = '';
-    if (c.phone_other) {
-      const parts = String(c.phone_other).split(',');
-      shopPhone = parts[0].replace(/^[^:]*:/, '').trim();
-      shopOther = parts.slice(1).join(',').trim();
-    } else if (c.mobile) shopPhone = String(c.mobile);
-    const printed = String(c.business_name || '').trim();
-    const typed = String(p.name || '').trim();
-    const alias = printed && printed.toLowerCase() !== typed.toLowerCase()
-      ? 'Card reads: ' + printed + '. ' : '';
-    return {
-      name: typed,
-      address: c.address || '',
-      city: c.city || p.city || '',
-      region: c.state || p.region || '',
-      postcode: c.zip || '',
-      phone: shopPhone,
-      phone_other: shopOther || String(S.form.shop_phone_other || '').trim(),
-      category: S.form.category || '',
-      booth: String(S.form.booth || '').trim(),
-      social: String(S.form.social || '').trim(),
-      card_code: String(S.form.card_code || '').trim(),
-      website: c.website || '',
-      notes: alias + 'Met in person, added from the visit log.'
-    };
-  }
-
-  async function saveVisit() {
-    const f = S.form;
-    if (!f.outcome) return toast('Pick how it went first', 'err');
-    if (visitNeedsMore(f) && (visitIsBlank(f) || visitNoNext(f)) && !f.nudged) {
-      f.nudged = true; render();
-      const w = document.querySelector('.banner[style*="border-radius"]');
-      if (w) w.scrollIntoView({ block: 'center' });
-      return;
-    }
-    const b = $('save-b'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
-    // Give a card photo a moment to land in storage — but a save must never wait
-    // on a slow upload in a shop with one bar of signal.
-    if (f.cardUploads && f.cardUploads.length) {
-      await Promise.race([
-        Promise.all(f.cardUploads).catch(() => {}),
-        new Promise((r) => setTimeout(r, 6000))
-      ]);
-    }
-    const payload = {
-      id: f.id, place_id: f.place_id, stop_id: f.stop_id || '', trip_id: f.trip_id || '',
-      visited_at: f.visited_at, channel: f.channel, outcome: f.outcome, interest: f.interest || '',
-      met_name: f.met_name.trim(), met_role: f.met_role, met_mobile: f.met_mobile.trim(),
-      met_email: f.met_email.trim(), save_contact: f.met_name.trim() ? 'true' : 'false',
-      asked_about: f.asked, asked_notes: f.asked_notes.trim(),
-      objections: f.objections, objection_notes: f.objection_notes.trim(),
-      order_type: f.order_type, order_value: f.order_value === '' ? '' : String(f.order_value),
-      feedback: f.feedback.trim(),
-      // "Nothing for now" is RECORDED, not blanked. Blanking it made a deliberate "no
-      // follow-up needed" indistinguishable from never having answered, so the gap could
-      // not be measured or chased. It creates no follow-up either way — that is driven by
-      // payload.followup below, which this value never satisfies.
-      next_step: f.next_step,
-      next_step_due: (f.next_step && f.next_step !== 'Nothing for now' && f.next_step !== NO_DATE)
-        ? f.next_due : '',
-      contact_source: f.card_used ? 'card_scan' : 'typed',
-      card_front: f.cardFrontPath || '', card_back: f.cardBackPath || '',
-      met_mobile_other: f.met_mobile_other.trim(),
-      // Sent even when empty: the key being present is what tells the server he
-      // looked at these and left them blank, so clearing one actually clears it.
-      category: f.category || '', shop_phone_other: f.shop_phone_other.trim(),
-      buys_lab: f.buys_lab || '', lab_stock: f.lab_stock || '',
-      next_step_time: f.next_step === APPT ? (f.next_time || '') : '',
-      booth: f.booth.trim(),
-      // these two accumulate on the shop and are never cleared from here
-      social: String(f.social || '').trim(), card_code: String(f.card_code || '').trim()
-    };
-    if (f.is_new_place) payload.new_place = newPlacePayload();
-    if (payload.next_step === NO_DATE) {
-      payload.followup = { kind: 'next_city_visit',
-        what: 'Call in again when next in ' + ((S.place && S.place.city) || 'this city') };
-    } else if (payload.next_step === APPT && payload.next_step_due) {
-      payload.followup = { kind: 'appointment', due_date: payload.next_step_due,
-        due_time: payload.next_step_time,
-        what: 'Appointment' + (payload.next_step_time ? ' at ' + prettyTime(payload.next_step_time) : '') };
-    } else if (payload.next_step && payload.next_step_due) {
-      payload.followup = { kind: 'date', due_date: payload.next_step_due, what: payload.next_step };
-    }
-    // Phone first, always. Then try the network. Nothing can be lost by a dead signal.
-    await Q.put({ id: f.id, created: Date.now(), payload,
-      label: (S.place && S.place.name ? S.place.name : 'visit') + ' · ' + fmtWhen(f.visited_at) });
-    await refreshQueue();
-    S.stack = []; S.tab = 'today';
-    [...document.querySelectorAll('#tabs button')].forEach((x) => x.classList.toggle('on', x.dataset.t === 'today'));
-    if (S.pack && f.stop_id) {
-      const s = (S.pack.stops || []).find((x) => x.id === f.stop_id);
-      if (s) { s.status = payload.outcome === 'met' || payload.outcome === 'order' ? 'met' : s.status;
-               try { localStorage.setItem(PACK, JSON.stringify(S.pack)); } catch (e) {} }
-    }
-    render();
-    const msg = navigator.onLine ? 'Saved ✓' : 'Saved on this phone ✓';
-    const href = backHref();
-    if (href) toastAction(msg, 'Back to the day', () => { location.href = href; });
-    else toast(msg, 'ok');
-    flush();
-  }
-
-  /* ---------------- CLIENTS ---------------- */
-  function clientsHtml() {
-    if (!navigator.onLine) return '<div class="empty">Client history needs signal.</div>';
-    return '<div class="field"><input id="cs" type="text" placeholder="Search the shops you have visited" ' +
-      'value="' + esc(S.cterm || '') + '" oninput="onCSearch(this.value)" autocomplete="off"></div>' +
-      '<div id="c-res">' + engagedList() + '</div>';
-  }
-  // Filters in place. Re-rendering the tab on each keystroke blanks the box and drops the keyboard.
-  function engagedList() {
-    const rows = S.engaged;
-    if (!rows.length) return '<div class="empty">No visits logged yet. Once you log one, the shop appears here with its full history.</div>';
-    const term = (S.cterm || '').trim().toLowerCase();
-    const list = term ? rows.filter((r) => ((r.name || '') + ' ' + (r.city || '')).toLowerCase().indexOf(term) >= 0) : rows;
-    if (!list.length) return '<div class="empty">No visited shop matches that.</div>';
-    return '<div class="sec-t">' + list.length + (list.length === 1 ? ' shop' : ' shops') + ' visited</div>' +
-      list.map((r) =>
-      '<div class="q"><div class="body"><div class="nm">' + esc(r.name) +
-      (r.interest ? ' <span class="pill ' + esc(r.interest) + '">' + esc(r.interest) + '</span>' : '') + '</div>' +
-      '<div class="mt">' + esc(r.city || '') + ' · ' + r.visits + (r.visits === 1 ? ' visit' : ' visits') +
-      ' · last ' + esc(fmtWhen(r.last_visit)) +
-      (r.open_followups ? ' · ' + r.open_followups + ' open' : '') + '</div></div>' +
-      '<button class="go" onclick="openClient(\'' + r.id + '\')">Open</button></div>').join('');
-  }
-  function onCSearch(v) { S.cterm = v; const b = $('c-res'); if (b) b.innerHTML = engagedList(); }
-  // What he has actually logged. The Today screen showed trip stops and follow-ups
-  // but never the visits themselves, so an evening of work left no trace on the screen.
-  async function loadRecent() {
-    if (!navigator.onLine) return;
-    try {
-      const { data } = await sb.from('lf_visits')
-        .select('id,place_id,visited_at,outcome,interest,met_name')
-        .order('visited_at', { ascending: false }).limit(60);
-      S.recent = data || [];
-      try { localStorage.setItem('bj_us_recent', JSON.stringify(S.recent)); } catch (e) {}
-    } catch (e) {
-      try { S.recent = JSON.parse(localStorage.getItem('bj_us_recent') || '[]'); } catch (e2) { S.recent = []; }
-    }
-  }
-
-  async function loadEngaged() {
-    if (!navigator.onLine) return;
-    try {
-      const { data } = await sb.from('lf_engaged').select('*').order('last_visit', { ascending: false }).limit(500);
-      S.engaged = data || [];
-    } catch (e) { S.engaged = []; }
-  }
-  async function openClient(id) {
-    S.client = { loading: true, id }; push('client');
-    try {
-      const [pl, vs, cs, fs] = await Promise.all([
-        sb.from('lf_places').select('*').eq('id', id).single(),
-        sb.from('lf_visits').select('*').eq('place_id', id).order('visited_at', { ascending: false }),
-        sb.from('lf_contacts').select('*').eq('place_id', id).order('created_at'),
-        sb.from('lf_followups').select('*').eq('place_id', id).order('due_date')
-      ]);
-      S.client = { id, place: pl.data, visits: vs.data || [], contacts: cs.data || [], followups: fs.data || [] };
-    } catch (e) { S.client = { id, error: String(e.message || e) }; }
-    render();
-  }
-  function clientHtml() {
-    const c = S.client || {};
-    if (c.loading) return '<div class="empty">Loading…</div>';
-    if (c.error) return '<div class="empty">Could not load this client.<br>' + esc(c.error) + '</div>';
-    const p = c.place || {};
-    let h = '<div class="card"><h3>' + esc(p.name) + (p.priority >= 5 ? ' ⭐' : '') + '</h3>' +
-      '<div class="sub">' + esc([p.address, p.city, p.region, p.postcode].filter(Boolean).join(', ')) + '</div>' +
-      '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">' +
-      (p.phone ? '<a class="go" href="tel:' + esc(digits(p.phone)) + '">📞 Call</a>' : '') +
-      (p.website ? '<a class="go" target="_blank" rel="noopener" href="' + esc(p.website) + '">🌐 Site</a>' : '') +
-      '<button class="go" onclick="openForm(' + JSON.stringify(JSON.stringify({ place: p, stop_id: '', trip_id: '' })).replace(/"/g, '&quot;') + ')">＋ Log a visit</button>' +
-      '</div></div>';
-
-    if ((c.contacts || []).length) {
-      h += '<div class="sec-t">People</div>' + c.contacts.map((k) =>
-        '<div class="q"><div class="body"><div class="nm">' + esc(k.name) +
-        (k.role ? ' <span class="sub">· ' + esc(k.role) + '</span>' : '') + '</div>' +
-        '<div class="mt">' + esc([k.mobile, k.email].filter(Boolean).join(' · ') || '—') + '</div></div>' +
-        (k.mobile ? '<a class="go" href="tel:' + esc(digits(k.mobile)) + '">Call</a>' : '') + '</div>').join('');
-    }
-    const openF = (c.followups || []).filter((f) => f.status === 'open');
-    if (openF.length) {
-      h += '<div class="sec-t">Open follow-ups</div>' + openF.map((f) =>
-        '<div class="q"><div class="body"><div class="nm">' + esc(f.what) + '</div>' +
-        '<div class="mt"><span class="pill ' + bucketOf(f.due_date) + '">due ' + esc(fmtDate(f.due_date)) + '</span></div></div>' +
-        '<button class="go" onclick="doneFollowup(\'' + f.id + '\')">Done</button></div>').join('');
-    }
-
-    h += '<div class="sec-t">Every visit (' + (c.visits || []).length + ')</div>';
-    if (!(c.visits || []).length) h += '<div class="empty">No visits recorded yet.</div>';
-    else h += '<div class="card"><div class="hist">' + c.visits.map((v) => {
-      const asked = Array.isArray(v.asked_about) ? v.asked_about : [];
-      const objs = Array.isArray(v.objections) ? v.objections : [];
-      const oc = (OUTCOMES.find((o) => o[0] === v.outcome) || [null, v.outcome || '—'])[1];
-      return '<div class="v"><div class="when">' + esc(fmtWhen(v.visited_at)) + ' · ' + esc(oc) +
-        (v.interest ? ' · <span class="pill ' + esc(v.interest) + '">' + esc(v.interest) + '</span>' : '') + '</div>' +
-        (v.met_name ? '<div class="mt" style="font-size:12.5px;color:var(--mu)">Met ' + esc(v.met_name) +
-          (v.met_role ? ', ' + esc(v.met_role) : '') + '</div>' : '') +
-        (v.feedback ? '<div class="fb">' + esc(v.feedback) + '</div>' : '') +
-        (asked.length ? '<div class="tags">Asked about: ' + esc(asked.join(', ')) + '</div>' : '') +
-        (v.asked_notes ? '<div class="tags">' + esc(v.asked_notes) + '</div>' : '') +
-        (objs.length ? '<div class="tags">Held back by: ' + esc(objs.join(', ')) + '</div>' : '') +
-        (v.objection_notes ? '<div class="tags">' + esc(v.objection_notes) + '</div>' : '') +
-        (v.order_type && v.order_type !== 'none'
-          ? '<div class="tags"><b>Order:</b> ' + esc((ORDER_TYPES.find((o) => o[0] === v.order_type) || [null, v.order_type])[1]) +
-            (v.order_value ? ' · $' + esc(v.order_value) : '') + '</div>' : '') +
-        (v.next_step ? '<div class="tags">Next: ' + esc(v.next_step) +
-          (v.next_step_due ? ' by ' + esc(fmtDate(v.next_step_due)) : '') + '</div>' : '') +
-        '</div>';
-    }).join('') + '</div></div>';
-    return h;
-  }
-
-  /* ---------------- auth + boot ---------------- */
-  async function signOut() {
-    try { localStorage.removeItem(SEEN_KEY); } catch (e) {}
-    try { await sb.auth.signOut(); } catch (e) {}
-    location.reload();
-  }
-  async function doSignIn() {
-    const em = $('g-em').value.trim(), pw = $('g-pw').value;
-    if (!em || !pw) { $('g-err').textContent = 'Enter your email and password.'; return; }
-    $('g-err').textContent = 'Signing in…';
-    const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
-    if (error) { $('g-err').textContent = error.message; return; }
-    try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {}
-    boot();
-  }
-  const SEEN_KEY = 'bj_us_signed_in';
-  const everSignedIn = () => { try { return localStorage.getItem(SEEN_KEY) === '1'; } catch (e) { return false; } };
-  async function boot() {
-    let session = null;
-    try { const r = await sb.auth.getSession(); session = r && r.data ? r.data.session : null; }
-    catch (e) { session = null; }
-    if (session) { try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {} }
-    // With no signal a token refresh cannot succeed and getSession can come back empty.
-    // Showing a login screen to someone standing in a shop would lose the visit outright,
-    // so if this phone has signed in before, run the app anyway and let everything queue.
-    S.degraded = !session && everSignedIn();
-    if (!session && !S.degraded) { $('gate').style.display = ''; $('app').style.display = 'none'; return; }
-    $('gate').style.display = 'none'; $('app').style.display = '';
-    loadPackLocal();
-    try { S.work = JSON.parse(localStorage.getItem('bj_us_work') || '[]'); } catch (e) { S.work = []; }
-    await refreshQueue();
-    render();
-    await Promise.all([refreshPack(), loadWork(), loadEngaged(), loadRecent()]);
-    render();
-    flush();
-    const url = new URL(location.href);
-    const pid = url.searchParams.get('place');
-    // Arriving from a trip stop used to be a one-way door: there was no route back to
-    // the day being worked. Remember where he came from and offer the way back.
-    S.backDay = url.searchParams.get('back') || '';
-    S.backTrip = url.searchParams.get('trip') || '';
-    showBack();
-    if (pid && navigator.onLine) {
-      const { data } = await sb.from('lf_places').select('*').eq('id', pid).single();
-      if (data) openForm({ place: data, stop_id: url.searchParams.get('stop') || '', trip_id: S.backTrip });
-    }
-  }
-
-  function backHref() {
-    if (S.backDay) return 'trips.html?day=' + encodeURIComponent(S.backDay);
-    if (S.backTrip) return 'trips.html?trip=' + encodeURIComponent(S.backTrip);
-    return '';
-  }
-  function showBack() {
-    const el = $('back-day'); if (!el) return;
-    const href = backHref();
-    if (!href) { el.style.display = 'none'; return; }
-    el.href = href; el.style.display = '';
-  }
-
-  window.addEventListener('online', async () => {
-    if (S.degraded) {
-      try { const r = await sb.auth.getSession(); if (r && r.data && r.data.session) S.degraded = false; }
-      catch (e) { /* still not reachable; stay in the safe mode */ }
-    }
-    renderSync(); flush(); refreshAll();
-  });
-  window.addEventListener('offline', renderSync);
-  setInterval(() => { if (S.queue.length && navigator.onLine) flush(); }, 25000);
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
-    flush();
-    refreshAll();          // he has been away; the lists are almost certainly stale
-  });
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
-  }
-
-  Object.assign(window, { tab, goBack, openForm, fset, fraw, saveVisit, flush, showStuck,
-    setOutcomeF, setInterest, setRole, setGrade, setBuysLab, setLabStock, setOrderType, setNext, setDue, dueTyped, toggleAsked, toggleObj, scanCard, cardChosen, applyShopFix,
-    onPick, newLead, onCSearch, openClient, doneFollowup, reopenFollowup, pushFollowup, undoPush, signOut });
-  $('g-go').onclick = doSignIn;
-  $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
-  boot();
-})();
-</script>
-</body>
-</html>
+<!doctype html> <html lang="en"> <head> <meta charset="utf-8"> <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"> <meta name="theme-color" content="#1A2641"> <title>Aaryam · Visits</title> <link 
+rel="icon" type="image/svg+xml" href="icon.svg"> <script src="aaryam-touch.js"></script> <link rel="manifest" href="visits-manifest.json"> <meta name="apple-mobile-web-app-capable" content="yes"> <meta name="mobile-web-app-capable" 
+content="yes"> <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"> <meta name="apple-mobile-web-app-title" content="US Visits"> <link rel="stylesheet" href="../styles.css"> <link rel="stylesheet" 
+href="aaryam.css"> <style>html{scroll-padding-top:64px;scroll-padding-bottom:120px}
+body{background:var(--paper);color:var(--ink);font-size:15px;line-height:1.5;overflow-x:hidden}
+[hidden]{display:none!important}
+.sub{color:var(--muted);font-size:13.5px;margin:0}
+.v-ico{flex:0 0 auto}
+.aa-brandbar .v-sync{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 13px;font-size:13px;letter-spacing:.01em;white-space:nowrap;font-variant-numeric:tabular-nums}
+.aa-brandbar .v-sync.auth,.aa-brandbar .v-sync.wait{background:var(--warn-soft);color:var(--warn)}
+.aa-brandbar .v-sync.fail{background:var(--bad-soft);color:var(--bad)}
+.aa-brandbar .v-sync.send{background:var(--info-soft);color:var(--info)}
+.v-spin{animation:v-rot 1s linear infinite}
+@keyframes v-rot{to{transform:rotate(360deg)}}.v-backday{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;background:var(--navy-soft);color:var(--navy);font-weight:700;font-size:14px;text-decoration:none;border-bottom:1px solid var(--line)}
+.v-banner{display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:13.5px;font-weight:600;background:var(--surface);color:var(--ink-2);border-bottom:1px solid var(--line)}
+.v-banner.warn{background:var(--warn-soft);color:var(--warn)}
+.v-banner.bad{background:var(--bad-soft);color:var(--bad)}
+.v-banner span{flex:1;min-width:0}
+.v-banner button{flex:0 0 auto;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid currentColor;background:0 0;color:inherit;font-weight:700;font-size:13px;cursor:pointer}
+.wrap{max-width:720px;margin:0 auto;padding:18px 16px 28px}
+body.has-savebar .wrap{padding-bottom:calc(132px + env(safe-area-inset-bottom))}
+.v-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:2px 2px 14px}
+.v-head h1{margin:0;font-size:30px;line-height:1.1;color:var(--ink)}
+.v-head .v-date{color:var(--muted);font-size:13px;font-weight:600;text-align:right}
+.v-tabs{display:flex;gap:4px;padding:4px;margin:0 0 6px;background:var(--surface);border:1px solid var(--line);border-radius:999px}
+.v-tabs button{flex:1;min-height:42px;border:0;border-radius:999px;background:0 0;color:var(--ink-2);font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;padding:0 6px}
+.v-tabs button[aria-current=page]{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(21,26,40,.14)}
+.v-sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:26px 2px 10px}
+.v-sec .eyebrow{margin:0}
+.v-sec .v-cnt{font-size:12.5px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.v-sub-h{margin:14px 2px 8px}
+.v-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:10px;box-shadow:var(--shadow)}
+.v-card h3,.v-h3{margin:0 0 4px;font-size:19px;line-height:1.2;color:var(--ink)}
+.v-card .v-btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.v-card.warn{background:var(--warn-soft);border-color:transparent;box-shadow:none}
+.v-card.warn h3{color:var(--warn)}
+.v-card.bad{background:var(--bad-soft);border-color:transparent;box-shadow:none}
+.v-card.bad h3{color:var(--bad)}
+.v-card.info{background:var(--info-soft);border-color:transparent;box-shadow:none}
+.v-card.info h3{color:var(--info)}
+.v-card.soft{background:var(--surface);box-shadow:none}
+.q{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:8px}
+.q .body{flex:1 1 170px;min-width:0}
+.q .nm{font-weight:700;font-size:15px;color:var(--ink);overflow-wrap:anywhere}
+.q .mt{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.q .acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-left:auto}
+.q.appt{border-color:var(--line-strong)}
+.seq{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--surface);color:var(--ink-2);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
+.seq.done{background:var(--ok-soft);color:var(--ok)}
+.v-act{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--ink);font-weight:700;font-size:13.5px;text-decoration:none;cursor:pointer;white-space:nowrap;font-family:var(--body)}
+.v-act.pri{background:var(--navy-soft);border-color:transparent;color:var(--navy)}
+.v-act:disabled{opacity:.5;cursor:default}
+.v-link{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:0 6px;border:0;background:0 0;color:var(--navy);font-weight:700;font-size:14px;cursor:pointer;font-family:var(--body)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;letter-spacing:.02em;background:var(--surface);color:var(--ink-2);vertical-align:2px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pill.fail,.pill.hot,.pill.overdue{background:var(--bad-soft);color:var(--bad)}
+.pill.today,.pill.wait,.pill.warm{background:var(--warn-soft);color:var(--warn)}
+.pill.appt,.pill.cold,.pill.next7,.pill.send{background:var(--info-soft);color:var(--info)}
+.pill.done{background:var(--ok-soft);color:var(--ok)}
+.pill.cold,.pill.hot,.pill.warm{text-transform:capitalize}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:22px 16px;background:var(--surface);border-radius:14px;margin-bottom:8px}
+.v-skel{height:66px;margin-bottom:8px;border-radius:14px}
+.v-formtop{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:-6px 0 8px -6px}
+.v-formtop .sub{font-weight:600}
+.v-shop h2{margin:2px 0 4px;font-size:26px;line-height:1.15;color:var(--ink);overflow-wrap:anywhere}
+.v-shop .v-angle{margin:10px 0 0;font-size:14px;color:var(--ink-2)}
+.v-when{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:14px}
+.v-when b{font-variant-numeric:tabular-nums}
+.v-when .row{flex-basis:100%;margin-top:6px}
+.v-opener{margin-top:12px;padding-top:6px;border-top:1px solid var(--line)}
+.v-opener summary{cursor:pointer;min-height:40px;display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--ink-2);list-style:none}
+.v-opener summary::-webkit-details-marker{display:none}
+.v-opener summary::after{content:"Show";margin-left:auto;color:var(--navy);font-size:13px}
+.v-opener[open] summary::after{content:"Hide"}
+.v-opener .msg{white-space:pre-wrap;background:var(--surface);border-radius:12px;padding:12px 14px;margin:4px 0 10px;font-size:14.5px;color:var(--ink)}
+.v-req{color:var(--muted);font-weight:600;letter-spacing:.04em}
+.v-chips{display:flex;flex-wrap:wrap;gap:8px}
+.v-chip{min-height:42px;padding:0 15px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-weight:600;font-size:14px;cursor:pointer;font-family:var(--body)}
+.v-chip[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--cream);font-weight:700}
+.v-hint{font-size:13px;color:var(--muted);margin:12px 2px 8px}
+.field{margin:12px 0 0}
+.field label{display:block;font-size:12.5px;font-weight:700;color:var(--ink-2);margin:0 2px 6px;letter-spacing:.01em}
+.field input,.field select,.field textarea{display:block;width:100%;box-sizing:border-box;min-height:48px;padding:11px 13px;font-size:16px;font-family:var(--body);font-weight:500;border:1px solid var(--line-strong);border-radius:12px;background:#fff;color:var(--ink);-webkit-appearance:none;appearance:none}
+.field input[type=date],.field input[type=time]{min-width:0}
+.field textarea{min-height:112px;resize:vertical;line-height:1.45}
+.row{display:flex;flex-wrap:wrap;gap:0 10px}
+.row .field{flex:1 1 150px;min-width:0}
+.v-scan{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--ink);font-weight:700;font-size:15px;cursor:pointer;font-family:var(--body);margin-bottom:4px}
+.v-panel{background:var(--surface);border-radius:14px;padding:13px 14px;margin:10px 0 4px;font-size:13.5px}
+.v-panel h4{margin:0 0 6px;font-size:13px;letter-spacing:.02em;color:var(--ink)}
+.v-panel .ln{margin-top:3px;color:var(--ink-2);overflow-wrap:anywhere}
+.v-panel .ln b{color:var(--ink)}
+.v-panel .div{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-strong)}
+.v-nudge{background:var(--warn-soft);color:var(--warn);border-radius:14px;padding:13px 15px;font-size:14px;font-weight:600;margin:22px 0 0}
+.v-savebar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(251,251,248,.97);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 18px rgba(21,26,40,.06)}
+.v-savebar .in{max-width:688px;margin:0 auto}
+.v-save{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;border:0;border-radius:999px;background:var(--navy);color:var(--cream);font-family:var(--body);font-weight:700;font-size:16.5px;cursor:pointer}
+.v-save:disabled{opacity:.7}
+.v-savenote{margin:6px 0 0;text-align:center;font-size:12.5px;color:var(--muted);font-weight:600}
+.hist{border-left:2px solid var(--line);padding-left:14px;margin-left:4px}
+.hist .v{margin-bottom:16px}
+.hist .when{font-size:12.5px;color:var(--muted);font-weight:600}
+.hist .fb{font-size:14px;margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere}
+.tags{font-size:12.5px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}
+.v-sheet-bg{position:fixed;inset:0;z-index:80;background:rgba(18,27,48,.55);display:flex;align-items:flex-end;justify-content:center}
+.v-sheet{width:100%;max-width:560px;max-height:86vh;overflow-y:auto;background:var(--paper);border-radius:22px 22px 0 0;padding:20px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:var(--shadow-lift)}
+.v-sheet h2{margin:0 0 6px;font-size:24px;color:var(--ink)}
+.v-sheet .v-btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.v-sheet .v-btnrow .v-act{flex:1 1 140px;min-height:46px}
+.v-sheet .err{font-size:12.5px;color:var(--bad);margin-top:3px;overflow-wrap:anywhere}
+@media (min-width:700px){.v-sheet-bg{align-items:center}
+.v-sheet{border-radius:22px}}.v-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));z-index:90;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 32px);width:max-content;padding:11px 16px;border-radius:999px;background:var(--ink);color:var(--cream);font-size:14px;font-weight:600;box-shadow:var(--shadow-lift)}
+.v-toast.ok{background:var(--ok)}
+.v-toast.err{background:var(--bad);border-radius:16px}
+body.has-savebar .v-toast{bottom:calc(104px + env(safe-area-inset-bottom))}
+.v-toast button{flex:0 0 auto;min-height:34px;padding:0 13px;border:0;border-radius:999px;background:rgba(255,255,255,.18);color:inherit;font-weight:700;font-size:13.5px;cursor:pointer;font-family:var(--body)}
+#gate{min-height:100vh;background:var(--paper)}
+#gate.overlay{position:fixed;inset:0;z-index:95;overflow-y:auto}
+#gate .g-in{max-width:360px;margin:0 auto;padding:calc(12vh + env(safe-area-inset-top)) 20px 40px;text-align:center}
+#gate .g-wm{height:22px;width:auto;display:block;margin:0 auto 26px}
+#gate h1{margin:0 0 6px;font-size:32px;color:var(--ink)}
+#gate form{text-align:left;margin-top:22px}
+#gate .v-save{margin-top:18px}
+#gate .g-err{color:var(--bad);font-size:13.5px;text-align:center;min-height:20px;margin:12px 0 0;font-weight:600}
+#gate .v-link{margin:8px auto 0;display:flex}
+.v-signout{text-align:center;margin:0}
+.v-signout button{min-height:40px;border:0;background:0 0;color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;font-family:var(--body);text-decoration:underline;text-underline-offset:3px}
+.aa-foot{margin-top:30px}
+@media (min-width:900px){.wrap{padding-top:26px}
+.v-head h1{font-size:34px}}</style> </head> <body> <div id="gate" hidden> <div class="g-in"> <img src="aaryam-wordmark.svg" alt="Aaryam" class="g-wm"> <h1>Visits</h1> <p class="sub" id="g-sub">Sign in to log the shops you visit.</p> <form 
+id="g-form" novalidate> <div class="field"><label for="g-em">Email</label> <input id="g-em" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false"></div> <div class="field"><label for="g-pw">Password
+</label> <input id="g-pw" type="password" autocomplete="current-password"></div> <button class="v-save" id="g-go" type="submit">Sign in</button> <p id="g-err" class="g-err" role="alert"></p> <button class="v-link" id="g-later" 
+type="button" hidden>Not now — keep logging on this phone</button> </form> </div> </div> <div id="app" hidden> <header class="aa-brandbar"> <img src="aaryam-wordmark-cream.svg" alt="Aaryam" class="aa-wm"> <span class="aa-sub">Visits</span> 
+<span class="aa-spacer"></span> <button type="button" class="v-sync" id="sync-b" data-act="sheet" aria-live="polite">All sent</button> </header> <nav class="bjnav" aria-label="Lead Finder"> <a href="./">Leads</a><a href="approve.html">
+Approve</a><a href="trips.html">Trips</a><a href="visits.html" class="on" aria-current="page">Visits</a> </nav> <a class="v-backday" id="back-day" hidden href="trips.html"></a> <div class="v-banner" id="v-banner" hidden role="status"></div>
+ <main class="wrap" id="view"></main> </div> <div class="v-savebar" id="savebar" hidden> <div class="in"> <button type="button" class="v-save" id="save-b" data-act="save">Save visit</button> <p class="v-savenote" id="save-note"></p> </div> 
+</div> <input type="file" id="card-front" accept="image/*" hidden data-card="front"> <input type="file" id="card-back" accept="image/*" hidden data-card="back"> <div id="toast-host" aria-live="polite"></div> <div id="sheet-host"></div> 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script> <script src="../config.js"></script> <script>
+!function(){"use strict";if(!window.supabase||!window.supabase.createClient||"undefined"==typeof BJ_CONFIG){const e=function(){
+document.body.innerHTML='<div style="max-width:340px;margin:16vh auto;padding:0 24px;text-align:center;font:500 15px/1.5 Quicksand,-apple-system,BlinkMacSystemFont,sans-serif;color:#151A28"><h2 style="color:#1A2641;font:600 23px/1.2 \'Bodoni Moda\',Georgia,serif">Could not finish loading</h2><p>One of the app files did not download. This happens on a first open with no signal. Any visit already saved on this phone is still safe.</p><p style="color:#646B7C;font-size:13.5px">Get a bar of signal and reload once. After that the app opens offline on its own.</p><button onclick="location.reload()" style="min-height:48px;padding:0 26px;font:700 16px Quicksand,sans-serif;border:0;border-radius:999px;background:#1A2641;color:#F0F1EC">Reload</button></div>'
+};return void("loading"===document.readyState?document.addEventListener("DOMContentLoaded",e):e())}const e=window.BJ_CONFIG,t=window.supabase.createClient(e.SUPABASE_URL,e.SUPABASE_KEY),n={tab:"today",stack:[],queue:[],work:[],pack:null,
+engaged:[],recent:[],place:null,form:null,client:null,backDay:"",backTrip:"",degraded:!1,needAuth:!1,authMsg:"",sending:!1,otherTab:!1,lastSent:0,loaded:!1,loadErr:"",pterm:"",cterm:"",clientLimit:80,storageBroken:!1,idbOk:!0},a={
+queue:"bj_us_queue",pack:"bj_us_trippack",work:"bj_us_work",recent:"bj_us_recent",seen:"bj_us_signed_in",engaged:"aa_us_engaged",sent:"aa_us_sent",draft:"aa_us_visit_draft",lease:"aa_us_sync_lease"
+},o=e=>document.getElementById(e),i=e=>String(null==e?"":e).replace(/[&<>"']/g,(e=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[e]))),s=e=>String(e||"").replace(/[^\d+]/g,""),r=e=>new Promise((t=>setTimeout(t,e))),c=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,d=e=>c.test(String(e||""));function l(){
+return window.crypto&&crypto.randomUUID?crypto.randomUUID():"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,(e=>{const t=crypto.getRandomValues(new Uint8Array(1))[0]%16;return("x"===e?t:3&t|8).toString(16)}))}function u(e,t){try{
+const n=localStorage.getItem(e);return null==n?t:JSON.parse(n)}catch(e){return t}}function p(e,t){try{return localStorage.setItem(e,JSON.stringify(t)),!0}catch(e){return!1}}function h(e){try{localStorage.removeItem(e)}catch(e){}}
+const m=e=>{const t=u(e,[]);return Array.isArray(t)?t:[]};function g(e){return e?"string"==typeof e?e:String(e.message||e.error_description||e.msg||e.details||e)||"Unknown error":"Unknown error"}function f(e){const t=g(e).toLowerCase()
+;return t.includes("failed to fetch")||t.includes("networkerror")||t.includes("load failed")||t.includes("network request failed")||t.includes("timeout")||t.includes("aborterror")||t.includes("fetcherror")||t.includes("the internet connection")||t.includes("aborted")||e&&"AuthRetryableFetchError"===e.name
+}function v(e,t,n){let a;return Promise.race([e,new Promise(((e,o)=>{a=setTimeout((()=>o(new Error((n||"request")+" timeout"))),t)}))]).finally((()=>clearTimeout(a)))}async function y(e,t){
+const n=new AbortController,a=setTimeout((()=>n.abort()),t||15e3);try{const t=await e.abortSignal(n.signal);if(t.error)throw t.error;return t.data}finally{clearTimeout(a)}}
+const b=e=>e.getFullYear()+"-"+String(e.getMonth()+1).padStart(2,"0")+"-"+String(e.getDate()).padStart(2,"0"),_=e=>String(e.getHours()).padStart(2,"0")+":"+String(e.getMinutes()).padStart(2,"0"),w=()=>b(new Date);function k(e,t){
+const n=new Date(e+"T12:00:00Z");return n.setUTCDate(n.getUTCDate()+t),n.toISOString().slice(0,10)}function S(e){if(!e)return"";const t=new Date(String(e).slice(0,10)+"T12:00:00Z");return isNaN(t)?String(e):t.toLocaleDateString(void 0,{
+weekday:"short",day:"numeric",month:"short",timeZone:"UTC"})}const x=e=>b(new Date(e));function L(e){const t=w();return e===t?"Today":e===k(t,-1)?"Yesterday":S(e)}const T=e=>new Date(e).toLocaleTimeString(void 0,{hour:"numeric",
+minute:"2-digit"});function C(e){if(!e)return"";const t=new Date(e);return isNaN(t)?"":t.toLocaleDateString(void 0,{day:"numeric",month:"short"})+", "+T(t)}function j(e){const t=/^(\d{1,2}):(\d{2})/.exec(String(e||""))
+;if(!t)return String(e||"");const n=new Date;return n.setHours(+t[1],+t[2],0,0),n.toLocaleTimeString(void 0,{hour:"numeric",minute:"2-digit"})}
+const A=(e,t)=>'<svg class="v-ico" viewBox="0 0 24 24" width="'+(t||16)+'" height="'+(t||16)+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+e+"</svg>",N={
+back:A('<path d="M15 18l-6-6 6-6"/>',18),check:A('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),clock:A('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),alert:A('<path d="M12 3.8l9 16H3z"/><path d="M12 10v4.4M12 17.4v.1"/>'),
+sync:'<svg class="v-ico v-spin" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/></svg>',
+user:A('<circle cx="12" cy="8" r="3.6"/><path d="M5 20c1.2-3.6 4-5.2 7-5.2s5.8 1.6 7 5.2"/>'),
+card:A('<rect x="3" y="5.5" width="18" height="13" rx="2"/><circle cx="8.5" cy="11" r="2"/><path d="M5.8 15.6c.6-1.3 1.6-2 2.7-2s2.1.7 2.7 2M14 10h4M14 13.5h3"/>',18),
+phone:A('<path d="M5 4h3.5l1.6 4-2.2 1.4a11 11 0 0 0 6.7 6.7l1.4-2.2 4 1.6V19a1.6 1.6 0 0 1-1.7 1.6A16.4 16.4 0 0 1 3.4 5.7 1.6 1.6 0 0 1 5 4z"/>',15)};let B;function E(e,t,n){const a=o("toast-host"),i=a.querySelector(".v-toast")
+;if(!n&&"err"!==t&&i&&i.querySelector("button"))return void(i.firstChild.textContent=e);a.innerHTML="";const s=document.createElement("div");s.className="v-toast"+(t?" "+t:""),s.setAttribute("role","err"===t?"alert":"status")
+;const r=document.createElement("span");if(r.textContent=e,s.appendChild(r),n){const e=document.createElement("button");e.type="button",e.textContent=n.label,e.onclick=()=>{s.remove(),clearTimeout(B),n.fn()},s.appendChild(e)}
+a.appendChild(s),clearTimeout(B),B=setTimeout((()=>s.remove()),n?8e3:"err"===t?5200:3400)}function D(e){
+o("sheet-host").innerHTML='<div class="v-sheet-bg" data-act="sheetBg"><div class="v-sheet" role="dialog" aria-modal="true">'+e+"</div></div>";const t=o("sheet-host").querySelector("button");t&&t.focus({preventScroll:!0})}function M(){
+o("sheet-host").innerHTML=""}async function O(e){try{return await navigator.clipboard.writeText(e),void E("Copied","ok")}catch(e){}const t=document.createElement("textarea");t.value=e,t.setAttribute("readonly",""),t.style.position="fixed",
+t.style.opacity="0",document.body.appendChild(t),t.select();let n=!1;try{n=document.execCommand("copy")}catch(e){}t.remove(),E(n?"Copied":"This phone would not copy. Press and hold the text to copy it.",n?"ok":"err")}
+const q="bj_us_visits",P="queue",U=e=>e&&(e.v||e.created)||0;let I=null;function R(e,t,n){return new Promise(((a,o)=>{let i,s;try{i="readwrite"===t?e.transaction(P,t,{durability:"strict"}):e.transaction(P,t)}catch(e){return o(e)}try{
+s=n(i.objectStore(P))}catch(e){try{i.abort()}catch(e){}return o(e)}i.oncomplete=()=>a(s&&"result"in s?s.result:void 0),i.onerror=()=>o(i.error||new Error("idb error")),i.onabort=()=>o(i.error||new Error("idb aborted"))}))}
+async function F(e,t){if(!window.indexedDB)throw new Error("no indexedDB");for(let n=0;n<2;n++)try{I||(I=v(new Promise(((e,t)=>{let n;try{n=indexedDB.open(q,1)}catch(e){return t(e)}n.onupgradeneeded=()=>{const e=n.result
+;e.objectStoreNames.contains(P)||e.createObjectStore(P,{keyPath:"id"})},n.onsuccess=()=>{const t=n.result;t.onversionchange=()=>{try{t.close()}catch(e){}I=null},t.onclose=()=>{I=null},e(t)},
+n.onerror=()=>t(n.error||new Error("idb open failed")),n.onblocked=()=>t(new Error("idb blocked"))})),4e3,"idb open"));const n=await I;return await R(n,e,t)}catch(e){if(I=null,n)throw e}}function W(){const e=u(a.sent,{})
+;return e&&"object"==typeof e&&!Array.isArray(e)?e:{}}function H(e,t){const n=W();n[e]=Math.max(n[e]||0,t);const o=Object.keys(n);o.length>400&&o.sort(((e,t)=>n[e]-n[t])).slice(0,o.length-400).forEach((e=>{delete n[e]})),p(a.sent,n)}
+const V="BroadcastChannel"in window?new BroadcastChannel("aaryam-us-visits"):null,$=()=>{try{V&&V.postMessage("queue")}catch(e){}},G={async all(){let e=[];try{e=await F("readonly",(e=>e.getAll()))||[],n.idbOk=!0}catch(e){n.idbOk=!1}
+const t=new Map;for(const n of e.concat(m(a.queue))){if(!n||!n.id||!n.payload)continue;const e=t.get(n.id);(!e||U(n)>U(e))&&t.set(n.id,n)}const o=W(),i=[];return t.forEach((e=>{o[e.id]&&o[e.id]>=U(e)?G.drop(e.id,U(e)):i.push(e)})),
+i.sort(((e,t)=>(e.created||0)-(t.created||0)))},async put(e){e.v=Math.max(Date.now(),U(e)+1);let t=!1,n=!1;try{await F("readwrite",(t=>t.put(e))),t=!0}catch(e){}const o=m(a.queue).filter((t=>t&&t.id!==e.id));if(o.push(e),n=p(a.queue,o),
+!t&&!n)throw new Error("This phone would not store the visit");return $(),e},async drop(e,t){try{await F("readwrite",(n=>{const a=n.get(e);return a.onsuccess=()=>{const o=a.result;o&&U(o)>t||n.delete(e)},null}))}catch(e){}
+const n=m(a.queue),o=n.filter((n=>!(n&&n.id===e&&U(n)<=t)));o.length!==n.length&&p(a.queue,o)},async done(e){H(e.id,U(e)),await G.drop(e.id,U(e)),$()}};async function Y(){n.queue=await G.all(),Ge();const e=o("v-syncbox")
+;e&&(e.outerHTML=ze())}const z=l();function Q(e){if(navigator.locks&&navigator.locks.request)return navigator.locks.request("aaryam-us-visit-sync",{ifAvailable:!0},(t=>t?e():"busy"));const t=u(a.lease,null)
+;if(t&&t.by!==z&&t.until>Date.now())return Promise.resolve("busy");p(a.lease,{by:z,until:Date.now()+6e4});const n=u(a.lease,null);return n&&n.by!==z?Promise.resolve("busy"):Promise.resolve().then(e).finally((()=>{const e=u(a.lease,null)
+;e&&e.by===z&&h(a.lease)}))}const J=()=>{navigator.locks&&navigator.locks.request||p(a.lease,{by:z,until:Date.now()+6e4})};async function K(e){try{const a=await v(t.auth.getSession(),12e3,"auth"),o=a&&a.data&&a.data.session
+;if(!o)return a&&a.error&&f(a.error)?"net":navigator.onLine?"none":"net";if(e||o.expires_at&&1e3*o.expires_at<Date.now()+6e4){const e=await v(t.auth.refreshSession(),12e3,"auth");if(e.error)return f(e.error)?"net":"none"
+;if(!e.data||!e.data.session)return"none"}return n.degraded=!1,"ok"}catch(e){return"net"}}async function X(e){const n=new AbortController,a=setTimeout((()=>n.abort()),25e3);try{const a=await t.rpc("lf_log_visit",{p:e.payload
+}).abortSignal(n.signal);return a.error?function(e,t){const n=g(e),a=String(e&&e.code||""),o=Number(t)||0;return!o||f(e)?{kind:"net",msg:n}:401===o||/^PGRST30/.test(a)||/jwt|not permitted|no us access/i.test(n)||403===o&&"42501"===a?{
+kind:"auth",msg:n}:408===o||425===o||429===o||o>=500?{kind:"busy",msg:n}:{kind:"reject",msg:n}}(a.error,a.status):"string"==typeof a.data&&a.data.toLowerCase()!==String(e.payload.id).toLowerCase()?{kind:"reject",
+msg:"The server confirmed a different visit"}:{ok:!0}}catch(e){return{kind:"net",msg:g(e)}}finally{clearTimeout(a)}}let Z=null,ee=!1,te=!1,ne=null,ae=null;function oe(e){return e&&(te=!0),Z?(ee=!0,Z):(Z=(async()=>{try{do{ee=!1;const e=te
+;te=!1;const t=await Q((()=>ie(e)));n.otherTab="busy"===t,n.otherTab&&(clearTimeout(ae),ae=setTimeout((()=>oe()),6e3))}while(ee)}catch(e){console.warn("sync",e)}finally{Z=null,n.sending=!1,Ge()}})(),Z)}async function ie(e){await Y()
+;const t=Date.now(),a=n.queue.filter((e=>e.hold&&e.hold>t));a.length&&(clearTimeout(ne),ne=setTimeout((()=>oe()),Math.min.apply(null,a.map((e=>e.hold)))-t+300));const o=n.queue.filter((n=>!(n.hold&&n.hold>t)&&(e||!n.stuck)))
+;if(!o.length)return void(e&&E(a.length?"Waiting a moment for the card photo, then sending":"Nothing waiting. Everything is sent.","ok"));if(!navigator.onLine)return void(e&&E("Still no signal. Your visits are safe on this phone."))
+;const i=await K(!1);if("net"===i)return void(e&&E("Cannot reach the server yet. Your visits are safe on this phone."));if("none"===i)return n.needAuth=!0,Ge(),Ye(),void(e&&Jt(!0));n.needAuth=!1,n.authMsg="",n.sending=!0,Ge(),Ye()
+;let s=0,r=0,c=!1;for(const e of o){J();const t=(await G.all()).find((t=>t.id===e.id));if(!t)continue;if(t.hold&&t.hold>Date.now())continue;let a=await X(t);if("auth"===a.kind){const e=await K(!0);"ok"===e?a=await X(t):"net"===e&&(a={
+kind:"net",msg:a.msg})}if(a.ok)await G.done(t),s++,n.lastSent=Date.now();else{if("net"===a.kind){c=!0;break}if("auth"===a.kind){n.needAuth=!0,n.authMsg=a.msg;break}t.lastError=a.msg,t.lastTry=Date.now(),
+"reject"===a.kind&&(t.tries=(t.tries||0)+1,t.tries>=3&&(t.stuck=!0),r++);try{await G.put(t)}catch(e){}}}n.sending=!1,await Y(),Ye(),s?E(1===s?"Visit sent":s+" visits sent","ok"):e&&c&&E("Lost the signal while sending. Nothing is lost."),
+r&&e?Qe():n.needAuth&&e&&Jt(!0),s&&(me(),We())}const se="id,name,city,region,address,phone,website,priority,pitch_angle,approach_msg,category,phone_other,buys_lab,lab_stock,booth,social,card_code"
+;const re=()=>n.pack&&Array.isArray(n.pack.stops)?n.pack.stops:[],ce=()=>n.pack&&(n.pack.days||[]).find((e=>e.day_date===w()));async function de(){const e=await y(t.from("lf_trips").select("*").order("start_date",{ascending:!0}))
+;if(!e||!e.length)return
+;const o=w(),i=e.find((e=>e.start_date&&e.start_date<=o&&(!e.end_date||e.end_date>=o)))||n.backTrip&&e.find((e=>e.id===n.backTrip))||e.find((e=>"done"!==e.status&&(!e.end_date||e.end_date>=o)))||e.find((e=>"done"!==e.status))||e[e.length-1],s=await y(t.from("lf_trip_days").select("*").eq("trip_id",i.id).order("day_index"))||[],r=s.map((e=>e.id))
+;let c=[];r.length&&(c=await y(t.from("lf_stops").select("id,day_id,place_id,seq,status,visited_at,lf_places("+se+")").in("day_id",r).order("seq"))||[]),n.pack={at:Date.now(),trip:i,days:s,stops:c.map((e=>({id:e.id,day_id:e.day_id,
+place_id:e.place_id,seq:e.seq,status:e.status,visited_at:e.visited_at,place:e.lf_places})))},p(a.pack,n.pack)}async function le(){const e=await y(t.from("lf_work_queue").select("*").order("due_date").limit(500));n.work=e||[],
+p(a.work,n.work)}async function ue(){const e=await y(t.from("lf_visits").select("id,place_id,visited_at,outcome,interest,met_name").order("visited_at",{ascending:!1}).limit(60));n.recent=e||[],p(a.recent,n.recent)}async function pe(){
+const e=await y(t.from("lf_engaged").select("*").order("last_visit",{ascending:!1}).limit(500));n.engaged=e||[],p(a.engaged,n.engaged)}let he=null;function me(){return he||(navigator.onLine?(he=(async()=>{if(n.needAuth||n.degraded){
+const e=await K(!1);if("ok"!==e)return"none"===e&&(n.needAuth=!0,Ye(),Ge()),n.loaded=!0,void We();n.needAuth=!1,Ye()}const e=(await Promise.allSettled([le(),pe(),ue(),de()])).filter((e=>"rejected"===e.status))
+;n.loadErr=e.length?g(e[0].reason):"",n.loaded=!0,We()})().catch((e=>{n.loadErr=g(e)})).finally((()=>{he=null})),he):Promise.resolve())}
+const ge=["Owner","Buyer","Manager","Staff","Other"],fe=["A","B","C"],ve=[["yes","Yes"],["no","No"]],ye=[["stock","Keeps stock"],["on_demand","Only on demand"]],be=[["met","Met the buyer"],["order","Placed an order"],["buyer_out","Buyer was out"],["not_interested","Not interested"],["no_answer","Closed / no answer"],["other","Other"]],_e={
+met:"met the buyer",order:"placed an order",buyer_out:"buyer was out",not_interested:"not interested",closed:"closed",no_answer:"no answer",other:"other"
+},we=[["hot","Hot"],["warm","Warm"],["cold","Cold"]],ke=["Studs & solitaires","Engagement rings","Bridal sets","Tennis bracelets","Necklaces & pendants","Bangles & bracelets","Men's jewellery","Loose stones","Custom / bespoke","IGI certificates","Price list","Memo / consignment","Credit terms","Ready stock","Overnight from NY"],Se=["Price too high","Already has a supplier","Natural diamonds only","Minimum order too big","Wants longer credit","Not buying this season","Wants to see quality first","Worried about resale","Must ask a partner","Other"],xe=[["none","No order yet"],["memo","On memo"],["trial","Trial order"],["outright","Outright order"],["custom","Custom order"]],Le=["Appointment","Send price list","Send samples","Send on memo","Call back","Visit again","Visit next trip","Send IGI certificates","Nothing for now"],Te="Visit next trip",Ce="Appointment",je="Nothing for now",Ae={
+met:"met",order:"met",buyer_out:"buyer_out",no_answer:"buyer_out",not_interested:"not_interested",closed:"not_interested"
+},Ne=[["category","category"],["shop_phone_other","phone_other"],["buys_lab","buys_lab"],["lab_stock","lab_stock"],["booth","booth"]],Be=new Set(Ne.map((e=>e[0]))),Ee=e=>"hot"===e||"warm"===e||"cold"===e?e:"",De={5:"Sells lab-grown",
+4:"Bridal / custom focus"},Me=new Map;let Oe=0;const qe=e=>{const t="r"+ ++Oe;return Me.set(t,e),t};let Pe=[];function Ue(e){if(["today","log","clients"].includes(e)||(e="today"),n.tab=e,n.stack=[],n.client=null,He(),window.scrollTo(0,0),
+"log"===e){const e=o("pk");e&&!n.pterm&&e.focus()}}function Ie(e){n.stack.push(e),He(),window.scrollTo(0,0)}function Re(){n.stack.pop(),n.stack.includes("form")||(n.form=null),He(),window.scrollTo(0,0)}const Fe=()=>{
+const e=document.activeElement;return!!(e&&o("view").contains(e)&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.tagName))};function We(){const e=n.stack[n.stack.length-1];Fe()?n.renderLater=!0:(e||"log"!==n.tab)&&He()}function He(){const e=o("view")
+;if(!e)return;n.renderLater=!1,Me.clear();const t=n.stack[n.stack.length-1],a=document.activeElement,r=a&&a.dataset?a.dataset.fk:null;if(document.body.classList.toggle("has-savebar","form"===t),o("savebar").hidden="form"!==t,
+"form"===t&&n.form?e.innerHTML=function(){const e=n.form,t=n.place||{},a=[t.address,t.city,t.region].filter(Boolean).join(", ")
+;let o='<div class="v-formtop"><button type="button" class="v-link" data-act="cancelForm">'+N.back+"Back</button>"+(navigator.onLine?"":'<span class="sub">No signal \u2014 saves on this phone</span>')+"</div>"
+;o+='<section class="v-card v-shop"><p class="eyebrow" style="margin:0">'+(e.is_new_place?"New lead":"Logging a visit")+"</p><h2>"+i(t.name||"Shop")+'</h2><p class="sub">'+(e.is_new_place?"Not in the app before. Saving this visit adds them to your leads.":i(a||"No address on file"))+"</p>"+(t.priority>=5?'<p style="margin:8px 0 0"><span class="pill done">'+De[5]+"</span></p>":"")+(t.pitch_angle?'<p class="v-angle"><b>Angle:</b> '+i(String(t.pitch_angle).split(". ")[0].replace(/\.$/,""))+".</p>":"")+(t.approach_msg?'<details class="v-opener"><summary>Walk-in message</summary><div class="msg">'+i(St(t.approach_msg,t))+'</div><button type="button" class="v-act" data-act="copyOpener">Copy message</button><p class="sub" style="margin-top:8px">Nothing is sent from here. Copy it if you want to use it.</p></details>':"")+'<div class="v-when"><span class="eyebrow">Visited</span><b>'+i(xt(e))+'</b><button type="button" class="v-link" data-act="whenToggle" aria-expanded="'+!!e.when_open+'">'+(e.when_open?"Done":"Change")+"</button>"+(e.when_open?'<div class="row">'+vt("w-d","Date",'<input id="w-d" type="date" data-when="date" max="'+w()+'" value="'+i(e.when_date)+'">')+vt("w-t","Time",'<input id="w-t" type="time" data-when="time" value="'+i(e.when_time)+'">')+"</div>":"")+"</div></section>",
+o+=Ve('How did it go? <span class="v-req">\xb7 needed</span>')+'<div id="sec-outcome">'+ft(be,e.outcome,"outcome")+"</div>",o+=Ve("How interested are they?")+ft(we,e.interest,"interest"),
+o+=Ve("Who did you meet?")+'<button type="button" class="v-scan" data-act="scan" data-side="front">'+N.card+(e.card?"Scan a different card":"Scan their card")+"</button>"+(e.card?function(e){
+const t=[["contact_person","Name"],["designation","Title"],["business_name","Business"],["mobile","Cell"],["phone_other","Other numbers"],["email","Email"],["website","Website"],["social","Social"],["booth","Booth / suite"],["address","Address"]].filter((([t])=>e[t])),a=Rt(),o=n.form
+;return'<div class="v-panel"><h4>What the card says</h4>'+t.map((([t,n])=>'<div class="ln"><b>'+i(n)+":</b> "+i("mobile"===t?Ut(e[t]):e[t])+"</div>")).join("")+'<div class="div"><div class="ln" style="margin-bottom:8px">'+(o.cardBackB64?"Read from both sides of the card.":o.cardFrontB64?"Read from the front only. A cell number, a branch address or a WhatsApp is often printed on the back.":"Read earlier. Scan the card again to add the back.")+"</div>"+(o.cardFrontB64?'<button type="button" class="v-act" data-act="scan" data-side="back">'+(o.cardBackB64?"Re-take the back":"Add the back of the card")+"</button>":"")+"</div>"+(o.is_new_place?'<div class="ln" style="margin-top:9px">New shop \u2014 the address, phone and website off this card are saved with it.</div>':a.length?'<div class="div"><div class="ln" style="margin-bottom:6px"><b>This disagrees with what we found online:</b></div>'+a.map((e=>'<div class="ln">'+i(e.label)+": <s>"+i(e.was)+"</s> \u2192 <b>"+i(e.now)+"</b></div>")).join("")+'<button type="button" class="v-act" style="margin-top:10px" data-act="shopFix">Use the card \u2014 fix '+a.length+(1===a.length?" detail":" details")+" on this shop</button></div>":'<div class="ln" style="margin-top:9px">Matches what we already had on the shop.</div>')+"</div>"
+}(e.card):"")+function(){const e=n.form,t=e.codes||[];if(!t.length)return"";const a=e=>({vcard:"Contact card",social:"Social link",website:"Website",link:"Card link",phone:"Phone",email:"Email"}[e.kind]||"Code"),o=e=>{
+const t=[e.name,e.org,e.mobile&&Ut(e.mobile),e.email,e.social,e.website,e.link,e.address].filter(Boolean);return t.length?t.join(" \xb7 "):e.raw},s=e.card||{},r=[];return t.forEach((e=>{
+e.mobile&&s.mobile&&Et(s.mobile)&&Et(s.mobile)!==e.mobile&&r.push("Cell \u2014 printed "+Ut(s.mobile)+", code says "+Ut(e.mobile)),
+e.email&&s.email&&String(s.email).toLowerCase()!==e.email&&r.push("Email \u2014 printed "+s.email+", code says "+e.email)})),
+'<div class="v-panel"><h4>What the QR code holds</h4>'+t.map((e=>'<div class="ln"><b>'+i(a(e))+":</b> "+i(o(e))+"</div>")).join("")+(r.length?'<div class="div"><div class="ln"><b>The code and the print disagree \u2014 the print was kept:</b></div>'+r.map((e=>'<div class="ln">'+i(e)+"</div>")).join("")+"</div>":'<div class="ln" style="margin-top:8px">Used only where the card left a blank.</div>')+"</div>"
+}()+vt("f-nm","Name",yt("f-nm","met_name",e.met_name,'type="text" autocomplete="off" autocapitalize="words" placeholder="e.g. Daniel Alvarez"'))+'<p class="v-hint">Their role</p>'+ft(ge,e.met_role,"met_role")+'<div class="row">'+vt("f-mob","Their mobile",yt("f-mob","met_mobile",e.met_mobile,'type="tel" inputmode="tel" autocomplete="off" placeholder="Direct number"'))+vt("f-em","Their email",yt("f-em","met_email",e.met_email,'type="email" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false"'))+"</div>"+vt("f-mo","Their other number",yt("f-mo","met_mobile_other",e.met_mobile_other,'type="tel" inputmode="tel" autocomplete="off" placeholder="WhatsApp, desk line, second cell"')),
+o+=Ve("What did they ask about?")+ft(ke,e.asked,"asked")+vt("f-an","Sizes, price points, anything specific",yt("f-an","asked_notes",e.asked_notes,'type="text" placeholder="e.g. 1ct\u20132ct studs under $900"')),
+o+=Ve("What held them back?")+ft(Se,e.objections,"objections")+vt("f-on","In their words",yt("f-on","objection_notes",e.objection_notes)),
+o+=Ve("Did they commit to anything?")+ft(xe,e.order_type,"order_type")+(e.order_type&&"none"!==e.order_type?vt("f-ov","Rough value (USD)",yt("f-ov","order_value",e.order_value,'type="text" inputmode="decimal" placeholder="e.g. 4500"')):""),
+o+=Ve("Their feedback")+'<div class="field" style="margin-top:0"><label for="f-fb" class="sub" style="font-weight:600;color:var(--muted)">What they actually said \u2014 the part you will want later. Tap the microphone on the keyboard to dictate.</label><textarea id="f-fb" data-f="feedback">'+i(e.feedback)+"</textarea></div>",
+o+=Ve("What happens next?")+ft(Le,e.next_step,"next_step"),
+e.next_step===Te?o+='<div class="v-card soft" style="margin-top:12px"><p class="sub">No date needed. '+i(t.name||"This shop")+" will come up again whenever you plan a day in "+i(t.city||"this city")+".</p></div>":e.next_step&&e.next_step!==je&&(o+='<div style="margin-top:12px">'+function(e){
+const t=n.pack&&n.pack.trip&&n.pack.trip.end_date||null,a=[["__t","Tomorrow"],["__3","In 3 days"],["__w","In a week"]];t&&t>=w()&&a.push(["__trip","After the trip"])
+;return'<div class="v-chips">'+a.map((([t,n])=>'<button type="button" class="v-chip" data-act="due" data-v="'+t+'" data-fk="due:'+t+'" aria-pressed="'+(e===t)+'">'+n+"</button>")).join("")+"</div>"
+}(e.due_pick||"")+'<div class="row">'+vt("f-due",e.next_step===Ce?"Appointment on":"Due on",'<input id="f-due" type="date" data-f="next_due" min="'+w()+'" value="'+i(e.next_due)+'">')+(e.next_step===Ce?vt("f-tm","At what time",'<input id="f-tm" type="time" data-f="next_time" value="'+i(e.next_time)+'">'):"")+"</div></div>")
+;o+=Ve("About this shop")+'<p class="v-hint" style="margin-top:0">The grade stays on the shop \u2014 change it on any visit.</p>'+ft(fe,e.category,"category")+'<p class="v-hint">Do they buy lab-grown jewellery?</p>'+ft(ve,e.buys_lab,"buys_lab")+("yes"===e.buys_lab?'<p class="v-hint">Do they keep it in stock?</p>'+ft(ye,e.lab_stock,"lab_stock"):"")+'<div class="row">'+vt("f-bo","Booth / suite number",yt("f-bo","booth",e.booth,'type="text" placeholder="e.g. Seybold #114"'))+vt("f-sp","Shop's other phone line",yt("f-sp","shop_phone_other",e.shop_phone_other,'type="tel" inputmode="tel" placeholder="Showroom or second line"'))+"</div>",
+kt(e)&&(o+='<div class="v-nudge" id="v-nudge" role="alert">'+i(function(e){
+return _t(e)?"Nothing recorded about what they said, and no next step \u2014 so this shop will not appear in your after-trip list. Add either, or save it as it is.":"No next step on a shop you met. Nothing will chase this one \u2014 pick a step, or tap \u201cNothing for now\u201d if there is honestly nothing to do."
+}(e))+"</div>");return o}():e.innerHTML="client"===t?function(){const e=n.client||{},t='<div class="v-formtop"><button type="button" class="v-link" data-act="back">'+N.back+"Back</button></div>"
+;if(e.loading)return t+'<div class="aa-skel" style="height:120px;border-radius:16px;margin-bottom:12px"></div>'+$e(3)
+;if(e.error)return t+'<div class="v-card soft"><h3>Could not load this shop</h3><p class="sub">'+i(e.error)+'</p><div class="v-btnrow"><button class="v-act" data-act="client" data-id="'+i(e.id)+'">Try again</button></div></div>'
+;const a=e.place||{},o=Dt(a.website),r=qe({place:a,stop_id:"",trip_id:""})
+;let c=t+'<section class="v-card v-shop"><p class="eyebrow" style="margin:0">Client</p><h2>'+i(a.name)+'</h2><p class="sub">'+i([a.address,a.city,a.region,a.postcode].filter(Boolean).join(", ")||"No address on file")+"</p>"+(a.priority>=5?'<p style="margin:8px 0 0"><span class="pill done">'+De[5]+"</span></p>":"")+'<div class="v-btnrow"><button class="v-act pri" data-act="open" data-k="'+r+'">Log a visit</button>'+(a.phone?'<a class="v-act" href="tel:'+i(s(a.phone))+'">'+N.phone+"Call</a>":"")+(o?'<a class="v-act" target="_blank" rel="noopener" href="'+i(o)+'">Website</a>':"")+"</div></section>"
+;(e.contacts||[]).length&&(c+=Ve("People")+e.contacts.map((e=>'<div class="q"><div class="body"><div class="nm">'+i(e.name)+(e.role?' <span class="pill">'+i(e.role)+"</span>":"")+'</div><div class="mt">'+i([e.mobile,e.email].filter(Boolean).join(" \xb7 ")||"No number or email")+"</div></div>"+(e.mobile?'<div class="acts"><a class="v-act" href="tel:'+i(s(e.mobile))+'">'+N.phone+"Call</a></div>":"")+"</div>")).join(""))
+;const d=(e.followups||[]).filter((e=>"open"===e.status))
+;d.length&&(c+=Ve("Open follow-ups")+d.map((e=>'<div class="q"><div class="body"><div class="nm">'+i(e.what)+'</div><div class="mt">'+(e.due_date?'<span class="pill '+Je(e.due_date)+'">due '+i(S(e.due_date))+"</span>":"Next time you are in "+i(a.city||"the city"))+'</div></div><div class="acts"><button class="v-act" data-act="done" data-id="'+i(e.id)+'">Done</button></div></div>')).join(""))
+;const l=e.visits||[];c+=Ve("Every visit",String(l.length)),l.length?c+='<div class="v-card"><div class="hist">'+l.map((e=>{
+const t=Array.isArray(e.asked_about)?e.asked_about:[],n=Array.isArray(e.objections)?e.objections:[],a=(be.find((t=>t[0]===e.outcome))||[null,e.outcome||"\u2014"])[1]
+;return'<div class="v"><div class="when">'+i(C(e.visited_at))+" \xb7 "+i(a)+(Ee(e.interest)?' <span class="pill '+Ee(e.interest)+'">'+i(e.interest)+"</span>":"")+"</div>"+(e.met_name?'<div class="tags">Met '+i(e.met_name)+(e.met_role?", "+i(e.met_role):"")+"</div>":"")+(e.feedback?'<div class="fb">'+i(e.feedback)+"</div>":"")+(t.length?'<div class="tags">Asked about: '+i(t.join(", "))+"</div>":"")+(e.asked_notes?'<div class="tags">'+i(e.asked_notes)+"</div>":"")+(n.length?'<div class="tags">Held back by: '+i(n.join(", "))+"</div>":"")+(e.objection_notes?'<div class="tags">'+i(e.objection_notes)+"</div>":"")+(e.order_type&&"none"!==e.order_type?'<div class="tags"><b>Order:</b> '+i((xe.find((t=>t[0]===e.order_type))||[null,e.order_type])[1])+(e.order_value?" \xb7 $"+i(Number(e.order_value).toLocaleString()):"")+"</div>":"")+(e.next_step?'<div class="tags">Next: '+i(e.next_step)+(e.next_step_due?" by "+i(S(e.next_step_due)):"")+"</div>":"")+"</div>"
+})).join("")+"</div></div>":c+='<div class="empty">No visits recorded yet.</div>';return c}():function(){const e=[["today","Today"],["log","Log a visit"],["clients","Clients"]],t=new Date
+;let a='<div class="v-head"><h1>Visits</h1><span class="v-date">'+i(t.toLocaleDateString(void 0,{weekday:"long",day:"numeric",month:"short"
+}))+'</span></div><div class="v-tabs" role="tablist" aria-label="Visits">'+e.map((([e,t])=>'<button type="button" role="tab" data-act="tab" data-t="'+e+'" aria-selected="'+(n.tab===e)+'"'+(n.tab===e?' aria-current="page"':"")+">"+t+"</button>")).join("")+"</div>"
+;"today"===n.tab?a+=function(){let e=ze()+function(){const e=rt()
+;return e?'<div class="v-card info"><h3>Unfinished visit \u2014 '+i(e.place.name||"shop")+'</h3><p class="sub">Started '+i(C(e.form.visited_at))+'. Nothing has been saved or sent yet.</p><div class="v-btnrow"><button class="v-act pri" data-act="resume">Carry on</button><button class="v-act" data-act="discardDraft">Discard</button></div></div>':""
+}();const t=ce(),a=t?re().filter((e=>e.day_id===t.id)):[],o=new Set(n.queue.map((e=>e.payload&&e.payload.stop_id)).filter(Boolean));if(t){const r=a.filter((e=>"planned"===e.status&&!o.has(e.id))).length
+;e+=Ve("On the road today",r?r+" to go":"")+'<p class="v-hint" style="margin:-4px 2px 10px">'+i(n.pack.trip&&n.pack.trip.name||"Trip")+" \xb7 Day "+i(t.day_index)+"</p>",
+a.length?r||(e+='<p class="v-hint" style="margin-top:0">Every stop on today\'s list is logged.</p>'):e+='<div class="empty">No stops planned for today.</div>',e+=a.map(((e,t)=>{const a=e.place||{},r="planned"!==e.status||o.has(e.id),c=qe({
+place:a,stop_id:e.id,trip_id:n.pack.trip?n.pack.trip.id:"",day_id:e.day_id})
+;return'<div class="q"><span class="seq'+(r?" done":"")+'">'+(r?N.check:t+1)+'</span><div class="body"><div class="nm">'+i(a.name||"Shop")+(r?' <span class="pill done">Logged</span>':"")+'</div><div class="mt">'+i([a.address,a.city].filter(Boolean).join(", ")||"No address on file")+'</div></div><div class="acts">'+(a.phone?'<a class="v-act" href="tel:'+i(s(a.phone))+'" aria-label="Call '+i(a.name||"shop")+'">'+N.phone+"Call</a>":"")+'<button class="v-act'+(r?"":" pri")+'" data-act="open" data-k="'+c+'">'+(r?"Log again":"Log visit")+"</button></div></div>"
+})).join("")
+}else n.loaded||n.pack||!navigator.onLine?e+=Ve("Today")+'<div class="v-card soft"><h3>No trip day today</h3><p class="sub">You can still log any visit. Search for the shop, or type a new name and log them as a new lead.</p><div class="v-btnrow"><button class="v-act pri" data-act="tab" data-t="log">Log a visit</button></div></div>':e+=Ve("On the road today")+$e(2)
+;n.loadErr&&navigator.onLine&&(e+='<div class="v-card soft" style="margin-top:12px"><p class="sub">Could not refresh the lists \u2014 showing what is saved on this phone. <span style="color:var(--bad)">'+i(n.loadErr)+'</span></p><div class="v-btnrow"><button class="v-act" data-act="retryLoad">Try again</button></div></div>')
+;return e+=function(){const e=new Map((n.engaged||[]).map((e=>[e.id,e]))),t=n.queue.slice().sort(((e,t)=>(t.created||0)-(e.created||0))),a=(n.recent||[]).slice(0,30);let o=Ve("Visits you have logged")
+;if(!a.length&&!t.length)return!n.loaded&&navigator.onLine?o+$e(2):o+'<div class="empty">Nothing yet. Every visit you log shows up here.</div>'
+;t.length&&(o+=t.map((e=>'<div class="q"><div class="body"><div class="nm">'+i(String(e.label||"Visit").split(" \xb7 ")[0])+" "+(e.stuck?'<span class="pill fail">Failed</span>':'<span class="pill wait">On this phone</span>')+'</div><div class="mt">'+i(e.stuck?"Turned down by the server \u2014 tap for details":"Sends the moment you have a bar")+'</div></div><div class="acts"><button class="v-act" data-act="sheet">Status</button></div></div>')).join(""))
+;let s="";for(const t of a){const n=x(t.visited_at);if(n!==s){s=n;const e=a.filter((e=>x(e.visited_at)===n)).length;o+='<p class="eyebrow v-sub-h">'+i(L(n))+" \xb7 "+e+(1===e?" visit":" visits")+"</p>"}const r=e.get(t.place_id)||{}
+;o+='<div class="q"><div class="body"><div class="nm">'+i(r.name||"Shop")+(Ee(t.interest)?' <span class="pill '+Ee(t.interest)+'">'+i(t.interest)+"</span>":"")+'</div><div class="mt">'+i([r.city,_e[t.outcome]||t.outcome||"",T(t.visited_at)].filter(Boolean).join(" \xb7 "))+'</div></div><div class="acts"><button class="v-act" data-act="client" data-id="'+i(t.place_id)+'">Open</button></div></div>'
+}return o}(),e+=function(){const e=(e,t)=>{const n="appointment"===e.kind,a="appointment"===t.kind;return n!==a?n?-1:1:n&&a?String(e.due_time||"").localeCompare(String(t.due_time||"")):0
+},t=n.work.filter((e=>"next_city_visit"===e.kind||!e.due_date)),a=n.work.filter((e=>e.due_date&&"next_city_visit"!==e.kind));let o=Ve("Follow-ups",a.length?a.length+" open":""),s=!1
+;for(const[t,n]of[["overdue","Overdue"],["today","Due today"],["next7","Next 7 days"],["later","Later"]]){let i=a.filter((e=>Je(e.due_date)===t)).sort(e);if(!i.length)continue;s=!0;const r="later"===t&&i.length>20?i.length-20:0
+;r&&(i=i.slice(0,20)),o+='<p class="eyebrow v-sub-h"><span class="pill '+t+'">'+n+" \xb7 "+(i.length+r)+"</span></p>"+i.map(Ke).join("")+(r?'<p class="v-hint">and '+r+" more further out.</p>":"")}
+s||(o+=n.loaded||!navigator.onLine?'<div class="empty">Nothing dated. Follow-ups you set while logging visits appear here.</div>':$e(1));if(t.length){const e={};t.forEach((t=>{const n=t.city||"Unknown";(e[n]=e[n]||[]).push(t)})),
+o+=Ve("Call in when you are next in",t.length+(1===t.length?" shop":" shops")),o+=Object.keys(e).sort().map((t=>'<p class="eyebrow v-sub-h">'+i(t)+" \xb7 "+e[t].length+"</p>"+e[t].map(Ke).join(""))).join("")}return o}(),e
+}():"log"===n.tab?a+='<div class="field" style="margin-top:16px"><label for="pk">Which shop did you visit?</label><input id="pk" type="search" enterkeyhint="search" placeholder="Shop name or city" value="'+i(n.pterm)+'" autocomplete="off" autocapitalize="words"></div><div id="pk-res" style="margin-top:12px"></div>'+(navigator.onLine?'<p class="v-hint">Not in the app? Type their name and log them as a new lead.</p>':'<p class="v-hint">No signal \u2014 search only covers this trip right now, but you can still type a name and log a dealer who is not in the app.</p>'):a+=function(){
+let e='<div class="field" style="margin-top:16px"><label for="cs">Shops you have visited</label><input id="cs" type="search" enterkeyhint="search" placeholder="Search by name or city" value="'+i(n.cterm)+'" autocomplete="off"></div>'
+;navigator.onLine||(e+='<p class="v-hint">No signal \u2014 this is the list as it was last loaded. Opening a shop needs signal.</p>');return e+'<div id="c-res" style="margin-top:12px">'+$t()+"</div>"}()
+;return a+='<p class="aa-foot"><b>Aaryam Inc.</b> \xb7 New York \xb7 Lab-grown diamond fine jewelry</p><p class="v-signout"><button type="button" data-act="signout">Sign out</button></p>',a}(),"form"===t&&(Lt(),it()),r){
+const t=[...e.querySelectorAll("[data-fk]")].find((e=>e.dataset.fk===r));t&&t.focus({preventScroll:!0})}!t&&"log"===n.tab&&n.pterm.trim().length>=2&&ht(n.pterm),Ge(),Ye()}document.addEventListener("focusout",(()=>{
+n.renderLater&&setTimeout((()=>{n.renderLater&&!Fe()&&He()}),60)}));const Ve=(e,t)=>'<div class="v-sec"><h2 class="eyebrow">'+e+"</h2>"+(t?'<span class="v-cnt">'+t+"</span>":"")+"</div>",$e=e=>Array.from({length:e
+},(()=>'<div class="aa-skel v-skel"></div>')).join("");function Ge(){const e=o("sync-b");if(!e)return;const t=function(){const e=n.queue,t=e.filter((e=>e.stuck)).length,a=e.length-t;return e.length?n.needAuth?{k:"auth",
+short:"Sign in to send",icon:N.alert}:t?{k:"fail",short:t+" failed",icon:N.alert}:n.sending?{k:"send",short:"Sending "+a,icon:N.sync}:{k:"wait",short:a+" on phone",icon:N.clock}:{k:"ok",short:"All sent",icon:N.check}}()
+;e.className="v-sync"+("ok"===t.k?"":" "+t.k),e.innerHTML=t.icon+"<span>"+i(t.short)+"</span>",e.setAttribute("aria-label","Sync status: "+t.short+". Tap for details.")}function Ye(){const e=o("v-banner");if(!e)return;let t="",a="",s=""
+;const r=n.queue.length;n.storageBroken?(t="bad",a="This phone is not letting the app store visits (private browsing?). Visits only save while you have signal."):n.needAuth?(t="warn",
+a=/not permitted|no us access/i.test(n.authMsg)?"This login has no US access. Sign in with the right account to send.":r?"Sign in again to send the "+(1===r?"visit":r+" visits")+" saved on this phone.":"Your sign-in has expired. Sign in again to see fresh lists.",
+s='<button type="button" data-act="signin">Sign in</button>'):navigator.onLine?n.degraded&&(a="Cannot check your sign-in right now. Keep logging \u2014 everything saves on this phone."):a="No signal. Visits save on this phone and send when you are back.",
+e.className="v-banner"+(t?" "+t:""),e.hidden=!a,e.innerHTML=a?"<span>"+i(a)+"</span>"+s:""}function ze(){const e=n.queue;if(!e.length&&!n.needAuth)return'<div id="v-syncbox"></div>';const t=e.filter((e=>e.stuck)).length,a=e.length
+;let o,s,r,c="warn";return a?(o=1===a?"1 visit saved on this phone":a+" visits saved on this phone",n.needAuth?(s="Not sent yet \u2014 your sign-in needs renewing. Nothing is lost.",
+r='<button class="v-act pri" data-act="signin">Sign in to send</button>'):t?(c="bad",s=(1===t?"One was":t+" were")+" turned down by the server. They are still on this phone.",
+r='<button class="v-act" data-act="sheet">See what happened</button><button class="v-act" data-act="sendNow">Try again</button>'):n.sending?(c="info",s="Sending now\u2026",r=""):navigator.onLine?n.otherTab?(c="info",
+s="Another open copy of this app is sending them.",r=""):(s="Not sent yet. Retrying on its own every few seconds.",
+r='<button class="v-act pri" data-act="sendNow">Send now</button><button class="v-act" data-act="sheet">Details</button>'):(s="Not sent yet \u2014 no signal. They send on their own as soon as you have a bar.",
+r='<button class="v-act" data-act="sheet">Details</button>'),'<div id="v-syncbox" class="v-card '+c+'"><h3>'+i(o)+'</h3><p class="sub">'+i(s)+"</p>"+(r?'<div class="v-btnrow">'+r+"</div>":"")+"</div>"):'<div id="v-syncbox"></div>'}
+function Qe(){const e=n.queue,t=/iP(hone|ad|od)/.test(navigator.userAgent),a=window.matchMedia&&matchMedia("(display-mode: standalone)").matches||!0===navigator.standalone
+;let o="<h2>"+(e.length?"On this phone":"Everything is sent")+'</h2><p class="sub">'+(e.length?"Nothing is removed from this phone until the server confirms it has the visit.":"Every visit you saved has reached the database."+(n.lastSent?" Last one sent at "+i(T(n.lastSent))+".":""))+"</p>"
+;e.length&&(o+='<div style="margin-top:14px">'+e.map((e=>{
+const t=e.stuck?'<span class="pill fail">Failed</span>':n.needAuth?'<span class="pill wait">Needs sign-in</span>':n.sending?'<span class="pill send">Sending</span>':'<span class="pill wait">Waiting</span>'
+;return'<div class="q"><div class="body"><div class="nm">'+i(String(e.label||"Visit").split(" \xb7 ")[0])+" "+t+'</div><div class="mt">Logged '+i(String(e.label||"").split(" \xb7 ")[1]||C(e.created))+(e.tries?" \xb7 tried "+e.tries+(1===e.tries?" time":" times"):"")+"</div>"+(e.lastError?'<div class="err">'+i(e.lastError)+"</div>":"")+'</div><div class="acts"><button class="v-act" data-act="copyItem" data-id="'+i(e.id)+'">Copy details</button></div></div>'
+})).join("")+"</div>",t&&!a&&(o+='<p class="sub" style="margin-top:10px">Tip: open this from the Home Screen icon. Safari can clear a website\'s saved data if it goes unused for a week; the Home Screen app keeps it.</p>')),
+o+='<div class="v-btnrow">'+(e.length?n.needAuth?'<button class="v-act pri" data-act="signin">Sign in to send</button>':'<button class="v-act pri" data-act="sendNow">Send now</button>':"")+'<button class="v-act" data-act="closeSheet">Close</button></div>',
+D(o)}function Je(e){const t=w();return e?e<t?"overdue":e===t?"today":e<=k(t,7)?"next7":"later":"later"}function Ke(e){const t="appointment"===e.kind
+;return'<div class="q'+(t?" appt":"")+'"><div class="body"><div class="nm">'+i(e.name||"Shop")+(t?' <span class="pill appt">Appointment</span>':"")+(Ee(e.interest)?' <span class="pill '+Ee(e.interest)+'">'+i(e.interest)+"</span>":"")+'</div><div class="mt">'+i(e.what||"")+("next_city_visit"===e.kind?" \xb7 no date, next time you are there":" \xb7 "+(t?"":"due ")+i(S(e.due_date))+(t&&e.due_time?" at "+i(j(e.due_time)):""))+(e.city?" \xb7 "+i(e.city):"")+'</div></div><div class="acts">'+(e.phone?'<a class="v-act" href="tel:'+i(s(e.phone))+'">'+N.phone+"Call</a>":"")+("next_city_visit"===e.kind?"":'<button class="v-act" data-act="push7" data-id="'+i(e.id)+'">+1 week</button>')+'<button class="v-act" data-act="done" data-id="'+i(e.id)+'">Done</button></div></div>'
+}function Xe(){"client"===n.stack[n.stack.length-1]&&n.client&&n.client.id?Yt(n.client.id,!0):He()}const Ze=new Set;async function et(e,n){try{return await y(t.from("lf_followups").update(n).eq("id",e),15e3),null}catch(e){
+return f(e)?"No signal \u2014 try again in a moment":g(e)}}async function tt(e){if(!navigator.onLine)return E("Needs signal to tick a follow-up off","err");if(!Ze.has(e)){Ze.add(e);try{const t=n.work.find((t=>t.id===e)),o=await et(e,{
+status:"done",done_at:(new Date).toISOString()});if(o)return E(o,"err");n.work=n.work.filter((t=>t.id!==e)),p(a.work,n.work),Xe(),E("Marked done","ok",{label:"Undo",fn:()=>async function(e,t){const a=await et(e,{status:"open",done_at:null})
+;if(a)return E(a,"err");t&&!n.work.some((t=>t.id===e))&&n.work.push(t);Xe(),E("Put back on your list","ok"),le().then(Xe,(()=>{}))}(e,t)})}finally{Ze.delete(e)}}}async function nt(e,t){
+if(!navigator.onLine)return E("Needs signal to move a follow-up","err");const o=n.work.find((t=>t.id===e));if(o&&!Ze.has(e)){Ze.add(e);try{const i=o.due_date,s=k(w(),t),r=await et(e,{due_date:s});if(r)return E(r,"err");o.due_date=s,
+p(a.work,n.work),Xe(),E("Moved to "+S(s),"ok",{label:"Undo",fn:()=>async function(e,t){const a=await et(e,{due_date:t});if(a)return E(a,"err");const o=n.work.find((t=>t.id===e));o&&(o.due_date=t);Xe(),E("Put back to "+S(t),"ok")}(e,i)})
+}finally{Ze.delete(e)}}}let at=null;function ot(e){
+return!(!e||!(e.outcome||e.interest||e.met_name||e.met_mobile||e.met_email||e.feedback||e.next_step||e.asked.length||e.objections.length||e.order_type||e.asked_notes||e.objection_notes||e.card||e.met_role||e.met_mobile_other||Object.keys(e.touched||{}).length||e.when_set))
+}function it(){clearTimeout(at),at=setTimeout(st,500)}function st(){clearTimeout(at);const e=n.form;if(!e||e._saved)return;if(!ot(e)){const t=u(a.draft,null);return void(t&&t.form&&t.form.id===e.id&&h(a.draft))}const t={}
+;Object.keys(e).forEach((n=>{/B64$|^cardUploads$|^upPending$/.test(n)||(t[n]=e[n])})),p(a.draft,{form:t,place:n.place,at:Date.now()})}function rt(){const e=u(a.draft,null)
+;return e&&e.form&&e.place&&e.form.id?Date.now()-(e.at||0)>6048e5?null:n.queue.some((t=>t.id===e.form.id))||W()[e.form.id]?(h(a.draft),null):e:null}function ct(e){e&&(n.place=e.place,n.form=Object.assign({asked:[],objections:[],codes:[],
+known:{},touched:{}},e.form,{cardUploads:[],upPending:0}),n.stack=["form"],He(),window.scrollTo(0,0))}let dt,lt=0;function ut(e){
+return'<div class="q" style="margin-top:14px;border-style:dashed;border-color:var(--line-strong)"><div class="body"><div class="nm">Add \u201c'+i(e)+'\u201d as a new lead</div><div class="mt">Not in the app yet. Scan their card and the rest fills itself in.</div></div><div class="acts"><button class="v-act pri" data-act="newLead" data-nm="'+i(e)+'">Log visit</button></div></div>'
+}function pt(e,t,n,a){const s=o("pk-res")
+;s&&(Pe=t.slice(0,40),Pe.length?s.innerHTML=Pe.map(((e,t)=>'<div class="q"><div class="body"><div class="nm">'+i(e.name)+(e.priority>=5?' <span class="pill done">'+De[5]+"</span>":"")+(e._stop?' <span class="pill next7">On this trip</span>':"")+'</div><div class="mt">'+i([e.address,e.city,e.region].filter(Boolean).join(", ")||"No address on file")+'</div></div><div class="acts"><button class="v-act pri" data-act="pickOpen" data-i="'+t+'">Log visit</button></div></div>')).join("")+(n?'<p class="v-hint">Searching all shops\u2026</p>':"")+ut(e):s.innerHTML=(n?$e(2):'<div class="empty">'+(a?"Could not search right now.":"Nobody by that name in the app.")+"</div>")+ut(e))
+}async function ht(e){const n=++lt,a=String(e||"").trim(),i=o("pk-res");if(!i)return;if(a.length<2)return void(i.innerHTML="");const s=a.toLowerCase(),r=re().filter((e=>e.place)).map((e=>Object.assign({},e.place,{_stop:e.id,_day:e.day_id
+}))).filter((e=>((e.name||"")+" "+(e.city||"")).toLowerCase().includes(s))),c=a.replace(/[,()*%\\:"']/g," ").replace(/\s+/g," ").trim(),d=navigator.onLine&&c.length>=2;if(pt(a,r,d,!1),!d)return;let l=[],u=!1;try{
+l=await y(t.from("lf_places").select(se).eq("hidden",!1).is("skip_reason",null).or("name.ilike.%"+c+"%,city.ilike.%"+c+"%").order("priority",{ascending:!1}).limit(40),12e3)||[]}catch(e){u=!0}if(n!==lt)return;const p=new Set,h=[]
+;for(const e of r.concat(l))e&&e.id&&!p.has(e.id)&&(p.add(e.id),h.push(e));pt(a,h,!1,u&&!h.length)}function mt(e){if(!e||!e.place)return;const t=rt();if(t&&(!n.form||n.form.id!==t.form.id))return n.pendingOpen=e,
+void D('<h2>Unfinished visit</h2><p class="sub">You started a visit to <b>'+i(t.place.name||"a shop")+"</b> ("+i(C(t.form.visited_at))+') and have not saved it yet.</p><div class="v-btnrow"><button class="v-act pri" data-act="resumeFromSheet">Carry on with '+i(t.place.name||"it")+'</button><button class="v-act" data-act="discardAndOpen">Discard it and log '+i(e.place.name||"this shop")+"</button></div>")
+;gt(e)}function gt(e){if(!e||!e.place)return;const a=Object.assign({},e.place);delete a._stop,delete a._day,n.place=a;const o=n.pack&&n.pack.trip&&n.pack.trip.end_date||null,i=new Date,s={id:l(),place_id:a.id,
+stop_id:d(e.stop_id)?e.stop_id:"",trip_id:d(e.trip_id)?e.trip_id:"",day_id:e.day_id||"",visited_at:i.toISOString(),when_date:b(i),when_time:_(i),when_set:!1,when_open:!1,channel:"in_person",outcome:"",interest:"",met_name:"",met_role:"",
+met_mobile:"",met_email:"",asked:[],asked_notes:"",objections:[],objection_notes:"",order_type:"",order_value:"",feedback:"",next_step:"",next_due:o&&o>=w()?k(o,3):k(w(),7),next_time:"",due_pick:"",card:null,card_used:!1,cardGen:0,
+cardFrontB64:null,cardBackB64:null,cardFrontPath:null,cardBackPath:null,cardUploads:[],upPending:0,is_new_place:!!e.isNew,met_mobile_other:"",social:a.social||"",card_code:a.card_code||"",codes:[],known:{},touched:{}};Ne.forEach((([t,n])=>{
+const o=!!e.isNew||Object.prototype.hasOwnProperty.call(a,n);s.known[t]=o,s[t]=o&&null!=a[n]?String(a[n]):""})),n.form=s,"form"===n.stack[n.stack.length-1]&&n.stack.pop(),Ie("form"),async function(e){
+if(!navigator.onLine||e.is_new_place||!d(e.place_id))return;try{const a=await y(t.from("lf_places").select("*").eq("id",e.place_id).maybeSingle(),12e3);if(!a||n.form!==e)return;Object.assign(n.place,a),Ne.forEach((([t,n])=>{
+!e.touched[t]&&n in a&&(e[t]=null==a[n]?"":String(a[n]),e.known[t]=!0)})),!e.social&&a.social&&(e.social=a.social),!e.card_code&&a.card_code&&(e.card_code=a.card_code),We()}catch(e){}}(s)}function ft(e,t,n){
+return'<div class="v-chips">'+e.map((e=>{const[a,o]=Array.isArray(e)?e:[e,e],s=Array.isArray(t)?t.indexOf(a)>=0:t===a
+;return'<button type="button" class="v-chip" data-act="pick" data-k="'+i(n)+'" data-v="'+i(a)+'" data-fk="'+i(n+":"+a)+'" aria-pressed="'+s+'">'+i(o)+"</button>"})).join("")+"</div>"}
+const vt=(e,t,n)=>'<div class="field"><label for="'+e+'">'+t+"</label>"+n+"</div>",yt=(e,t,n,a)=>'<input id="'+e+'" data-f="'+t+'" value="'+i(n)+'" '+(a||'type="text"')+">";function bt(e){return"met"===e.outcome||"order"===e.outcome}
+function _t(e){return!(String(e.feedback||"").trim()||e.next_step&&e.next_step!==je)}function wt(e){return bt(e)&&!e.next_step}const kt=e=>!!e.nudged&&(_t(e)||wt(e))&&bt(e);function St(e,t){
+const n=String(t.segment||"").toLowerCase(),a=t.priority>=5?"I saw you already carry lab-grown \u2014 that is exactly what we make, so you would be buying straight from the factory.":"wholesaler"===n?"We supply wholesalers direct at manufacturer prices, with credit terms and memo available.":"We supply independent jewellers with certified lab-grown pieces \u2014 ready stock, or made to order."
+;return String(e).replace(/\{hook\}/g,a).replace(/\{store\}/g,t.name||"").replace(/\{city\}/g,t.city||t.region||"your area").replace(/\{date\}/g,"today")}function xt(e){
+return e.when_set?L(e.when_date)+(e.when_time?", "+j(e.when_time):""):L(x(e.visited_at))+", "+T(e.visited_at)}function Lt(){const e=n.form;if(!e)return;const t=o("save-b"),a=o("save-note")
+;t.disabled||(t.textContent=kt(e)?"Save anyway":"Save visit"),a.textContent=navigator.onLine?"Saves on this phone first, then sends.":"No signal \u2014 saves on this phone and sends later."}const Tt={"instagram.com":"Instagram",
+"facebook.com":"Facebook","fb.com":"Facebook","linkedin.com":"LinkedIn","x.com":"X","twitter.com":"X","youtube.com":"YouTube","youtu.be":"YouTube","pinterest.com":"Pinterest","t.me":"Telegram","threads.net":"Threads",
+"snapchat.com":"Snapchat","tiktok.com":"TikTok"},Ct=["vqr.vc","qrco.de","qrs.ly","bit.ly","tinyurl.com","t.co","goo.gl","rebrand.ly","cutt.ly","lnk.bio","linktr.ee","shorturl.at","ow.ly"];let jt=!1;function At(e,t,n,a,o,i){
+const s=Math.min(i,a),r=Math.max(1,Math.round(o*(s/a))),c=document.createElement("canvas");c.width=s,c.height=r;const d=c.getContext("2d",{willReadFrequently:!0});return d.drawImage(e,t,n,a,o,0,0,s,r),d.getImageData(0,0,s,r)}function Nt(e){
+return new Promise(((t,n)=>{const a=URL.createObjectURL(e),o=new Image;o.onload=()=>{URL.revokeObjectURL(a),t(o)},o.onerror=()=>{URL.revokeObjectURL(a),n(new Error("Could not read that photo"))},o.src=a}))}async function Bt(e){const t=[]
+;let n=null;try{n=await createImageBitmap(e)}catch(a){try{n=await Nt(e)}catch(e){return t}}const a=n.width||n.naturalWidth,o=n.height||n.naturalHeight;if(!a||!o)return t;try{if(window.BarcodeDetector){
+if((await(new window.BarcodeDetector).detect(n)||[]).forEach((e=>{e&&e.rawValue&&t.push(String(e.rawValue))})),t.length)return t}}catch(e){}const i=await(window.jsQR?Promise.resolve(window.jsQR):jt?Promise.resolve(null):(jt=!0,
+new Promise((e=>{const t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js",t.onload=()=>e(window.jsQR||null),t.onerror=()=>e(null),document.head.appendChild(t),
+setTimeout((()=>e(window.jsQR||null)),8e3)}))));if(!i)return t;const s=e=>{try{const t=i(e.data,e.width,e.height,{inversionAttempts:"attemptBoth"});return t&&t.data?String(t.data):null}catch(e){return null}},r=s(At(n,0,0,a,o,1200))
+;if(r)return t.push(r),t;const c=Math.floor(a/2),d=Math.floor(o/2),l=[0,Math.floor((a-c)/2),a-c],u=[0,Math.floor((o-d)/2),o-d];for(const e of u)for(const a of l){const o=s(At(n,a,e,c,d,1200));if(o)return t.push(o),t}if(n.close)try{n.close()
+}catch(e){}return t}const Et=e=>{const t=String(e||"").replace(/\D/g,"").replace(/^1(?=\d{10}$)/,"");return 10===t.length?t:""};function Dt(e){const t=String(e||"").trim()
+;return t?/^https?:\/\//i.test(t)?t:/^[a-z][a-z0-9+.-]*:/i.test(t)?"":/^[\w-]+(\.[\w-]+)+([\/?#].*)?$/.test(t)?"https://"+t:"":""}function Mt(e){try{return new URL(e).hostname.toLowerCase().replace(/^www\./,"")}catch(e){return""}}
+function Ot(e){const t=String(e||"").trim(),n={raw:t,kind:"other"};if(!t)return n;if(/^BEGIN:VCARD/i.test(t)){n.kind="vcard";const e=t.replace(/\r\n[ \t]/g,"").split(/\r?\n/),a=[];for(const t of e){const e=t.indexOf(":");if(e<0)continue
+;const o=t.slice(0,e).toUpperCase(),i=t.slice(e+1).trim()
+;i&&(/^FN\b/.test(o)?n.name=i:/^N\b/.test(o)&&!n.name?n.name=i.split(";").filter(Boolean).reverse().join(" ").trim():/^ORG\b/.test(o)?n.org=i.split(";")[0]:/^TITLE\b/.test(o)?n.title=i:/^EMAIL/.test(o)?n.email=i.toLowerCase():/^URL/.test(o)?n.website=Dt(i):/^ADR/.test(o)?n.address=i.split(";").filter(Boolean).join(", "):/^TEL/.test(o)&&a.push({
+v:i,cell:/CELL|MOBILE/i.test(o)}))}const o=a.find((e=>e.cell&&Et(e.v))),i=a.find((e=>Et(e.v)));o?n.mobile=Et(o.v):i&&(n.mobile=Et(i.v));const s=a.map((e=>Et(e.v))).filter((e=>e&&e!==n.mobile));return s.length&&(n.phone_other=s.join(", ")),n
+}if(/^MECARD:/i.test(t))return n.kind="vcard",t.slice(7).split(";").forEach((e=>{const t=e.indexOf(":");if(t<0)return;const a=e.slice(0,t).toUpperCase(),o=e.slice(t+1).trim()
+;o&&("N"===a?n.name=o.split(",").reverse().join(" ").trim():"ORG"===a?n.org=o:"TEL"===a?n.mobile||(n.mobile=Et(o)):"EMAIL"===a?n.email=o.toLowerCase():"URL"===a?n.website=Dt(o):"ADR"===a&&(n.address=o.replace(/,+/g,", ")))})),n
+;if(/^tel:/i.test(t))return n.kind="phone",n.mobile=Et(t.slice(4)),n;if(/^(sms|smsto):/i.test(t))return n.kind="phone",n.mobile=Et(t.split(":")[1]||""),n;if(/^mailto:/i.test(t))return n.kind="email",
+n.email=t.slice(7).split("?")[0].toLowerCase(),n;const a=Dt(t);if(a){const e=Mt(a);if("wa.me"===e||"api.whatsapp.com"===e){n.kind="phone";const e=/(?:wa\.me\/|phone=)(\+?\d+)/i.exec(a);return n.mobile=e?Et(e[1]):"",
+n.mobile||(n.kind="other"),n}const t=function(e){const t=Mt(e);if(!t)return"";for(const n in Tt)if(t===n||t.endsWith("."+n)){let t="";try{t=new URL(e).pathname.replace(/^\/+|\/+$/g,"").split("/")[0]}catch(e){}
+return Tt[n]+": "+(t?"@"+t.replace(/^@/,""):e)}return""}(a);return t?(n.kind="social",n.social=t,n.url=a,n):Ct.indexOf(e)>=0?(n.kind="link",n.link=a,n):(n.kind="website",n.website=a,n)}return n}async function qt(e,a,o,i){
+e.upPending=(e.upPending||0)+1;const s="us/"+e.id+"/"+a+"-"+Date.now()+".jpg";try{const{error:r}=await v(t.storage.from("cards").upload(s,function(e,t){const n=atob(e),a=new Uint8Array(n.length)
+;for(let e=0;e<n.length;e++)a[e]=n.charCodeAt(e);return new Blob([a],{type:t||"image/jpeg"})}(o,"image/jpeg"),{contentType:"image/jpeg",upsert:!0}),6e4,"upload");if(r)throw r;if(e.cardGen!==i)return
+;"back"===a?e.cardBackPath=s:e.cardFrontPath=s,n.form===e&&it()}catch(e){console.warn("card photo upload failed",e)}finally{e.upPending=Math.max(0,(e.upPending||1)-1)}}async function Pt(a,o){const i=a&&a.files&&a.files[0],s=n.form
+;if(!i||!s)return;const r="back"===o;if(!r||s.cardFrontB64){E(r?"Reading the back\u2026":"Reading the card\u2026");try{const a=await async function(e,t){const n=(e,t,n)=>{const a=document.createElement("canvas");return a.width=e,a.height=t,
+a.getContext("2d").drawImage(n,0,0,e,t),a.toDataURL("image/jpeg",.82).split(",")[1]};try{const a=await createImageBitmap(e),o=Math.min(1,t/Math.max(a.width,a.height)),i=n(Math.round(a.width*o),Math.round(a.height*o),a)
+;return a.close&&a.close(),i}catch(a){const o=await Nt(e),i=Math.min(1,t/Math.max(o.naturalWidth,o.naturalHeight));return n(Math.round(o.naturalWidth*i),Math.round(o.naturalHeight*i),o)}}(i,1600)
+;r?s.cardBackB64=a:(s.cardGen=(s.cardGen||0)+1,s.cardFrontB64=a,s.cardBackB64=null,s.cardFrontPath=null,s.cardBackPath=null);const o=Bt(i).catch((()=>[]));(s.cardUploads=s.cardUploads||[]).push(qt(s,r?"back":"front",a,s.cardGen)),
+await async function(a){if(!a.cardFrontB64)return;let o=await async function(){try{const e=await v(t.auth.getSession(),1e4,"auth");return e&&e.data&&e.data.session?e.data.session.access_token:null}catch(e){return null}}()
+;if(!o)return E("Sign in again to scan a card","err");const i={image_base64:a.cardFrontB64,mime_type:"image/jpeg"};a.cardBackB64&&(i.image_back_base64=a.cardBackB64,i.back_mime_type="image/jpeg")
+;const s=t=>v(fetch(e.SUPABASE_URL+"/functions/v1/scan-card-us",{method:"POST",headers:{"Content-Type":"application/json",apikey:e.SUPABASE_KEY,Authorization:"Bearer "+t},body:JSON.stringify(i)}),45e3,"scan");let r,c=await s(o)
+;if(401===c.status){const e=await t.auth.refreshSession().catch((()=>null));o=e&&e.data&&e.data.session?e.data.session.access_token:null,o&&(c=await s(o))}try{r=await c.json()}catch(e){r={
+error:"The scanner sent back something unreadable ("+c.status+")"}}if(n.form!==a)return;if("quota"===r.error)return E("Free scanning quota is used up for now \u2014 type the details.","err")
+;if("not_configured"===r.error)return E("No scanning key set up yet.","err");if(!r.ok)return E(String(r.error||"Could not read that card"),"err");!function(e,t){e.card=t,e.card_used=!0,t.contact_person&&(e.met_name=t.contact_person)
+;if(t.designation){const n=ge.find((e=>e.toLowerCase()===String(t.designation).toLowerCase().trim()));e.met_role=n||e.met_role}
+t.mobile?e.met_mobile=Ut(t.mobile):t.phone_other&&(e.met_mobile=Ut(String(t.phone_other).split(",")[0].replace(/^[^:]*:/,"")));t.email&&(e.met_email=String(t.email).toLowerCase())
+;t.phone_other&&!String(e.shop_phone_other||"").trim()&&(e.shop_phone_other=String(t.phone_other),e.touched.shop_phone_other=!0);t.booth&&!String(e.booth||"").trim()&&(e.booth=String(t.booth),e.touched.booth=!0)
+;It(t.social)&&!String(e.social||"").trim()&&(e.social=String(t.social).trim());const n=["contact_person","designation","mobile","email","website","address","booth"].filter((e=>t[e])).length
+;E(n?"Read "+n+" details off "+(e.cardBackB64?"both sides":"the card"):"Card read, but nothing usable on it",n?"ok":"err")}(a,r.fields||{})}(s);const c=await o;n.form===s&&function(e,t){const n=(t||[]).map(Ot).filter((e=>e.raw))
+;if(!n.length)return;e.codes=(e.codes||[]).concat(n);const a=[];if(n.forEach((t=>{let n=!1;if(t.name&&!String(e.met_name||"").trim()&&(e.met_name=t.name,n=!0),t.title&&!e.met_role){
+const a=ge.find((e=>e.toLowerCase()===String(t.title).toLowerCase().trim()));a&&(e.met_role=a,n=!0)}t.mobile&&!String(e.met_mobile||"").trim()&&(e.met_mobile=Ut(t.mobile),n=!0),
+t.email&&!String(e.met_email||"").trim()&&(e.met_email=String(t.email).toLowerCase(),n=!0),t.phone_other&&!String(e.met_mobile_other||"").trim()&&(e.met_mobile_other=t.phone_other,n=!0),
+It(t.social)&&!String(e.social||"").trim()&&(e.social=String(t.social).trim(),n=!0),t.website&&(e.code_website=t.website,n=!0),["website","social","phone","email","vcard"].indexOf(t.kind)>=0&&(n=!0),n||a.push(t.raw)})),a.length){
+const t=String(e.card_code||""),n=a.filter((e=>t.indexOf(e)<0));n.length&&(e.card_code=(t?t+" | ":"")+n.join(" | "))}E(1===n.length?"Read a QR code off the card":"Read "+n.length+" codes off the card","ok")}(s,c)}catch(e){
+E("Could not read that card: "+g(e),"err")}finally{n.form===s&&We()}}else E("Scan the front of the card again first, then add the back.","err")}const Ut=e=>{const t=String(e||"").replace(/\D/g,"").replace(/^1(?=\d{10}$)/,"")
+;return 10===t.length?t.slice(0,3)+"-"+t.slice(3,6)+"-"+t.slice(6):String(e||"")};function It(e){const t=String(e||"").trim();if(!t)return!1;const n=t.indexOf(":");return(n>=0?t.slice(n+1):t).replace(/^@+/,"").trim().length>=2}
+function Rt(){const e=n.form.card,t=n.place||{};if(!e||n.form.is_new_place)return[];const a=[],o=String(t.phone||"").replace(/\D/g,"").replace(/^1(?=\d{10}$)/,"");let i=""
+;e.phone_other?i=String(e.phone_other).split(",")[0].replace(/^[^:]*:/,""):e.mobile&&(i=e.mobile);const s=String(i).replace(/\D/g,"").replace(/^1(?=\d{10}$)/,"");10===s.length&&s!==o&&a.push({k:"phone",label:"Phone",
+was:t.phone||"(none on file)",now:Ut(s)});const r=e=>String(e||"").toLowerCase().replace(/^https?:\/\//,"").replace(/^www\./,"").replace(/\/$/,""),c=Dt(e.website);return c&&r(c)!==r(t.website)&&a.push({k:"website",label:"Website",
+was:t.website||"(none on file)",now:c}),e.address&&String(e.address).trim().toLowerCase()!==String(t.address||"").trim().toLowerCase()&&a.push({k:"address",label:"Address",was:t.address||"(none on file)",now:e.address}),a}let Ft=!1
+;function Wt(e,t){const a=e=>String(null==e?"":e).trim();let o=a(e.order_value).replace(/[^\d.]/g,"");o&&isNaN(parseFloat(o))?o="":o&&(o=String(parseFloat(o)));const i={id:e.id,place_id:e.place_id,stop_id:e.stop_id||"",
+trip_id:e.trip_id||"",visited_at:t,channel:e.channel,outcome:e.outcome,interest:e.interest||"",met_name:a(e.met_name),met_role:e.met_role||"",met_mobile:a(e.met_mobile),met_email:a(e.met_email),save_contact:a(e.met_name)?"true":"false",
+asked_about:e.asked.slice(),asked_notes:a(e.asked_notes),objections:e.objections.slice(),objection_notes:a(e.objection_notes),order_type:e.order_type||"",order_value:e.order_type&&"none"!==e.order_type?o:"",feedback:a(e.feedback),
+next_step:e.next_step||"",next_step_due:e.next_step&&e.next_step!==je&&e.next_step!==Te?e.next_due:"",contact_source:e.card_used?"card_scan":"typed",card_front:e.cardFrontPath||"",card_back:e.cardBackPath||"",
+met_mobile_other:a(e.met_mobile_other),next_step_time:e.next_step===Ce&&e.next_time||"",social:a(e.social),card_code:a(e.card_code)};return Ne.forEach((([t])=>{(e.known[t]||e.touched[t])&&(i[t]=a(e[t]))})),
+e.is_new_place&&(i.new_place=function(e){const t=n.place||{},a=e.card||{};let o="",i="";if(a.phone_other){const e=String(a.phone_other).split(",");o=e[0].replace(/^[^:]*:/,"").trim(),i=e.slice(1).join(",").trim()
+}else a.mobile&&(o=String(a.mobile));const s=String(a.business_name||"").trim(),r=String(t.name||"").trim(),c=s&&s.toLowerCase()!==r.toLowerCase()?"Card reads: "+s+". ":"";return{name:r,address:a.address||"",city:a.city||t.city||"",
+region:a.state||t.region||"",postcode:a.zip||"",phone:o,phone_other:i||String(e.shop_phone_other||"").trim(),category:e.category||"",booth:String(e.booth||"").trim(),social:String(e.social||"").trim(),
+card_code:String(e.card_code||"").trim(),website:Dt(a.website)||"",notes:c+"Met in person, added from the visit log."}}(e)),i.next_step===Te?i.followup={kind:"next_city_visit",
+what:"Call in again when next in "+(n.place&&n.place.city||"this city")}:i.next_step===Ce&&i.next_step_due?i.followup={kind:"appointment",due_date:i.next_step_due,due_time:i.next_step_time,
+what:"Appointment"+(i.next_step_time?" at "+j(i.next_step_time):"")}:i.next_step&&i.next_step_due&&(i.followup={kind:"date",due_date:i.next_step_due,what:i.next_step}),i}async function Ht(e,t){
+const n=e.cardFrontPath||"",a=e.cardBackPath||"",o=(await G.all()).find((t=>t.id===e.id));if(o){let i=!1;if(n&&o.payload.card_front!==n&&(o.payload.card_front=n,i=!0),a&&o.payload.card_back!==a&&(o.payload.card_back=a,i=!0),
+t&&o.hold&&(o.hold=0,i=!0),i){try{await G.put(o)}catch(e){}e.savedPayload=o.payload}return}const i=e.savedPayload;if(i&&(n&&i.card_front!==n||a&&i.card_back!==a)){const t=Object.assign({},i,{card_front:n||i.card_front,
+card_back:a||i.card_back});try{await G.put({id:e.id,created:Date.now(),payload:t,label:e.savedLabel,hold:0}),e.savedPayload=t}catch(e){}}}let Vt=!1;function $t(){const e=n.engaged||[]
+;if(!e.length)return!n.loaded&&navigator.onLine?$e(4):'<div class="empty">No visits logged yet. Once you log one, the shop appears here with its full history.</div>'
+;const t=n.cterm.trim().toLowerCase(),a=t?e.filter((e=>((e.name||"")+" "+(e.city||"")).toLowerCase().indexOf(t)>=0)):e;if(!a.length)return'<div class="empty">No visited shop matches that.</div>';const o=a.slice(0,n.clientLimit)
+;return Ve(a.length+(1===a.length?" shop":" shops")+" visited")+o.map((e=>'<div class="q"><div class="body"><div class="nm">'+i(e.name)+(Ee(e.interest)?' <span class="pill '+Ee(e.interest)+'">'+i(e.interest)+"</span>":"")+'</div><div class="mt">'+i([e.city,e.visits+(1===e.visits?" visit":" visits"),e.last_visit?"last "+C(e.last_visit):"",e.open_followups?e.open_followups+" open":""].filter(Boolean).join(" \xb7 "))+'</div></div><div class="acts"><button class="v-act" data-act="client" data-id="'+i(e.id)+'">Open</button></div></div>')).join("")+(a.length>o.length?'<button class="v-act" style="width:100%;margin-top:6px" data-act="more">Show '+Math.min(100,a.length-o.length)+" more</button>":"")
+}let Gt=0;async function Yt(e,a){if(!e)return;const o=++Gt;if(a||(n.client={loading:!0,id:e},"client"!==n.stack[n.stack.length-1]?Ie("client"):He()),!navigator.onLine)return n.client={id:e,error:"Client history needs signal."},He();try{
+const[a,i,s,r]=await Promise.all([y(t.from("lf_places").select("*").eq("id",e).maybeSingle()),y(t.from("lf_visits").select("*").eq("place_id",e).order("visited_at",{ascending:!1
+})),y(t.from("lf_contacts").select("*").eq("place_id",e).order("created_at")),y(t.from("lf_followups").select("*").eq("place_id",e).order("due_date"))]);if(o!==Gt)return;n.client=a?{id:e,place:a,visits:i||[],contacts:s||[],followups:r||[]
+}:{id:e,error:"This shop is no longer in the app."}}catch(t){if(o!==Gt)return;n.client={id:e,error:f(t)?"No signal right now.":g(t)}}"client"===n.stack[n.stack.length-1]&&He()}const zt=()=>{try{return"1"===localStorage.getItem(a.seen)
+}catch(e){return!1}},Qt=()=>{try{localStorage.setItem(a.seen,"1")}catch(e){}};function Jt(e){const t=o("gate");t.hidden=!1,t.classList.toggle("overlay",!!e),o("g-later").hidden=!e,
+o("g-sub").textContent=e?n.queue.length?"Sign in again to send the "+(1===n.queue.length?"visit":n.queue.length+" visits")+" saved on this phone. They stay safe here until you do.":"Your sign-in has expired. Sign in again to see fresh lists.":"Sign in to log the shops you visit.",
+e||(o("app").hidden=!0),M(),setTimeout((()=>{const e=o("g-em");e&&!e.value&&e.focus()}),50)}function Kt(){o("gate").hidden=!0,o("gate").classList.remove("overlay")}let Xt=!1;function Zt(){
+return n.backDay?"trips.html?day="+encodeURIComponent(n.backDay):n.backTrip?"trips.html?trip="+encodeURIComponent(n.backTrip):""}async function en(){
+const e=new URL(location.href),a=e.searchParams.get("place")||"",i=e.searchParams.get("stop")||"",s=e.searchParams.get("trip")||"";if(n.backDay=e.searchParams.get("back")||"",n.backTrip=d(s)?s:"",function(){const e=o("back-day")
+;if(!e)return;const t=Zt();e.hidden=!t,t&&(e.href=t,e.innerHTML=N.back+(n.backDay?"Back to the trip day":"Back to the trip"))}(),!a)return!1;e.searchParams.delete("place"),e.searchParams.delete("stop");try{
+history.replaceState(history.state,"",e.pathname+e.search+e.hash)}catch(e){}const r=d(i)?i:"",c=rt();if(c&&c.form.place_id===a&&(c.form.stop_id||"")===r)return ct(c),E("Picked up the visit you had started"),!0
+;const l=re().find((e=>e.place&&e.place.id===a&&(!r||e.id===r)))||re().find((e=>e.place&&e.place.id===a));if(l)return mt({place:l.place,stop_id:r||l.id,trip_id:n.backTrip||n.pack.trip&&n.pack.trip.id||"",day_id:n.backDay||l.day_id}),!0
+;if(!d(a))return E("That link does not point at a shop","err"),!1;if(!navigator.onLine)return E("This shop is not saved on the phone yet. Search for it, or type its name.","err"),Ue("log"),!1;try{
+const e=await y(t.from("lf_places").select("*").eq("id",a).maybeSingle(),12e3);return e?!n.stack.length&&(mt({place:e,stop_id:r,trip_id:n.backTrip,day_id:n.backDay}),!0):(E("That shop is no longer in the app","err"),!1)}catch(e){
+return E("Could not load that shop \u2014 search for it under Log a visit","err"),Ue("log"),!1}}let tn=!1;async function nn(){let e=null,i=!1;try{const n=await v(t.auth.getSession(),8e3,"auth");e=n&&n.data?n.data.session:null,
+!e&&n&&n.error&&f(n.error)&&(i=!0)}catch(e){i=!0}if(e&&Qt(),n.degraded=!e&&zt(),e||n.degraded){if(Kt(),o("app").hidden=!1,n.needAuth=!e&&navigator.onLine&&!i,function(){const e=u(a.pack,null);n.pack=e&&"object"==typeof e?e:null}(),
+n.work=m(a.work),n.recent=m(a.recent),n.engaged=m(a.engaged),await async function(){let e=!1;try{await F("readonly",(e=>e.count())),e=!0}catch(e){}if(!e)try{localStorage.setItem("aa_probe","1"),localStorage.removeItem("aa_probe"),e=!0
+}catch(e){}n.storageBroken=!e}(),await Y(),He(),async function(){try{navigator.storage&&navigator.storage.persist&&(navigator.storage.persisted&&await navigator.storage.persisted()||await navigator.storage.persist())}catch(e){}}(),!tn){
+tn=!0;if(!await en()&&!n.stack.length){const e=rt();e&&Date.now()-(e.at||0)<12e5&&(ct(e),E("Picked up the visit you had started"))}}me(),oe()}else Jt(!1)}const an={tab:e=>Ue(e.dataset.t),back:()=>Re(),cancelForm:()=>function(){
+const e=n.form;if(!e||!ot(e)||confirm("Leave this visit without saving? What you entered will be lost.")){if(e){e._saved=!0;const t=u(a.draft,null);t&&t.form&&t.form.id===e.id&&h(a.draft)}Re()}}(),open:e=>mt(Me.get(e.dataset.k)),
+resumeFromSheet:()=>{M(),ct(rt())},discardAndOpen:()=>{M(),h(a.draft),n.pendingOpen&&gt(n.pendingOpen),n.pendingOpen=null},pickOpen:e=>{const t=Pe[+e.dataset.i];t&&mt({place:t,stop_id:t._stop||"",
+trip_id:n.pack&&n.pack.trip&&t._stop?n.pack.trip.id:"",day_id:t._day||""})},newLead:e=>function(e){const t=String(e||"").trim();if(!t)return;const a=ce()&&n.pack.trip?n.pack.trip:null;mt({place:{id:l(),name:t,address:"",city:"",
+region:a&&a.region||"",postcode:"",phone:"",website:"",segment:"",priority:null,pitch_angle:"",category:"",phone_other:"",buys_lab:"",lab_stock:"",booth:""},stop_id:"",trip_id:a?a.id:"",isNew:!0})}(e.dataset.nm),client:e=>Yt(e.dataset.id),
+done:e=>tt(e.dataset.id),push7:e=>nt(e.dataset.id,7),pick:e=>function(e,t){const a=n.form;if(a){if("asked"===e||"objections"===e){const n=a[e],o=n.indexOf(t);o<0?n.push(t):n.splice(o,1)}else a[e]=a[e]===t?"":t;Be.has(e)&&(a.touched[e]=!0),
+"buys_lab"===e&&"yes"!==a.buys_lab&&(a.lab_stock="",a.touched.lab_stock=!0),He()}}(e.dataset.k,e.dataset.v),due:e=>function(e){const t=n.form;if(!t)return;const a=n.pack&&n.pack.trip&&n.pack.trip.end_date||null
+;"__t"===e?t.next_due=k(w(),1):"__3"===e?t.next_due=k(w(),3):"__w"===e?t.next_due=k(w(),7):"__trip"===e&&a&&(t.next_due=k(a,3)),t.due_pick=e,He()}(e.dataset.v),scan:e=>function(e){
+if(!navigator.onLine)return E("Scanning needs signal. Type what you can \u2014 you can scan the card later.","err");const t=o("back"===e?"card-back":"card-front");t&&(t.value="",t.click())}(e.dataset.side),shopFix:()=>async function(){
+const e=n.form;if(!e||e.is_new_place||Ft)return;const a=Rt();if(!a.length)return;if(!navigator.onLine)return E("Needs signal to correct the shop record","err");const o=e.place_id,i={},s={};a.forEach((e=>{i[e.k]=e.now,
+s[e.k]=(n.place||{})[e.k]||null})),Ft=!0;try{await y(t.from("lf_places").update(i).eq("id",o),15e3)}catch(e){return Ft=!1,E(f(e)?"No signal \u2014 try again in a moment":g(e),"err")}Ft=!1,n.form===e&&(Object.assign(n.place,i),He()),
+E("Shop record corrected from the card","ok",{label:"Undo",fn:async()=>{try{await y(t.from("lf_places").update(s).eq("id",o),15e3)}catch(e){return E(g(e),"err")}n.form===e&&(Object.assign(n.place,s),He()),E("Put the old details back","ok")}
+})}(),save:()=>async function(){const e=n.form;if(!e||Vt)return;if(!e.outcome){E("Pick how it went first","err");const e=o("sec-outcome");return void(e&&e.scrollIntoView({block:"center",behavior:"smooth"}))}
+if(e.next_step&&e.next_step!==je&&e.next_step!==Te&&!/^\d{4}-\d{2}-\d{2}$/.test(e.next_due||""))return void E("Pick a date for \u201c"+e.next_step+"\u201d","err");let t=e.visited_at;if(e.when_set){
+const n=/^(\d{4})-(\d{2})-(\d{2})$/.exec(e.when_date||""),a=/^(\d{1,2}):(\d{2})/.exec(e.when_time||"");if(!n)return void E("Pick the date of the visit","err");const o=new Date(+n[1],+n[2]-1,+n[3],a?+a[1]:12,a?+a[2]:0,0,0)
+;if(isNaN(o))return void E("That date does not look right","err");if(o.getTime()>Date.now()+3e5)return void E("The visit time is in the future","err");t=o.toISOString()}if(bt(e)&&(_t(e)||wt(e))&&!e.nudged){e.nudged=!0,He()
+;const t=o("v-nudge");return void(t&&t.scrollIntoView({block:"center",behavior:"smooth"}))}Vt=!0;const i=o("save-b");i.disabled=!0,i.textContent="Saving\u2026";try{const o=Wt(e,t),i=(n.place&&n.place.name||"Visit")+" \xb7 "+C(t),s={id:e.id,
+created:Date.now(),payload:o,label:i,hold:e.upPending?Date.now()+6e3:0};let c=!0;try{await G.put(s)}catch(e){c=!1}if(!c){n.storageBroken=!0,Ye();const e=navigator.onLine?await X(s):{kind:"net",msg:"no signal"}
+;if(!e.ok)return void E("Could not save this on the phone"+(navigator.onLine?" or send it ("+e.msg+")":" and there is no signal")+". Keep this screen open and try again.","err");H(s.id,U(s))}if(e._saved=!0,e.savedPayload=o,e.savedLabel=i,
+h(a.draft),clearTimeout(at),e.upPending){const t=Promise.all((e.cardUploads||[]).map((e=>Promise.resolve(e).catch((()=>null)))));Promise.race([t,r(6e3)]).then((()=>Ht(e,!0))).then((()=>oe())),
+t.then((()=>r(50))).then((()=>Ht(e,!1))).then((()=>oe()))}if(n.pack&&e.stop_id){const t=re().find((t=>t.id===e.stop_id));t&&(t.status=Ae[o.outcome]||"met",p(a.pack,n.pack))}n.form=null,n.stack=[],n.tab="today",await Y(),He(),
+window.scrollTo(0,0);const d=c?n.needAuth?"Saved on this phone \u2014 sign in to send":navigator.onLine&&!n.degraded?"Saved on this phone \u2014 sending":"Saved on this phone":"Sent",l=Zt();l?E(d,"ok",{label:"Back to the day",fn:()=>{
+location.href=l}}):E(d,"ok"),c?oe():me()}finally{Vt=!1,i.disabled=!1,i.textContent="Save visit"}}(),sheet:()=>Qe(),sheetBg:(e,t)=>{t.target===e&&M()},closeSheet:()=>M(),sendNow:()=>{M(),oe(!0)},signin:()=>Jt(!0),copyItem:e=>{
+const t=n.queue.find((t=>t.id===e.dataset.id));t&&O(function(e){const t=e.payload||{},n=(be.find((e=>e[0]===t.outcome))||[0,t.outcome||""])[1]
+;return[String(e.label||"Visit"),n&&"Outcome: "+n,t.interest&&"Interest: "+t.interest,t.met_name&&"Met: "+t.met_name+(t.met_role?" ("+t.met_role+")":""),t.met_mobile&&"Mobile: "+t.met_mobile,t.met_email&&"Email: "+t.met_email,(t.asked_about||[]).length&&"Asked about: "+t.asked_about.join(", "),t.asked_notes,(t.objections||[]).length&&"Held back by: "+t.objections.join(", "),t.objection_notes,t.order_type&&"none"!==t.order_type&&"Order: "+t.order_type+(t.order_value?" $"+t.order_value:""),t.feedback&&"Feedback: "+t.feedback,t.next_step&&"Next: "+t.next_step+(t.next_step_due?" by "+t.next_step_due:""),"Visit id: "+t.id].filter(Boolean).join("\n")
+}(t))},copyOpener:()=>{n.place&&n.place.approach_msg&&O(St(n.place.approach_msg,n.place))},resume:()=>ct(rt()),discardDraft:()=>{confirm("Throw away this unfinished visit? What you typed will be lost.")&&(h(a.draft),He())},whenToggle:()=>{
+n.form&&(n.form.when_open=!n.form.when_open,He())},signout:()=>async function(){const e=n.queue.length
+;if(confirm(e?(1===e?"One visit has":e+" visits have")+" not been sent yet. "+(1===e?"It stays":"They stay")+" on this phone and will send after you sign in again.\n\nSign out?":"Sign out of Aaryam Visits?")){st(),h(a.seen);try{
+await v(t.auth.signOut({scope:"local"}),8e3,"sign-out")}catch(e){}location.reload()}}(),more:()=>{n.clientLimit+=100;const e=o("c-res");e&&(e.innerHTML=$t())},retryLoad:()=>{n.loadErr="",He(),me()}};document.addEventListener("click",(e=>{
+const t=e.target.closest("[data-act]");if(!t||t.disabled)return;const n=an[t.dataset.act];n&&("sheetBg"!==t.dataset.act&&e.preventDefault(),n(t,e))})),document.addEventListener("input",(e=>{const t=e.target;return"pk"===t.id?(a=t.value,
+n.pterm=a,clearTimeout(dt),void(dt=setTimeout((()=>ht(a)),250))):"cs"===t.id?function(e){n.cterm=e,n.clientLimit=80;const t=o("c-res");t&&(t.innerHTML=$t())}(t.value):n.form?t.dataset.f?(function(e,t){const a=n.form;a&&(a[e]=t,
+Be.has(e)&&(a.touched[e]=!0),it())}(t.dataset.f,t.value),void("next_due"===t.dataset.f&&(n.form.due_pick=""))):void(t.dataset.when&&("date"===t.dataset.when?n.form.when_date=t.value:n.form.when_time=t.value,n.form.when_set=!0,it())):void 0
+;var a})),document.addEventListener("change",(e=>{const t=e.target;if(t.dataset&&t.dataset.card&&Pt(t,t.dataset.card),t.dataset&&t.dataset.when&&n.form){const e=document.querySelector(".v-when b");e&&(e.textContent=xt(n.form))}})),
+document.addEventListener("keydown",(e=>{"Escape"===e.key&&o("sheet-host").firstChild&&M(),"Enter"===e.key&&e.target&&"pk"===e.target.id&&(e.preventDefault(),e.target.blur())})),o("g-form").addEventListener("submit",(async function(e){
+if(e&&e.preventDefault(),Xt)return;const a=o("g-em").value.trim(),i=o("g-pw").value,s=o("g-err");if(a&&i)if(navigator.onLine){Xt=!0,o("g-go").disabled=!0,o("g-go").textContent="Signing in\u2026",s.textContent="";try{
+const{error:e}=await v(t.auth.signInWithPassword({email:a,password:i}),2e4,"sign-in");if(e)return void(s.textContent=f(e)?"Cannot reach the server. Try again in a moment.":e.message);Qt(),o("g-pw").value=""
+;const r=o("gate").classList.contains("overlay");n.needAuth=!1,n.degraded=!1,n.authMsg="",Kt(),r?(Ye(),Ge(),oe(!0),me()):nn()}catch(e){s.textContent=f(e)?"Cannot reach the server. Try again in a moment.":g(e)}finally{Xt=!1,
+o("g-go").disabled=!1,o("g-go").textContent="Sign in"}}else s.textContent="Signing in needs signal.";else s.textContent="Enter your email and password."})),o("g-later").addEventListener("click",(()=>{Kt(),Ye()})),
+window.addEventListener("online",(async()=>{if(n.degraded||n.needAuth){const e=await K(!1);"ok"===e?(n.needAuth=!1,n.degraded=!1):"none"===e&&(n.needAuth=!0)}Ye(),Ge(),"form"===n.stack[n.stack.length-1]&&Lt(),oe(),me()})),
+window.addEventListener("offline",(()=>{Ye(),Ge(),"form"===n.stack[n.stack.length-1]&&Lt()})),setInterval((()=>{!document.hidden&&navigator.onLine&&n.queue.some((e=>!e.stuck))&&oe()}),25e3),
+document.addEventListener("visibilitychange",(()=>{document.hidden?st():Y().then((()=>{oe(),me()}))})),window.addEventListener("pagehide",st),V&&(V.onmessage=()=>{Y().then((()=>{n.stack.length||"today"!==n.tab||We()}))}),
+window.addEventListener("storage",(e=>{e.key!==a.queue&&e.key!==a.sent||Y().then((()=>{n.stack.length||"today"!==n.tab||We()}))})),"serviceWorker"in navigator&&navigator.serviceWorker.register("sw.js",{scope:"./"}).catch((()=>{})),nn()}()
+</script> </body> </html> 

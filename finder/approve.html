@@ -1,480 +1,275 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#7b1e3c">
-  <title>Bhagwati Jewels — Approve stores</title>
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="../styles.css">
-  <style>
-    :root { --mar: var(--maroon, #7b1e3c); --cd: var(--card, #fff); --mu: var(--muted, #6b6b6b);
-            --rd: var(--radius, 12px); --sh: var(--shadow, 0 1px 3px rgba(0,0,0,.12)); }
-    * { -webkit-tap-highlight-color: transparent; }
-    html { scroll-padding-top: 104px; }
-    body { margin: 0; background: #f6f3f4; color: #1c1c1c;
-           font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .hd { position: sticky; top: 0; z-index: 30; background: var(--mar); color: #fff;
-          padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; }
-    .hd h1 { margin: 0; font-size: 17px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-    .hd .sp { flex: 1; }
-    .back { background: none; border: 0; color: #fff; font-size: 20px; padding: 2px 8px 2px 0; cursor: pointer; }
-    .out { background: none; border: 0; color: rgba(255,255,255,.85); font-size: 12.5px; cursor: pointer; padding: 6px 0 6px 8px; }
-    .prog { margin-top: 7px; font-size: 12.5px; color: rgba(255,255,255,.9); }
-    .wrap { padding: 13px; max-width: 760px; margin: 0 auto; padding-bottom: 130px; }
-    .sec-t { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--mu);
-             margin: 16px 2px 8px; font-weight: 600; }
-    .city { display: flex; align-items: center; gap: 10px; background: var(--cd); border-radius: var(--rd);
-            box-shadow: var(--sh); padding: 13px 14px; margin-bottom: 9px; cursor: pointer; }
-    .city .nm { font-size: 15.5px; font-weight: 600; flex: 1; }
-    .city .ct { font-size: 12.5px; color: var(--mu); }
-    .row { background: var(--cd); border-radius: var(--rd); box-shadow: var(--sh);
-           padding: 12px 13px; margin-bottom: 9px; display: flex; gap: 11px; align-items: flex-start; }
-    .row.picked { outline: 2px solid var(--mar); }
-    .row.gone { opacity: .45; }
-    .tick { width: 26px; height: 26px; flex: 0 0 26px; border-radius: 7px; border: 1.5px solid #cfc6c9;
-            background: #fff; cursor: pointer; font-size: 16px; line-height: 24px; text-align: center;
-            color: #fff; padding: 0; font-family: inherit; margin-top: 1px; }
-    .tick.on { background: var(--mar); border-color: var(--mar); }
-    .body { flex: 1; min-width: 0; }
-    .body .nm { font-size: 15px; font-weight: 600; }
-    .body .ad { font-size: 12.5px; color: var(--mu); margin-top: 1px; }
-    .why { font-size: 13px; margin-top: 6px; }
-    .why b { color: var(--mar); }
-    .pill { display: inline-block; font-size: 10.5px; padding: 2px 7px; border-radius: 20px;
-            font-weight: 700; margin-left: 6px; vertical-align: 1px; }
-    .p5 { background: #e3f2e7; color: #16663c; }
-    .p4 { background: #fcefd2; color: #7a4a02; }
-    .p3 { background: #eee9f2; color: #5b4a6b; }
-    .warn { background: #fbe1df; color: #a12b24; }
-    .mb { background: #f1edf3; color: #5b4a6b; }
-    .maybe-why { font-size: 12.5px; margin-top: 6px; color: #5b4a6b; background: #f6f2f8;
-                 border-radius: 8px; padding: 6px 9px; }
-    .maybe-link { display: block; width: 100%; text-align: left; background: #fff; border: 1.5px dashed #cdbfd6;
-                  border-radius: var(--rd); padding: 12px 14px; margin: 6px 0 9px; font-size: 13.5px;
-                  color: #5b4a6b; cursor: pointer; font-family: inherit; }
-    .note { font-size: 13px; color: var(--mu); background: #fff; border-radius: var(--rd);
-            padding: 11px 13px; margin-bottom: 11px; box-shadow: var(--sh); }
-    .mini { display: flex; gap: 12px; margin-top: 8px; font-size: 12.5px; flex-wrap: wrap; }
-    .mini a, .mini button { color: var(--mar); background: none; border: 0; padding: 0;
-                            font-size: 12.5px; text-decoration: none; cursor: pointer; font-family: inherit; }
-    .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--cd);
-           border-top: 1px solid #e6e0e2; padding: 11px 13px calc(env(safe-area-inset-bottom) + 11px);
-           box-shadow: 0 -2px 10px rgba(0,0,0,.07); }
-    .bar .inner { max-width: 760px; margin: 0 auto; display: flex; gap: 9px; align-items: center; }
-    .bar .cnt { font-size: 13px; color: var(--mu); flex: 1; }
-    .btn { padding: 13px 18px; font-size: 15.5px; font-weight: 600; font-family: inherit; border: 0;
-           border-radius: 11px; background: var(--mar); color: #fff; cursor: pointer; }
-    .btn.ghost { background: #fff; color: var(--mar); border: 1.5px solid var(--mar); }
-    .btn:disabled { opacity: .45; }
-    .quick { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 11px; }
-    .chip { border: 1px solid #d9d2d4; background: #fff; color: #333; border-radius: 20px;
-            padding: 7px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
-    .chip.on { background: var(--mar); border-color: var(--mar); color: #fff; font-weight: 600; }
-    .empty { text-align: center; color: var(--mu); font-size: 13.5px; padding: 26px 14px; }
-    .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 92px; z-index: 90;
-             background: #222; color: #fff; padding: 11px 16px; border-radius: 22px; font-size: 13.5px;
-             max-width: 90%; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-    .toast.ok { background: #16663c; } .toast.err { background: #a12b24; }
-    .toast-act { background: none; border: 0; color: #9fe0b8; font-weight: 700; font-size: 13.5px;
-                 margin-left: 10px; text-decoration: underline; cursor: pointer; font-family: inherit; }
-    #gate { max-width: 340px; margin: 12vh auto; padding: 0 20px; }
-    #gate h2 { text-align: center; color: var(--mar); font-size: 19px; }
-    .field { margin-bottom: 12px; }
-    .field label { display: block; font-size: 12.5px; color: var(--mu); margin-bottom: 5px; font-weight: 600; }
-    .field input { width: 100%; box-sizing: border-box; padding: 11px 12px; font-size: 16px;
-                   font-family: inherit; border: 1px solid #d9d2d4; border-radius: 9px; }
-    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 80; display: flex;
-                align-items: flex-end; }
-    .sheet { background: var(--cd); width: 100%; border-radius: 16px 16px 0 0; padding: 16px 16px
-             calc(env(safe-area-inset-bottom) + 16px); max-height: 82vh; overflow: auto; }
-    .sheet h4 { margin: 0 0 4px; font-size: 16px; }
-    .sheet p { margin: 0 0 12px; font-size: 13px; color: var(--mu); }
-    .sheet-act { display: block; width: 100%; text-align: left; background: #f6f3f4; border: 0;
-                 border-radius: 10px; padding: 13px 14px; margin-bottom: 8px; font-size: 14.5px;
-                 font-family: inherit; cursor: pointer; }
-    .sheet-act.cancel { background: #fff; border: 1px solid #d9d2d4; text-align: center; }
-    .bjnav { display: flex; gap: 6px; padding: 8px 14px; background: #fff;
-      border-bottom: 1px solid #e7e0e6; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .bjnav a { flex: 0 0 auto; text-decoration: none; font-size: 13px; font-weight: 650;
-      color: #7a7280; background: #f4f0f4; border-radius: 999px; padding: 7px 13px; white-space: nowrap; }
-    .bjnav a.on { background: #7b1e3c; color: #fff; }
-  </style>
-</head>
-<body>
-
-<div id="gate" style="display:none">
-  <h2>Approve stores</h2>
-  <div class="field"><label>Email</label><input id="g-em" type="email" autocomplete="username"></div>
-  <div class="field"><label>Password</label><input id="g-pw" type="password" autocomplete="current-password"></div>
-  <button class="btn" style="width:100%" id="g-go">Sign in</button>
-  <p id="g-err" style="color:#a12b24;font-size:13px;text-align:center"></p>
-</div>
-
-<div id="app" style="display:none">
-  <div class="hd">
-    <h1><button class="back" id="hd-back" style="display:none" onclick="back()">‹</button>
-        <span id="hd-title">Approve stores</span><span class="sp"></span>
-        <button class="out" onclick="signOut()">Sign out</button></h1>
-    <div class="prog" id="prog"></div>
-  </div>
-  <nav class="bjnav">
-    <a href="./">🔎 Leads</a><a href="trips.html">🗺️ Trips</a>
-    <a href="visits.html">📝 Visits</a>
-    <a href="approve.html" class="on" aria-current="page">✅ Approve</a>
-  </nav>
-  <div class="wrap" id="view"></div>
-  <div class="bar" id="bar" style="display:none"><div class="inner">
-    <span class="cnt" id="cnt"></span>
-    <button class="btn ghost" onclick="clearPicks()">Clear</button>
-    <button class="btn" id="go" onclick="approvePicked()">Approve</button>
-  </div></div>
-  <div id="modal"></div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
-<script src="../config.js"></script>
-<script>
-(function () {
-  'use strict';
-  if (!window.supabase || !window.supabase.createClient || typeof BJ_CONFIG === 'undefined') {
-    document.addEventListener('DOMContentLoaded', function () {
-      document.body.innerHTML = '<div style="max-width:340px;margin:16vh auto;padding:0 24px;' +
-        'text-align:center;font:15px/1.5 -apple-system,sans-serif"><h2 style="color:#7b1e3c">' +
-        'Could not finish loading</h2><p>Reload with a bar of signal.</p>' +
-        '<button onclick="location.reload()" style="padding:13px 22px;font-size:16px;border:0;' +
-        'border-radius:11px;background:#7b1e3c;color:#fff">Reload</button></div>';
-    });
-    return;
-  }
-  const sb = window.supabase.createClient(BJ_CONFIG.SUPABASE_URL, BJ_CONFIG.SUPABASE_KEY);
-
-  const S = { region: 'FL', cities: [], city: null, rows: [], picks: new Set(),
-              done: 0, totals: null, busy: false, filter: 'p4', mode: 'feed', prevFilter: 'p4' };
-
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const digits = (s) => String(s || '').replace(/[^\d+]/g, '');
-  let toastT;
-  function toast(msg, kind, actLabel, actFn) {
-    const old = document.querySelector('.toast'); if (old) old.remove();
-    const el = document.createElement('div');
-    el.className = 'toast' + (kind ? ' ' + kind : ''); el.textContent = msg;
-    if (actLabel) { const b = document.createElement('button'); b.className = 'toast-act';
-      b.textContent = actLabel; b.onclick = () => { el.remove(); clearTimeout(toastT); actFn(); };
-      el.appendChild(b); }
-    document.body.appendChild(el);
-    clearTimeout(toastT); toastT = setTimeout(() => el.remove(), actLabel ? 9000 : 3600);
-  }
-
-  // Google Maps form proved correct in Ravi's own browser: full address opens the business card.
-  function mapsLink(p) {
-    const base = 'https://www.google.com/maps/search/?api=1&query=';
-    if (p.address && p.city && p.region) {
-      const st = p.region + (p.postcode ? ' ' + p.postcode : '');
-      return base + encodeURIComponent([p.name, p.address, p.city, st].filter(Boolean).join(', '));
-    }
-    if (p.latitude != null) return base + p.latitude + ',' + p.longitude;
-    return base + encodeURIComponent([p.name, p.city, p.region, 'USA'].filter(Boolean).join(', '));
-  }
-  const firstSentence = (t) => {
-    const s = String(t || '').trim(); if (!s) return '';
-    const m = s.match(/^[\s\S]{0,190}?[.!?](\s|$)/);
-    return (m ? m[0] : s.slice(0, 190)).trim();
-  };
-  const TIGHT = /(appointment only|closed sunday and monday|closed saturday and sunday|fri\W*sun only|mon\W*fri)/i;
-
-  /* ---------- loading ---------- */
-  async function loadCities() {
-    const { data, error } = await sb.from('lf_approve_queue').select('*').order('ready', { ascending: false });
-    if (error) { toast(error.message, 'err'); return; }
-    S.cities = (data || []).filter((c) => c.region === S.region);
-    S.allRegions = [...new Set((data || []).map((r) => r.region))].sort();
-    const { count } = await sb.from('lf_places').select('id', { count: 'exact', head: true })
-      .eq('hidden', false).eq('region', S.region).eq('approved', true);
-    S.totals = { approved: count || 0,
-                 ready: S.cities.reduce((a, c) => a + c.ready, 0),
-                 maybe: S.cities.reduce((a, c) => a + (c.maybe || 0), 0) };
-  }
-  /* What counts as "waiting on your yes or no" is defined ONCE, in SQL: the view lf_ready,
-     split by a Claude grade into lf_feed and lf_feed_maybe. This page, the city counts and the
-     health check all read those views, so they can never disagree. A MAYBE shop is not
-     rejected: it keeps its verdict and opener, and sits one tap away. Ungraded shops show in
-     the feed (fail open), so new fits are never hidden if grading ever stops. */
-  async function loadCity(city, mode) {
-    S.city = city; S.mode = mode === 'maybe' ? 'maybe' : 'feed'; S.rows = []; S.picks = new Set();
-    const { data, error } = await sb.from(S.mode === 'maybe' ? 'lf_feed_maybe' : 'lf_feed')
-      .select('id,name,city,region,address,postcode,phone,website,priority,summary,pitch_angle,good_at,opening_hours,latitude,longitude,feed_reason,feed_model')
-      .eq('region', S.region).eq('city', city)
-      .order('priority', { ascending: false, nullsFirst: false }).order('name');
-    if (error) { toast(error.message, 'err'); return; }
-    S.rows = data || [];
-    applyFilter();
-  }
-  function applyFilter() {
-    S.picks = new Set();
-    for (const r of S.rows) {
-      const p = r.priority || 0;
-      if (S.filter === 'p5' && p === 5) S.picks.add(r.id);
-      else if (S.filter === 'p4' && p >= 4) S.picks.add(r.id);
-      else if (S.filter === 'all') S.picks.add(r.id);
-    }
-    render();
-  }
-
-  /* ---------- render ---------- */
-  function render() {
-    const v = $('view');
-    $('hd-back').style.display = S.city ? '' : 'none';
-    $('hd-title').textContent = S.city ? S.city + (S.mode === 'maybe' ? ' · Maybe' : '') : 'Approve stores';
-    if (S.totals) {
-      $('prog').textContent = S.region + ': ' + S.totals.approved + ' approved · ' +
-        S.totals.ready + ' waiting on your yes or no' +
-        (S.totals.maybe ? ' · ' + S.totals.maybe + ' in maybe' : '');
-    }
-    if (!S.city) { $('bar').style.display = 'none'; v.innerHTML = citiesHtml(); return; }
-    v.innerHTML = rowsHtml();
-    const n = S.picks.size;
-    $('bar').style.display = '';
-    $('cnt').textContent = n ? n + (n === 1 ? ' store ticked' : ' stores ticked') : 'Nothing ticked';
-    $('go').disabled = !n || S.busy;
-    $('go').textContent = S.busy ? 'Saving…' : (n ? 'Approve ' + n : 'Approve');
-  }
-  function citiesHtml() {
-    let h = '';
-    if ((S.allRegions || []).length > 1) {
-      h += '<div class="quick">' + S.allRegions.map((r) =>
-        '<button class="chip' + (r === S.region ? ' on' : '') + '" onclick="setRegion(\'' + r + '\')">' +
-        esc(r) + '</button>').join('') + '</div>';
-    }
-    const feedCities = S.cities.filter((c) => c.ready > 0);
-    const maybeOnly = S.cities.filter((c) => c.ready === 0 && (c.maybe || 0) > 0);
-    if (!feedCities.length && !maybeOnly.length) return h + '<div class="empty">Nothing waiting in ' + esc(S.region) +
-      '. Every store with an opener and a map pin has had your decision.</div>';
-    const cityArg = (c) => JSON.stringify(JSON.stringify(c.city)).replace(/"/g, '&quot;');
-    if (feedCities.length) {
-      h += '<div class="sec-t">Work a city at a time — these are the ones the trip planner can route</div>';
-      h += feedCities.map((c) =>
-        '<div class="city" onclick="openCity(' + cityArg(c) + ')">' +
-        '<div class="nm">' + esc(c.city) + '</div><div class="ct">' + c.ready + ' ready' +
-        (c.p5 ? ' · <b style="color:#16663c">' + c.p5 + ' sell lab-grown</b>' : '') +
-        (c.p4 ? ' · ' + c.p4 + ' strong' : '') +
-        (c.maybe ? ' · <span style="color:#8a7b94">' + c.maybe + ' maybe</span>' : '') +
-        '</div><div style="color:#bbb">›</div></div>').join('');
-    } else {
-      h += '<div class="empty">Nothing in your feed for ' + esc(S.region) + '.</div>';
-    }
-    if (maybeOnly.length) {
-      h += '<div class="sec-t">Only maybes left — thin evidence, not rejected</div>';
-      h += maybeOnly.map((c) =>
-        '<div class="city" onclick="openCity(' + cityArg(c) + ',\'maybe\')">' +
-        '<div class="nm" style="color:#5b4a6b">' + esc(c.city) + '</div><div class="ct">' + c.maybe + ' maybe' +
-        '</div><div style="color:#bbb">›</div></div>').join('');
-    }
-    return h;
-  }
-  function maybeLinkHtml() {
-    const c = S.cities.find((x) => x.city === S.city);
-    const n = c ? (c.maybe || 0) : 0;
-    if (S.mode !== 'feed' || !n) return '';
-    return '<button class="maybe-link" onclick="openMaybe()">' + n + (n === 1 ? ' more shop' : ' more shops') +
-      ' in Maybe — thin evidence, kept out of your feed ›</button>';
-  }
-  function rowsHtml() {
-    const isMaybe = S.mode === 'maybe';
-    const banner = isMaybe ? '<div class="note">These were graded <b>maybe</b>: the evidence on file is thin — ' +
-      'no confirmed storefront, or no sign of what they sell. Nothing here is rejected. ' +
-      'Move one to your feed if you know better, or approve it straight from here.</div>' : '';
-    if (!S.rows.length) return banner + '<div class="empty">Nothing left here.</div>' + maybeLinkHtml();
-    const counts = { p5: 0, p4: 0, all: S.rows.length };
-    for (const r of S.rows) { const p = r.priority || 0; if (p === 5) counts.p5++; if (p >= 4) counts.p4++; }
-    let h = banner + '<div class="quick">' +
-      '<button class="chip' + (S.filter === 'p5' ? ' on' : '') + '" onclick="setFilter(\'p5\')">Tick the ' + counts.p5 + ' lab-grown</button>' +
-      '<button class="chip' + (S.filter === 'p4' ? ' on' : '') + '" onclick="setFilter(\'p4\')">Tick the ' + counts.p4 + ' strongest</button>' +
-      '<button class="chip' + (S.filter === 'all' ? ' on' : '') + '" onclick="setFilter(\'all\')">Tick all ' + counts.all + '</button>' +
-      '<button class="chip' + (S.filter === 'none' ? ' on' : '') + '" onclick="setFilter(\'none\')">Untick all</button></div>';
-    h += S.rows.map((r) => {
-      const p = r.priority || 0;
-      const on = S.picks.has(r.id);
-      const why = firstSentence(r.pitch_angle) || firstSentence(r.summary) || firstSentence(r.good_at);
-      const tight = r.opening_hours && TIGHT.test(r.opening_hours);
-      return '<div class="row' + (on ? ' picked' : '') + (r._done ? ' gone' : '') + '" id="r-' + r.id + '">' +
-        '<button class="tick' + (on ? ' on' : '') + '" onclick="toggle(\'' + r.id + '\')" ' +
-          'aria-label="tick">' + (on ? '✓' : '') + '</button>' +
-        '<div class="body"><div class="nm">' + esc(r.name) +
-          (p === 5 ? '<span class="pill p5">sells lab-grown</span>' :
-           p === 4 ? '<span class="pill p4">strong</span>' : '<span class="pill p3">worth a look</span>') +
-          (tight ? '<span class="pill warn">tight hours</span>' : '') + '</div>' +
-        '<div class="ad">' + esc([r.address, r.city].filter(Boolean).join(', ') || 'no address') + '</div>' +
-        (isMaybe && r.feed_reason ? '<div class="maybe-why"><b>Why maybe:</b> ' + esc(r.feed_reason) + '</div>' : '') +
-        (why ? '<div class="why">' + esc(why) + '</div>' : '') +
-        (tight ? '<div class="why"><b>Hours:</b> ' + esc(String(r.opening_hours).slice(0, 110)) + '</div>' : '') +
-        '<div class="mini">' +
-          '<a target="_blank" rel="noopener" href="' + esc(mapsLink(r)) + '">🗺️ Map</a>' +
-          (r.website ? '<a target="_blank" rel="noopener" href="' + esc(r.website) + '">🌐 Site</a>' : '') +
-          (r.phone ? '<a href="tel:' + esc(digits(r.phone)) + '">📞 ' + esc(r.phone) + '</a>' : '') +
-          (isMaybe ? '<button onclick="moveToFeed(\'' + r.id + '\')">Move to feed</button>' : '') +
-          '<button onclick="askReject(\'' + r.id + '\')">Not a fit</button>' +
-        '</div></div></div>';
-    }).join('');
-    return h + maybeLinkHtml();
-  }
-
-  /* ---------- actions ---------- */
-  function setRegion(r) { S.region = r; S.city = null; loadCities().then(render); }
-  function openCity(json, mode) {
-    const city = typeof json === 'string' ? JSON.parse(json) : json;
-    if (mode === 'maybe') { S.prevFilter = S.filter; S.filter = 'none'; }
-    loadCity(city, mode);
-  }
-  // Maybes are never pre-ticked: opening the list must not arm a bulk approve.
-  function openMaybe() { S.prevFilter = S.filter; S.filter = 'none'; loadCity(S.city, 'maybe'); }
-  function back() {
-    if (S.mode === 'maybe') {
-      S.filter = S.prevFilter || 'p4';
-      const c = S.cities.find((x) => x.city === S.city);
-      if (S.city && c && c.ready > 0) { loadCity(S.city, 'feed'); return; }
-    }
-    S.city = null; S.mode = 'feed'; S.rows = []; S.picks = new Set(); loadCities().then(render);
-  }
-  function setFilter(f) { S.filter = f; applyFilter(); }
-  function toggle(id) { if (S.picks.has(id)) S.picks.delete(id); else S.picks.add(id); render(); }
-  function clearPicks() { S.picks = new Set(); render(); }
-
-  // Adjust the counts of whichever list the shops just left.
-  function bump(d) {
-    const key = S.mode === 'maybe' ? 'maybe' : 'ready';
-    if (S.totals) S.totals[key] = Math.max(0, (S.totals[key] || 0) + d);
-    const c = S.cities.find((x) => x.city === S.city); if (c) c[key] = Math.max(0, (c[key] || 0) + d);
-  }
-
-  /* Ravi overrides the grader. feed_model = 'manual' makes it final: the grader's write
-     function refuses to touch a row he moved by hand. */
-  async function moveToFeed(id) {
-    const r = S.rows.find((x) => x.id === id); if (!r) return;
-    const { error } = await sb.from('lf_places')
-      .update({ feed_tier: 'feed', feed_model: 'manual', feed_reason: 'Moved to the feed by Ravi' })
-      .eq('id', id).eq('feed_tier', 'maybe').is('approved', null);
-    if (error) return toast(error.message, 'err');
-    S.rows = S.rows.filter((x) => x.id !== id); S.picks.delete(id);
-    bump(-1);
-    if (S.totals) S.totals.ready += 1;
-    const c = S.cities.find((x) => x.city === S.city); if (c) c.ready += 1;
-    render();
-    toast(r.name + ' moved to your feed', 'ok', 'Undo', () => undoMove(r));
-  }
-  async function undoMove(r) {
-    const { error } = await sb.from('lf_places')
-      .update({ feed_tier: 'maybe', feed_model: r.feed_model || null, feed_reason: r.feed_reason || null })
-      .eq('id', r.id).eq('feed_model', 'manual').is('approved', null);
-    if (error) return toast(error.message, 'err');
-    toast('Put ' + r.name + ' back in maybe', 'ok');
-    await loadCities();
-    if (S.city) await loadCity(S.city, S.mode); else render();
-  }
-
-  // PostgREST puts the id list in the URL, so send it in chunks rather than one huge request.
-  async function chunked(ids, patch) {
-    let n = 0;
-    for (let i = 0; i < ids.length; i += 40) {
-      const slice = ids.slice(i, i + 40);
-      const { error, count } = await sb.from('lf_places')
-        .update(patch, { count: 'exact' })
-        .in('id', slice)
-        .is('approved', null);          // never overwrite a decision already made
-      if (error) throw error;
-      n += (count == null ? slice.length : count);
-    }
-    return n;
-  }
-
-  async function approvePicked() {
-    const ids = [...S.picks]; if (!ids.length || S.busy) return;
-    S.busy = true; render();
-    try {
-      const n = await chunked(ids, { approved: true, verdict: 'fit', verdict_source: 'manual' });
-      S.rows = S.rows.filter((r) => !S.picks.has(r.id));
-      S.picks = new Set();
-      bump(-n); if (S.totals) S.totals.approved += n;
-      S.busy = false;
-      applyFilter();
-      toast(n + (n === 1 ? ' store approved' : ' stores approved') + ' — routable in the trip planner now',
-            'ok', 'Undo', () => undoApprove(ids));
-      if (!S.rows.length) back();
-    } catch (e) {
-      S.busy = false; render(); toast(String(e.message || e), 'err');
-    }
-  }
-  async function undoApprove(ids) {
-    try {
-      let n = 0;
-      for (let i = 0; i < ids.length; i += 40) {
-        const { error } = await sb.from('lf_places')
-          .update({ approved: null }).in('id', ids.slice(i, i + 40)).eq('approved', true);
-        if (error) throw error;
-        n += ids.slice(i, i + 40).length;
-      }
-      toast('Put ' + n + ' back for review', 'ok');
-      await loadCities();
-      if (S.city) await loadCity(S.city, S.mode); else render();
-    } catch (e) { toast(String(e.message || e), 'err'); }
-  }
-
-  const REASONS = ['Silver / fashion only', 'Gold with CZ / moissanite only', 'Natural diamonds only',
-    'Pawn or loan business', 'Repair / watch service only', 'Chain, too many locations',
-    'Indian vendor / supplier', 'Not actually a jeweller', 'Closed down'];
-  function askReject(id) {
-    const r = S.rows.find((x) => x.id === id); if (!r) return;
-    $('modal').innerHTML = '<div class="modal-bg" onclick="if(event.target===this)closeSheet()">' +
-      '<div class="sheet"><h4>' + esc(r.name) + '</h4>' +
-      '<p>Why is this one not a fit? The reason shows on the card, so it is never a silent reject.</p>' +
-      REASONS.map((x, i) => '<button class="sheet-act" onclick="doReject(\'' + id + '\',' + i + ')">' +
-        esc(x) + '</button>').join('') +
-      '<button class="sheet-act cancel" onclick="closeSheet()">Cancel</button></div></div>';
-  }
-  function closeSheet() { $('modal').innerHTML = ''; }
-  async function doReject(id, ri) {
-    const reason = REASONS[ri] || 'Other';
-    closeSheet();
-    const { error } = await sb.from('lf_places').update({
-      approved: false, verdict: 'not_fit', verdict_source: 'manual',
-      verdict_reasons: [{ signal: reason, src: 'Ravi' }]
-    }).eq('id', id).is('approved', null);
-    if (error) return toast(error.message, 'err');
-    S.rows = S.rows.filter((r) => r.id !== id);
-    S.picks.delete(id);
-    bump(-1);
-    render();
-    toast('Rejected — ' + reason, 'ok');
-  }
-
-  /* ---------- auth ---------- */
-  async function signOut() { try { await sb.auth.signOut(); } catch (e) {} location.reload(); }
-  async function doSignIn() {
-    const em = $('g-em').value.trim(), pw = $('g-pw').value;
-    if (!em || !pw) { $('g-err').textContent = 'Enter your email and password.'; return; }
-    $('g-err').textContent = 'Signing in…';
-    const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
-    if (error) { $('g-err').textContent = error.message; return; }
-    boot();
-  }
-  async function boot() {
-    let session = null;
-    try { const r = await sb.auth.getSession(); session = r && r.data ? r.data.session : null; } catch (e) {}
-    if (!session) { $('gate').style.display = ''; $('app').style.display = 'none'; return; }
-    $('gate').style.display = 'none'; $('app').style.display = '';
-    await loadCities();
-    render();
-  }
-
-  Object.assign(window, { setRegion, openCity, openMaybe, back, setFilter, toggle, clearPicks,
-    approvePicked, undoApprove, askReject, closeSheet, doReject, moveToFeed, undoMove, signOut });
-  $('g-go').onclick = doSignIn;
-  $('g-pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSignIn(); });
-  boot();
-})();
-</script>
-</body>
-</html>
+<!doctype html> <html lang="en"> <head> <meta charset="utf-8"> <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"> <meta name="theme-color" content="#1A2641"> <meta name="apple-mobile-web-app-capable" 
+content="yes"> <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"> <meta name="apple-mobile-web-app-title" content="Approve"> <title>Aaryam · Approve</title> <link rel="icon" type="image/svg+xml" href="icon.svg">
+ <script src="aaryam-touch.js"></script> <link rel="manifest" href="manifest.json"> <link rel="stylesheet" href="../styles.css"> <link rel="stylesheet" href="aaryam.css"> <style>:root{--barh:0px}
+*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-padding-top:72px}
+body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font-size:15px;line-height:1.45;overflow-x:hidden}
+body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--navy);z-index:41;pointer-events:none}
+.bjnav{top:env(safe-area-inset-top)}
+.aa-brandbar button{min-height:40px}
+.ap-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg.ic{width:16px;height:16px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ap-wrap{max-width:760px;margin:0 auto;padding:18px 16px max(calc(var(--barh) + 28px),calc(28px + env(safe-area-inset-bottom)))}
+.ap-net{background:var(--warn-soft);color:var(--warn);font-size:13.5px;font-weight:600;padding:9px 16px;text-align:center}
+.ap-head{margin:2px 0 16px}
+.ap-title{font-size:30px;line-height:1.12;margin:6px 0 4px;color:var(--ink);overflow-wrap:anywhere}
+.ap-sub{color:var(--muted);font-size:14px;margin:0}
+.ap-back{display:inline-flex;align-items:center;gap:4px;min-height:40px;margin:-6px 0 2px -8px;padding:0 10px 0 4px;background:0 0;border:0;border-radius:999px;color:var(--ink-2);font-size:14px;font-weight:700;cursor:pointer}
+.ap-back:hover{background:var(--surface)}
+.ap-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 6px}
+.ap-stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px 11px;min-width:0}
+.ap-stat b{display:block;font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:26px;line-height:1.1;color:var(--ink);font-variant-numeric:tabular-nums}
+.ap-stat span{display:block;margin-top:3px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.ap-regions{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:14px -16px 4px;padding:2px 16px 4px}
+.ap-regions::-webkit-scrollbar{display:none}
+.ap-region{flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.ap-region small{font-size:12px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.ap-region[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:var(--cream)}
+.ap-region[aria-pressed=true] small{color:rgba(240,241,236,.75)}
+.ap-sec{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:24px 2px 10px}
+.ap-sec .eyebrow{margin:0}
+.ap-sec small{font-size:12.5px;color:var(--muted)}
+.ap-hint{font-size:13.5px;color:var(--muted);margin:-4px 2px 12px}
+.ap-search{position:relative;margin:18px 0 0}
+.ap-search input{width:100%;min-height:46px;padding:10px 14px 10px 40px;font-size:16px;border-radius:12px;border:1px solid var(--line-strong);background:#fff;color:var(--ink)}
+.ap-search input:focus{outline:0;border-color:var(--navy);box-shadow:var(--focus)}
+.ap-search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.ap-city{display:flex;align-items:center;gap:12px;width:100%;text-align:left;min-height:64px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 14px 12px 16px;margin:0 0 8px;cursor:pointer;color:var(--ink)}
+@media (hover:hover){.ap-city:hover{border-color:var(--line-strong)}}.ap-city:active{background:var(--surface)}
+.ap-city .nm{font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:18px;line-height:1.2;overflow-wrap:anywhere}
+.ap-city .ct{font-size:13px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.ap-city .ct b{color:var(--ink-2)}
+.ap-city .tx{flex:1;min-width:0}
+.ap-city .n{font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:22px;color:var(--ink);font-variant-numeric:tabular-nums}
+.ap-city .chev{color:var(--line-strong)}
+.ap-more{display:flex;justify-content:center;align-items:center;width:100%;min-height:46px;margin:4px 0 8px;border:1px dashed var(--line-strong);background:0 0;border-radius:12px;color:var(--ink-2);font-size:14px;font-weight:700;cursor:pointer}
+.ap-state{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:26px 22px;text-align:center;margin:14px 0 8px}
+.ap-state .mark{width:44px;height:44px;border-radius:50%;background:var(--surface);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px}
+.ap-state .mark svg{width:22px;height:22px}
+.ap-state h2{font-size:23px;margin:0 0 6px;color:var(--ink)}
+.ap-state p{margin:0 auto 4px;max-width:420px;color:var(--muted);font-size:14.5px}
+.ap-state .acts{display:flex;flex-direction:column;gap:8px;align-items:center;margin-top:16px}
+.ap-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 20px;border-radius:999px;border:0;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ap-btn.primary{background:var(--navy);color:var(--cream)}
+.ap-btn.primary:hover{background:var(--navy-deep)}
+.ap-btn.quiet{background:#fff;color:var(--ink);border:1px solid var(--line-strong)}
+.ap-btn.quiet:hover{border-color:var(--ink-2)}
+.ap-btn:disabled{opacity:.45;cursor:default}
+.ap-btn.primary:disabled{background:var(--line-strong);color:var(--ink-2);opacity:1}
+.ap-quick{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:14px -16px 12px;padding:2px 16px 4px}
+.ap-quick::-webkit-scrollbar{display:none}
+.ap-quick .lbl{flex:0 0 auto;align-self:center;margin-right:2px}
+.ap-qp{flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:999px;border:1px solid var(--line-strong);background:#fff;color:var(--ink-2);font-size:13.5px;font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums}
+.ap-qp[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--cream)}
+.ap-qp:disabled{opacity:.45;cursor:default}
+.ap-note{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:14px;color:var(--ink-2);margin:12px 0 4px}
+.ap-card{position:relative;display:flex;gap:6px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px 12px 6px;margin:0 0 10px;cursor:pointer;transition:box-shadow .15s ease,border-color .15s ease,opacity .2s ease,transform .2s ease}
+.ap-card.picked{border-color:var(--navy);box-shadow:0 0 0 1px var(--navy),var(--shadow)}
+.ap-card.leaving{opacity:0;transform:translateX(24px)}
+.ap-tick{flex:0 0 44px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:0 0;border:0;padding:0;cursor:pointer;border-radius:10px}
+.ap-tick .box{width:24px;height:24px;border-radius:7px;border:1.5px solid var(--line-strong);background:#fff;display:flex;align-items:center;justify-content:center;color:transparent}
+.ap-tick .box svg{width:16px;height:16px;stroke-width:3}
+.ap-card.picked .ap-tick .box{background:var(--navy);border-color:var(--navy);color:var(--cream)}
+.ap-body{flex:1;min-width:0;padding-top:9px}
+.ap-name{font-size:19px;line-height:1.2;margin:0;color:var(--ink);overflow-wrap:anywhere}
+.ap-tags{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0 0}
+.ap-tag{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:999px;background:var(--surface);color:var(--ink-2)}
+.ap-tag.ok{background:var(--ok-soft);color:var(--ok)}
+.ap-tag.warn{background:var(--warn-soft);color:var(--warn)}
+.ap-tag.info{background:var(--info-soft);color:var(--info)}
+.ap-addr{font-size:13.5px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
+.ap-why{font-size:14.5px;color:var(--ink-2);margin:8px 0 0;overflow-wrap:anywhere}
+.ap-hours{font-size:13.5px;color:var(--warn);margin:6px 0 0;overflow-wrap:anywhere}
+.ap-reason{margin:10px 0 0;padding:10px 12px;border-radius:10px;background:var(--surface);border-left:3px solid var(--line-strong)}
+.ap-reason .eyebrow{display:block;margin-bottom:3px;font-size:10.5px}
+.ap-reason p{margin:0;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
+.ap-reason .ap-tags{margin-top:7px}
+.ap-reason .ap-tag{background:#fff;border:1px solid var(--line)}
+.ap-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.ap-act{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink-2);font-size:13.5px;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}
+.ap-act:hover{border-color:var(--line-strong);color:var(--ink)}
+.ap-act.bad{color:var(--bad)}
+.ap-act:disabled{opacity:.5;cursor:default}
+.ap-sentinel{height:1px}
+.ap-skel-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:10px}
+.ap-skel-card .aa-skel+.aa-skel{margin-top:10px}
+.ap-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(255,255,255,.97);border-top:1px solid var(--line);box-shadow:0 -6px 20px rgba(21,26,40,.07);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+@supports (backdrop-filter:blur(8px)){.ap-bar{background:rgba(255,255,255,.9);backdrop-filter:blur(10px)}}.ap-bar .inner{max-width:760px;margin:0 auto;display:flex;gap:8px;align-items:center}
+.ap-bar .cnt{flex:1;min-width:0;font-size:13px;color:var(--muted);line-height:1.2;font-variant-numeric:tabular-nums}
+.ap-bar .cnt b{display:block;font-family:var(--display);font-weight:600;font-optical-sizing:auto;font-size:20px;color:var(--ink)}
+.ap-bar .ap-btn{padding:0 16px}
+.ap-toast{position:fixed;left:50%;transform:translateX(-50%);z-index:90;width:max-content;max-width:min(92vw,520px);bottom:max(calc(var(--barh) + 12px),calc(16px + env(safe-area-inset-bottom)));display:flex;align-items:center;gap:12px;background:var(--ink);color:var(--cream);padding:10px 10px 10px 16px;border-radius:14px;font-size:14px;font-weight:600;box-shadow:0 8px 26px rgba(18,27,48,.3)}
+.ap-toast.ok{background:var(--ok)}
+.ap-toast.err{background:var(--bad)}
+.ap-toast .msg{flex:1;min-width:0;padding:4px 0;overflow-wrap:anywhere}
+.ap-toast button{flex:0 0 auto;min-height:38px;padding:0 14px;border-radius:999px;border:0;cursor:pointer;background:rgba(255,255,255,.16);color:#fff;font-size:14px;font-weight:700}
+.ap-toast .x{padding:0 11px;background:0 0;font-size:18px;line-height:1}
+.ap-sheet-bg{position:fixed;inset:0;z-index:80;background:rgba(18,27,48,.55);display:flex;align-items:flex-end;justify-content:center}
+.ap-sheet{background:#fff;width:100%;max-width:560px;border-radius:20px 20px 0 0;max-height:88vh;overflow:auto;padding:10px 18px calc(18px + env(safe-area-inset-bottom));overscroll-behavior:contain}
+.ap-sheet .grab{width:40px;height:4px;border-radius:4px;background:var(--line-strong);margin:0 auto 14px}
+.ap-sheet h3{font-size:22px;margin:0 0 4px;color:var(--ink);overflow-wrap:anywhere}
+.ap-sheet .lead{margin:0 0 14px;font-size:14px;color:var(--muted)}
+.ap-sheet .blk{margin:14px 0 0}
+.ap-sheet .blk .eyebrow{display:block;margin-bottom:4px}
+.ap-sheet .blk p{margin:0;font-size:14.5px;color:var(--ink-2);white-space:pre-line;overflow-wrap:anywhere}
+.ap-opt{display:flex;align-items:center;width:100%;min-height:48px;text-align:left;background:var(--surface);border:1px solid transparent;border-radius:12px;padding:0 16px;margin-bottom:7px;font-size:15px;font-weight:600;color:var(--ink);cursor:pointer}
+.ap-opt:hover{border-color:var(--line-strong)}
+.ap-sheet .row2{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.ap-sheet .row2 .ap-btn{flex:1 1 140px}
+@media (min-width:700px){.ap-sheet-bg{align-items:center}
+.ap-sheet{border-radius:20px}
+.ap-sheet .grab{display:none}}#gate{max-width:380px;margin:0 auto;padding:calc(14vh + env(safe-area-inset-top)) 22px 40px}
+#gate .wm{height:22px;width:auto;display:block;margin:0 auto 26px}
+#gate h1{text-align:center;font-size:28px;margin:0 0 6px;color:var(--ink)}
+#gate .sub{text-align:center;color:var(--muted);font-size:14px;margin:0 0 24px}
+#gate .field input{width:100%;min-height:48px;font-size:16px;padding:10px 14px;border-radius:12px;border:1px solid var(--line-strong)}
+#gate .ap-btn{width:100%;margin-top:6px}
+#g-err{color:var(--bad);font-size:13.5px;text-align:center;min-height:20px;margin:12px 0 0}
+@media (min-width:900px){.ap-title{font-size:36px}
+.ap-wrap{padding-top:28px}}</style> </head> <body> <div id="gate" hidden> <img class="wm" src="aaryam-wordmark.svg" alt="Aaryam"> <h1>Approval queue</h1> <p class="sub">Sign in to give the shops on your list a yes or no.</p> <form 
+id="g-form" novalidate> <div class="field"><label for="g-em">Email</label><input id="g-em" type="email" autocomplete="username" inputmode="email" required></div> <div class="field"><label for="g-pw">Password</label><input id="g-pw" 
+type="password" autocomplete="current-password" required></div> <button class="ap-btn primary" id="g-go" type="submit">Sign in</button> <p id="g-err" role="alert"></p> </form> </div> <div id="app" hidden> <header class="aa-brandbar"> <img 
+src="aaryam-wordmark-cream.svg" alt="Aaryam" class="aa-wm"> <span class="aa-sub">Lead Finder</span><span class="aa-spacer"></span> <button type="button" data-act="signout">Sign out</button> </header> <nav class="bjnav" 
+aria-label="Lead Finder"> <a href="./">Leads</a><a href="approve.html" class="on" aria-current="page">Approve</a><a href="trips.html">Trips</a><a href="visits.html">Visits</a> </nav> <div class="ap-net" id="net" hidden role="status">
+No signal. You can look, but nothing will save until you are back online.</div> <main class="ap-wrap" id="view" aria-busy="true"></main> <div class="ap-bar" id="bar" hidden><div class="inner"> <div class="cnt" id="cnt" aria-live="polite">
+</div> <button class="ap-btn quiet" id="b-sec" type="button"></button> <button class="ap-btn primary" id="go" type="button" data-act="approve">Approve</button> </div></div> <div id="modal"></div> </div> <script 
+src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.min.js" crossorigin="anonymous"></script> <script src="../config.js"></script> <script>
+!function(){"use strict";if(!window.supabase||!window.supabase.createClient||"undefined"==typeof BJ_CONFIG){const e=function(){const e=document.createElement("div");e.className="ap-state",e.style.cssText="max-width:380px;margin:18vh auto 0"
+;const t=document.createElement("h2");t.textContent="Could not finish loading";const a=document.createElement("p");a.textContent="The page needs a bar of signal to start. Reload when you have one.";const n=document.createElement("button")
+;n.className="ap-btn primary",n.textContent="Reload",n.style.marginTop="16px",n.onclick=function(){location.reload()},e.append(t,a,n),document.body.replaceChildren(e)}
+;return void("loading"===document.readyState?document.addEventListener("DOMContentLoaded",e):e())}
+const e=window.supabase.createClient(BJ_CONFIG.SUPABASE_URL,BJ_CONFIG.SUPABASE_KEY),t=40,a=50,n=30,o=1e4,i="id,name,city,region,address,postcode,phone,website,priority,summary,pitch_angle,good_at,opening_hours,latitude,longitude,feed_reason,feed_model,feed_flags,verdict,verdict_source,verdict_reasons,sales_channel,booth",s={
+view:"loading",err:null,queue:[],regions:[],region:null,approved:null,loadedAt:0,city:null,mode:"feed",rows:[],picks:new Set,preset:"p4",feedPreset:"p4",shown:0,busy:!1,inflight:new Set,seq:0,qseq:0,q:"",lim:{feed:n,maybe:n}
+},r=e=>document.getElementById(e),c=e=>String(null==e?"":e).replace(/[&<>"'`]/g,(e=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;","`":"&#96;"
+}[e]))),l=e=>Number(e||0).toLocaleString("en-US"),d=(e,t,a)=>l(e)+" "+(1===e?t:a),p=e=>String(e||"").replace(/[^\d+]/g,""),u={get(e){try{return localStorage.getItem(e)}catch(e){return null}},set(e,t){try{localStorage.setItem(e,t)}catch(e){}
+}},h={check:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',chev:'<svg class="ic chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>',
+back:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>',
+pin:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+globe:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+phone:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>',
+info:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+search:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+inbox:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13l2.5-7h11L20 13v6H4z"/><path d="M4 13h5l1 2h4l1-2h5"/></svg>',
+alert:'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.5"/></svg>'};function y(e){const t=String(e&&(e.message||e.error_description)||e||"")
+;return!navigator.onLine||/failed to fetch|networkerror|network request failed|load failed|timed? ?out/i.test(t)?"No signal right now.":/jwt|expired|not authenticated|invalid token/i.test(t)?"Your sign-in has run out. Sign out and back in.":t||"Something went wrong."
+}function g(e){let t=String(e||"").trim();if(!t)return"";if(!/^[a-z][a-z0-9+.-]*:/i.test(t)){if(!/^[\w-]+(\.[\w-]+)+/.test(t))return"";t="https://"+t.replace(/^\/+/,"")}try{const e=new URL(t)
+;return"http:"===e.protocol||"https:"===e.protocol?e.href:""}catch(e){return""}}function b(e){const t="https://www.google.com/maps/search/?api=1&query=";if(e.address&&e.city&&e.region){const a=e.region+(e.postcode?" "+e.postcode:"")
+;return t+encodeURIComponent([e.name,e.address,e.city,a].filter(Boolean).join(", "))}
+return null!=e.latitude&&null!=e.longitude?t+encodeURIComponent(e.latitude+","+e.longitude):t+encodeURIComponent([e.name,e.city,e.region,"USA"].filter(Boolean).join(", "))}const f=e=>{const t=String(e||"").trim();if(!t)return""
+;const a=t.match(/^[\s\S]{0,190}?[.!?](\s|$)/);return(a?a[0]:t.slice(0,190)+(t.length>190?"…":"")).trim()};function v(e){const t=String(e||"")
+;return!!t&&(!!/appointment only|by appointment|fri\W*sun only/i.test(t)||(!!/closed\W+(sat(urday)?\W*(and|&|,)\W*sun(day)?|sun(day)?\W*(and|&|,)\W*mon(day)?|weekends?)/i.test(t)||(!!/(sat(urday)?\W*(and|&)\W*sun(day)?|weekends?)\W*closed/i.test(t)||/mon\W*fri/i.test(t)&&!/\bsat/i.test(t))))
+}const m=e=>{const t=String(e||"").replace(/_/g," ").trim();return t.charAt(0).toUpperCase()+t.slice(1)};function w(e){
+return 5===e?'<span class="ap-tag ok">Sells lab-grown</span>':4===e?'<span class="ap-tag">Strong</span>':'<span class="ap-tag">Worth a look</span>'}
+const k=e=>s.rows.find((t=>t.id===e)),q=(e,t)=>s.queue.find((a=>a.region===e&&a.city===t)),_=()=>s.queue.filter((e=>e.region===s.region)),x=()=>_().reduce(((e,t)=>(e.ready+=t.ready,e.maybe+=t.maybe,e)),{ready:0,maybe:0});let M=null
+;function S(e,t,a){const n=document.querySelector(".ap-toast");n&&n.remove(),clearTimeout(M);const i=document.createElement("div");i.className="ap-toast"+(t?" "+t:""),i.setAttribute("role","err"===t?"alert":"status")
+;const s=document.createElement("span");s.className="msg",s.textContent=e,i.appendChild(s);const r=()=>{clearTimeout(M),i.remove()};if(a){const e=document.createElement("button");e.type="button",e.textContent=a.label,e.onclick=()=>{r(),
+a.fn()},i.appendChild(e)}const c=document.createElement("button");c.type="button",c.className="x",c.setAttribute("aria-label","Dismiss"),c.textContent="\xd7",c.onclick=r,i.appendChild(c),document.body.appendChild(i),
+M=setTimeout(r,a?o:"err"===t?7e3:4e3)}async function C(){const t=++s.qseq,{data:a,error:n}=await e.from("lf_approve_queue").select("region,city,ready,p5,p4,maybe");if(t!==s.qseq)return!1;if(n)throw n;s.queue=(a||[]).map((e=>({
+region:e.region||"",city:e.city||"",ready:+e.ready||0,p5:+e.p5||0,p4:+e.p4||0,maybe:+e.maybe||0})));const o=new Map;for(const e of s.queue){const t=o.get(e.region)||{region:e.region,ready:0,maybe:0};t.ready+=e.ready,t.maybe+=e.maybe,
+o.set(e.region,t)}if(s.regions=[...o.values()].sort(((e,t)=>e.region.localeCompare(t.region))),!s.region||!o.has(s.region)){const e=u.get("ap.region");if(e&&o.has(e))s.region=e;else{
+const e=[...o.values()].sort(((e,t)=>t.ready-e.ready||t.maybe-e.maybe))[0];s.region=e?e.region:s.region||"FL"}}return s.loadedAt=Date.now(),L(),!0}async function L(){const t=s.region;s.approved=null;try{
+const{count:a,error:n}=await e.from("lf_places").select("id",{count:"exact",head:!0}).eq("hidden",!1).eq("region",t).eq("approved",!0);if(n)throw n;t===s.region&&(s.approved=null==a?null:a,"list"===s.view&&P())}catch(e){}}
+async function T(e){if(e=e||{},s.seq++,s.view=s.queue.length||s.loadedAt?"list":"loading",s.city=null,s.rows=[],s.picks=new Set,re(),I(),!1!==e.scrollTop&&window.scrollTo(0,0),!1!==e.refresh)try{await C()&&"city"!==s.view&&(s.view="list",
+s.err=null,I())}catch(e){if("city"===s.view)return;s.queue.length?S("Could not refresh the list. "+y(e),"err"):(s.view="error",s.err=e,I())}}async function A(t,a,n){n=n||{},a="maybe"===a?"maybe":"feed"
+;const o=++s.seq,r=n.quiet?window.scrollY:0;if(!1!==n.push){const e=(history.state&&history.state.ap?history.state.depth||1:0)+1;history.pushState({ap:1,city:t,mode:a,depth:e},"")}const c=n.region||s.region;s.city=t,s.mode=a,s.region=c,
+n.quiet||(s.view="city",s.rows=[],s.picks=new Set,s.loading=!0,s.err=null,I(),window.scrollTo(0,0));try{const l=await async function(t,a,n){const o=[];for(let s=0;s<2e4;s+=1e3){
+const{data:r,error:c}=await e.from("maybe"===n?"lf_feed_maybe":"lf_feed").select(i).eq("region",t).eq("city",a).order("priority",{ascending:!1,nullsFirst:!1}).order("name").order("id").range(s,s+999);if(c)throw c;if(o.push(...r||[]),
+!r||r.length<1e3)break}return o}(c,t,a);if(o!==s.seq)return;s.loading=!1,s.err=null,s.rows=l,n.quiet?s.picks=new Set([...s.picks].filter((e=>l.some((t=>t.id===e))))):j("maybe"===a?"none":s.feedPreset,!0);const d=q(c,t)
+;d&&(d["maybe"===a?"maybe":"ready"]=l.length),s.view="city",I(),n.quiet&&window.scrollTo(0,r)}catch(e){if(o!==s.seq)return;if(s.loading=!1,n.quiet)return void S("Could not refresh this city. "+y(e),"err");s.err=e,I()}}function N(e){
+const t=new Set;for(const a of s.rows){const n=a.priority||0;("all"===e||"p5"===e&&5===n||"p4"===e&&n>=4)&&t.add(a.id)}return t}function j(e,t){s.preset=e,"feed"!==s.mode||t||(s.feedPreset=e),s.picks=N(e),
+t||(document.querySelectorAll(".ap-card").forEach((e=>H(e.dataset.id))),F(),V())}function E(){s.preset="custom";for(const e of["p5","p4","all","none"]){const t=N(e);if(t.size===s.picks.size&&[...t].every((e=>s.picks.has(e)))){s.preset=e
+;break}}}function B(e){k(e)&&(s.picks.has(e)?s.picks.delete(e):s.picks.add(e),E(),H(e),F(),V())}function H(e){const t=r("c-"+e);if(!t)return;const a=s.picks.has(e);t.classList.toggle("picked",a);const n=t.querySelector(".ap-tick")
+;n&&n.setAttribute("aria-checked",a?"true":"false")}function I(){const e=r("view");e.setAttribute("aria-busy","loading"===s.view||s.loading?"true":"false"),
+"loading"===s.view?e.innerHTML=U(!0):"error"===s.view?e.innerHTML=W("Could not load the queue",s.err,"retry-list"):"list"===s.view?function(){const e=r("view")
+;r("list-top")||(e.innerHTML='<div id="list-top"></div><div class="ap-search" id="list-search" hidden><label class="ap-sr" for="city-q">Find a city</label>'+h.search+'<input id="city-q" type="search" placeholder="Find a city" autocomplete="off" enterkeyhint="search"></div><div id="list-cities"></div><p class="aa-foot"><b>Aaryam Inc.</b> \xb7 New York \xb7 Lab-grown diamond fine jewelry</p>',
+r("city-q").value=s.q);P(),R()}():function(){const e=r("view");z&&(z.disconnect(),z=null);let t='<div id="city-head"></div>';if(s.loading)return e.innerHTML=t+U(!1),void D()
+;if(s.err)return e.innerHTML=t+W("Could not load "+(s.city||"this city"),s.err,"retry-city"),void D();if(!s.rows.length)return e.innerHTML=t+function(){
+const e=q(s.region,s.city),t="feed"===s.mode?_().filter((e=>e.ready>0&&e.city!==s.city)).sort(((e,t)=>t.ready-e.ready||e.city.localeCompare(t.city)))[0]:null,a="feed"===s.mode&&e&&e.maybe?e.maybe:0;let n=""
+;t&&(n+='<button class="ap-btn primary" type="button" data-act="city" data-city="'+c(t.city)+'" data-mode="feed">Next: '+c(t.city)+" \xb7 "+l(t.ready)+"</button>")
+;a&&(n+='<button class="ap-btn quiet" type="button" data-act="open-maybe">Look at '+l(a)+" in Maybe</button>");return n+='<button class="ap-btn quiet" type="button" data-act="back">All cities</button>',
+'<div class="ap-state"><div class="mark">'+h.check+"</div><h2>"+c(s.city||"This city")+" is clear</h2><p>"+("maybe"===s.mode?"Nothing is parked here any more.":"Nothing left to decide here. The nightly run adds new shops, and they show up here when they are ready.")+'</p><div class="acts">'+n+"</div></div>"
+}(),void D()
+;t+=("maybe"===s.mode?'<div class="ap-note">These were graded <b>maybe</b>: the evidence on file is thin. Nothing here is rejected. Move one to your feed if you know better, or approve it straight from here.</div>':"")+'<div id="quick"></div><div id="cards"></div><div id="more"></div>'+function(){
+if("feed"!==s.mode)return"";const e=q(s.region,s.city),t=e?e.maybe:0;return t?'<button class="ap-more" type="button" data-act="open-maybe">'+d(t,"more shop","more shops")+" in Maybe for "+c(s.city)+"</button>":""
+}()+'<p class="aa-foot"><b>Aaryam Inc.</b> \xb7 New York \xb7 Lab-grown diamond fine jewelry</p>',e.innerHTML=t,D(),F(),s.shown=0,G()}(),V()}function U(e){
+let t=e?'<div class="ap-head"><div class="aa-skel" style="width:40%;height:12px"></div><div class="aa-skel" style="width:70%;height:30px;margin-top:12px"></div></div>':""
+;for(let e=0;e<4;e++)t+='<div class="ap-skel-card"><div class="aa-skel" style="width:55%;height:20px"></div><div class="aa-skel" style="width:35%"></div><div class="aa-skel" style="width:90%"></div></div>';return t}function W(e,t,a){
+return'<div class="ap-state" role="alert"><div class="mark">'+h.alert+"</div><h2>"+c(e)+"</h2><p>"+c(y(t))+' Nothing was changed.</p><div class="acts"><button class="ap-btn primary" type="button" data-act="'+a+'">Try again</button></div></div>'
+}function P(){const e=r("list-top");if(!e)return;const t=x()
+;let a='<div class="ap-head"><div class="eyebrow">Approval queue</div><h1 class="ap-title">Approve shops</h1><p class="ap-sub">A yes puts a shop in the trip planner. Work one city at a time.</p><div class="ap-stats nums"><div class="ap-stat"><b>'+l(t.ready)+'</b><span>Waiting</span></div><div class="ap-stat"><b>'+l(t.maybe)+'</b><span>In Maybe</span></div><div class="ap-stat"><b>'+(null==s.approved?"–":l(s.approved))+"</b><span>Approved</span></div></div></div>"
+;s.regions.length>1&&(a+='<div class="ap-regions" role="group" aria-label="State">'+s.regions.map((e=>'<button type="button" class="ap-region" data-act="region" data-region="'+c(e.region)+'" aria-pressed="'+(e.region===s.region)+'">'+c(e.region)+" <small>"+l(e.ready||e.maybe)+(e.ready?"":" maybe")+"</small></button>")).join("")+"</div>"),
+t.ready||(a+='<div class="ap-state"><div class="mark">'+h.inbox+"</div><h2>Nothing waiting in "+c(s.region||"this state")+"</h2><p>Every shop with an opener and a map pin has had your decision. The nightly run adds new shops, and they show up here when they are ready.</p>"+(t.maybe?"<p>"+d(t.maybe,"shop is","shops are")+" parked in Maybe below: thin evidence, not rejected.</p>":"")+"</div>"),
+e.innerHTML=a;const n=e.querySelector('.ap-region[aria-pressed="true"]');n&&n.scrollIntoView&&!P.done&&(P.done=!0,n.scrollIntoView({block:"nearest",inline:"center"}))}function R(){const e=r("list-cities");if(!e)return
+;const t=_(),a=t.filter((e=>e.ready>0)).sort(((e,t)=>t.ready-e.ready||e.city.localeCompare(t.city))),n=t.filter((e=>e.maybe>0)).sort(((e,t)=>t.maybe-e.maybe||e.city.localeCompare(t.city)));r("list-search").hidden=a.length+n.length<=8
+;const o=s.q.trim().toLowerCase(),i=e=>!o||e.city.toLowerCase().includes(o),p=a.filter(i),u=n.filter(i);let h=""
+;a.length&&(h+='<div class="ap-sec"><h2 class="eyebrow">Ready for a yes or no</h2><small>'+d(a.length,"city","cities")+"</small></div>",h+=p.slice(0,s.lim.feed).map((e=>O(e,"feed"))).join(""),
+p.length>s.lim.feed&&(h+='<button class="ap-more" type="button" data-act="more-cities" data-sec="feed">Show all '+l(p.length)+" cities</button>")),
+n.length&&(h+='<div class="ap-sec"><h2 class="eyebrow">Parked in Maybe</h2><small>'+d(n.length,"city","cities")+'</small></div><p class="ap-hint">Thin evidence: no confirmed storefront, or no sign of what they sell. Nothing here is rejected.</p>',
+h+=u.slice(0,s.lim.maybe).map((e=>O(e,"maybe"))).join(""),u.length>s.lim.maybe&&(h+='<button class="ap-more" type="button" data-act="more-cities" data-sec="maybe">Show all '+l(u.length)+" cities</button>")),
+!o||p.length||u.length||(h+='<div class="ap-state"><h2>No city matches “'+c(s.q.trim())+"”</h2><p>Check the spelling, or clear the search.</p></div>"),e.innerHTML=h}function O(e,t){const a="maybe"===t?e.maybe:e.ready,n=[]
+;return"feed"===t?(e.p5&&n.push("<b>"+l(e.p5)+" sell lab-grown</b>"),e.p4&&n.push(l(e.p4)+(e.p5?" more strong":" strong")),e.maybe&&n.push(l(e.maybe)+" in Maybe")):n.push(d(e.maybe,"parked shop","parked shops")),
+'<button type="button" class="ap-city" data-act="city" data-city="'+c(e.city)+'" data-mode="'+t+'"><span class="tx"><span class="nm">'+c(e.city||"No city")+'</span><span class="ct" style="display:block">'+n.join(" \xb7 ")+'</span></span><span class="n" aria-label="'+c(d(a,"shop","shops"))+'">'+l(a)+"</span>"+h.chev+"</button>"
+}window.addEventListener("popstate",(e=>{const t=e.state;t&&t.ap&&t.city?A(t.city,t.mode,{push:!1}):T()}));let z=null;function D(){const e=r("city-head");if(!e)return
+;const t=s.rows.length,a=s.rows.filter((e=>5===e.priority)).length,n=s.loading?"Loading…":t?("maybe"===s.mode?d(t,"shop","shops")+" parked":d(t,"shop","shops")+" waiting")+(a?" \xb7 "+l(a)+" sell lab-grown":""):""
+;e.innerHTML='<div class="ap-head"><button type="button" class="ap-back" data-act="back">'+h.back+'All cities</button><div class="eyebrow">'+c(s.region)+("maybe"===s.mode?" \xb7 Maybe":" \xb7 Approval queue")+'</div><h1 class="ap-title">'+c(s.city||"No city")+"</h1>"+(n?'<p class="ap-sub nums">'+n+"</p>":"")+"</div>"
+}function F(){const e=r("quick");if(!e)return;const t={p5:0,p4:0,all:s.rows.length};for(const e of s.rows){const a=e.priority||0;5===a&&t.p5++,a>=4&&t.p4++}
+const a=(e,t,a)=>'<button type="button" class="ap-qp" data-act="preset" data-p="'+e+'" aria-pressed="'+(s.preset===e)+'"'+(0===a?" disabled":"")+">"+t+"</button>"
+;e.innerHTML='<div class="ap-quick" role="group" aria-label="Quick pick"><span class="eyebrow lbl">Pick</span>'+a("p5","Lab-grown \xb7 "+l(t.p5),t.p5)+a("p4","Strongest \xb7 "+l(t.p4),t.p4)+a("all","All "+l(t.all),t.all)+a("none","None",null)+"</div>"
+}function Y(e){
+const t=e.priority||0,a=s.picks.has(e.id),n="maybe"===s.mode,o=f(e.pitch_angle)||f(e.summary)||f(e.good_at),i=v(e.opening_hours),r=g(e.website),l=[e.booth?"Booth "+e.booth:"",e.address,e.city].filter(Boolean).join(", "),d=Array.isArray(e.feed_flags)?e.feed_flags.filter((e=>"string"==typeof e&&e)):[]
+;return'<article class="ap-card'+(a?" picked":"")+'" id="c-'+c(e.id)+'" data-id="'+c(e.id)+'"><button type="button" class="ap-tick" role="checkbox" aria-checked="'+a+'" data-act="tick" aria-label="Pick '+c(e.name)+'"><span class="box">'+h.check+'</span></button><div class="ap-body"><h3 class="ap-name">'+c(e.name||"Unnamed shop")+'</h3><div class="ap-tags">'+w(t)+(i?'<span class="ap-tag warn">Tight hours</span>':"")+("online_only"===e.sales_channel?'<span class="ap-tag info">Online only</span>':"")+'</div><div class="ap-addr">'+c(l||"No street address on file")+"</div>"+(n?'<div class="ap-reason"><span class="eyebrow">Why it is parked</span><p>'+c(e.feed_reason||"No reason was written down for this one.")+"</p>"+(d.length?'<div class="ap-tags">'+d.slice(0,4).map((e=>'<span class="ap-tag">'+c(m(e))+"</span>")).join("")+"</div>":"")+"</div>":"")+(o?'<p class="ap-why">'+c(o)+"</p>":"")+(i?'<p class="ap-hours">Hours: '+c(String(e.opening_hours).slice(0,120))+"</p>":"")+'<div class="ap-acts"><a class="ap-act" target="_blank" rel="noopener noreferrer" href="'+c(b(e))+'">'+h.pin+"Map</a>"+(r?'<a class="ap-act" target="_blank" rel="noopener noreferrer" href="'+c(r)+'">'+h.globe+"Site</a>":"")+(p(e.phone)?'<a class="ap-act" href="tel:'+c(p(e.phone))+'" aria-label="Call '+c(e.phone)+'">'+h.phone+"Call</a>":"")+'<button type="button" class="ap-act" data-act="detail">'+h.info+"Details</button>"+(n?'<button type="button" class="ap-act" data-act="to-feed">Move to feed</button>':"")+'<button type="button" class="ap-act bad" data-act="reject">Not a fit</button></div></div></article>'
+}function G(){const e=r("cards");if(!e)return;const t=s.rows.slice(s.shown,s.shown+a);e.insertAdjacentHTML("beforeend",t.map(Y).join("")),s.shown+=t.length,J()}function J(){const e=r("more");if(!e)return;z&&(z.disconnect(),z=null)
+;const t=s.rows.length-s.shown;t<=0?e.innerHTML="":(e.innerHTML='<div class="ap-sentinel" id="sentinel"></div><button class="ap-more" type="button" data-act="more-cards">Show '+l(Math.min(t,a))+" more of "+l(t)+"</button>",
+"IntersectionObserver"in window&&(z=new IntersectionObserver((e=>{e.some((e=>e.isIntersecting))&&G()}),{rootMargin:"600px 0px"}),z.observe(r("sentinel"))))}function V(){const e=r("bar"),t="city"===s.view&&!s.loading&&!s.err&&s.rows.length>0
+;if(e.hidden=!t,t){const e=s.picks.size;r("cnt").innerHTML="<b>"+l(e)+"</b>picked of "+l(s.rows.length);const t=r("b-sec");t.textContent=e?"Clear":"Pick all "+l(s.rows.length),t.dataset.act=e?"clear":"pick-all",t.disabled=s.busy
+;const a=r("go");a.disabled=!e||s.busy,a.setAttribute("aria-busy",s.busy?"true":"false"),a.textContent=s.busy?"Saving…":"Approve "+(e?l(e):"")}K()}function K(){const e=r("bar")
+;document.documentElement.style.setProperty("--barh",e.hidden?"0px":e.offsetHeight+"px")}function Q(e,t,n){if("city"!==s.view||s.city!==t||s.mode!==n)return;const o=new Set(e);let i=0;s.rows=s.rows.filter((e=>{if(!o.has(e.id))return!0
+;const t=r("c-"+e.id);return t&&(i++,t.classList.add("leaving"),setTimeout((()=>t.remove()),200)),!1}));for(const e of o)s.picks.delete(e);if(s.shown=Math.max(0,s.shown-i),!s.rows.length)return setTimeout((()=>{
+s.city!==t||s.mode!==n||s.rows.length||I()}),210),void V();E(),D(),F(),V(),s.shown<Math.min(a,s.rows.length)?G():J()}function Z(e,t,a,n){const o=q(e,t);o&&(o[a]=Math.max(0,(o[a]||0)+n))}
+"ResizeObserver"in window&&new ResizeObserver(K).observe(r("bar"));let $=null;async function X(a){if(s.busy||!a.length)return
+;if(!navigator.onLine)return void S("No signal right now. Nothing was saved — your picks are still here.","err");s.busy=!0,V();const n=s.city,o=s.mode,i=s.region,r=new Map(a.map((e=>{const t=k(e)
+;return[e,t?null==t.verdict_source?null:t.verdict_source:null]}))),c=[];let p=0,u=null;for(let n=0;n<a.length;n+=t){const o=a.slice(n,n+t);try{const{error:t,count:a}=await e.from("lf_places").update({approved:!0,verdict:"fit",
+verdict_source:"manual"},{count:"exact"}).in("id",o).is("approved",null);if(t)throw t;p+=null==a?o.length:a,c.push(...o)}catch(e){u=e;break}}if(s.busy=!1,c.length&&(Z(i,n,"maybe"===o?"maybe":"ready",-c.length),
+null!=s.approved&&i===s.region&&(s.approved+=p),Q(c,n,o)),V(),u){const e=a.length-c.length
+;return void S((c.length?"Approved "+l(c.length)+" of "+l(a.length)+". The other "+l(e)+" did not save. ":"Nothing was saved. ")+y(u)+" They are still picked — tap Approve to try again.","err")}const h=c.length-p
+;S(d(p,"shop","shops")+" approved"+(h>0?" ("+l(h)+" already decided elsewhere)":"")+" — in the trip planner now","ok",{label:"Undo",fn:()=>async function(a,n,o,i,s){const r=new Map;for(const e of a){const t=n.get(e),a=null==t?"\0":t
+;(r.get(a)||r.set(a,[]).get(a)).push(e)}let c=0;try{for(const[a,n]of r)for(let o=0;o<n.length;o+=t){const{error:i,count:s}=await e.from("lf_places").update({approved:null,verdict_source:"\0"===a?null:a},{count:"exact"
+}).in("id",n.slice(o,o+t)).eq("approved",!0).eq("verdict_source","manual");if(i)throw i;c+=null==s?n.slice(o,o+t).length:s}S("Put "+d(c,"shop","shops")+" back for review","ok")}catch(e){
+S((c?"Only "+l(c)+" went back. ":"Undo did not save. ")+y(e),"err")}await ee(o,i,s)}(c,r,i,n,o)})}async function ee(e,t,a){try{await C()}catch(e){}"city"===s.view&&s.city===t&&s.mode===a&&s.region===e?await A(t,a,{push:!1,
+quiet:s.rows.length>0}):"list"===s.view&&I()}
+const te=["Silver / fashion only","Gold with CZ / moissanite only","Natural diamonds only","Pawn or loan business","Repair / watch service only","Chain, too many locations","Indian vendor / supplier","Not actually a jeweller","Closed down"]
+;function ae(e){const t=k(e)
+;t&&se('<h3 id="sheet-t">'+c(t.name)+'</h3><p class="lead">Why is this one not a fit? The reason shows on the card, so it is never a silent reject.</p>'+te.map(((t,a)=>'<button type="button" class="ap-opt" data-act="do-reject" data-id="'+c(e)+'" data-i="'+a+'">'+c(t)+"</button>")).join("")+'<div class="row2"><button type="button" class="ap-btn quiet" data-act="sheet-close">Cancel</button></div>')
+}async function ne(t,a){const n=te[a],o=k(t);if(re(),!n||!o||s.inflight.has(t))return;if(!navigator.onLine)return void S("No signal right now. "+o.name+" was not rejected.","err");s.inflight.add(t);const i=s.city,r=s.mode,c=s.region;try{
+const{error:a,count:s}=await e.from("lf_places").update({approved:!1,verdict:"not_fit",verdict_source:"manual",verdict_reasons:[{signal:n,src:"Ravi"}]},{count:"exact"}).eq("id",t).is("approved",null);if(a)throw a
+;if(Z(c,i,"maybe"===r?"maybe":"ready",-1),Q([t],i,r),0===s)return void S(o.name+" was already decided elsewhere, so nothing changed","err");S("Rejected "+o.name+" — "+n,"ok",{label:"Undo",fn:()=>async function(t,a,n,o){try{
+const{error:a,count:n}=await e.from("lf_places").update({approved:null,verdict:t.verdict||"fit",verdict_source:null==t.verdict_source?null:t.verdict_source,verdict_reasons:null==t.verdict_reasons?null:t.verdict_reasons},{count:"exact"
+}).eq("id",t.id).eq("approved",!1).eq("verdict_source","manual");if(a)throw a;S(0===n?t.name+" had changed since, so it was left as it is":"Put "+t.name+" back for review",0===n?"err":"ok")}catch(e){S("Undo did not save. "+y(e),"err")}
+await ee(a,n,o)}(o,c,i,r)})}catch(e){S(o.name+" was not rejected. "+y(e),"err")}finally{s.inflight.delete(t)}}async function oe(t){const a=k(t);if(!a||s.inflight.has(t))return
+;if(!navigator.onLine)return void S("No signal right now. "+a.name+" stayed in Maybe.","err");s.inflight.add(t);const n=document.querySelector("#c-"+CSS.escape(t)+' [data-act="to-feed"]');n&&(n.disabled=!0)
+;const o=s.city,i=s.mode,r=s.region;try{const{error:n,count:s}=await e.from("lf_places").update({feed_tier:"feed",feed_model:"manual",feed_reason:"Moved to the feed by Ravi"},{count:"exact"
+}).eq("id",t).eq("feed_tier","maybe").is("approved",null);if(n)throw n;if(Z(r,o,"maybe",-1),Q([t],o,i),0===s)return void S(a.name+" had already left Maybe, so nothing changed","err");Z(r,o,"ready",1),S(a.name+" moved to your feed","ok",{
+label:"Undo",fn:()=>async function(t,a,n,o){try{const{error:a}=await e.from("lf_places").update({feed_tier:"maybe",feed_model:t.feed_model||null,feed_reason:t.feed_reason||null}).eq("id",t.id).eq("feed_model","manual").is("approved",null)
+;if(a)throw a;S("Put "+t.name+" back in Maybe","ok")}catch(e){S("Undo did not save. "+y(e),"err")}await ee(a,n,o)}(a,r,o,i)})}catch(e){n&&(n.disabled=!1),S(a.name+" did not move. "+y(e),"err")}finally{s.inflight.delete(t)}}let ie=null
+;function se(e){ie=document.activeElement,r("modal").innerHTML='<div class="ap-sheet-bg" data-act="sheet-bg"><div class="ap-sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-t"><div class="grab"></div>'+e+"</div></div>",
+document.body.style.overflow="hidden";const t=r("modal").querySelector(".ap-sheet button, .ap-sheet a");t&&t.focus({preventScroll:!0})}function re(){if(r("modal").firstChild){if(r("modal").innerHTML="",document.body.style.overflow="",
+$=null,ie&&document.contains(ie))try{ie.focus({preventScroll:!0})}catch(e){}ie=null}}function ce(){r("net").hidden=navigator.onLine}document.addEventListener("keydown",(e=>{"Escape"===e.key&&r("modal").firstChild&&(e.preventDefault(),re())
+})),document.addEventListener("click",(t=>{const a=t.target.closest("[data-act]"),o=a?a.dataset.act:null;if("sheet-bg"===o)return void(t.target===a&&re());if(!o){const e=t.target.closest(".ap-card")
+;return void(!e||t.target.closest("a,button")||window.getSelection&&String(window.getSelection())||B(e.dataset.id))}const i=a.closest(".ap-card"),y=i?i.dataset.id:a.dataset.id;switch(o){case"signout":!async function(){try{
+await e.auth.signOut()}catch(e){}location.reload()}();break;case"retry-list":T();break;case"retry-city":A(s.city,s.mode,{push:!1});break;case"region":if(a.dataset.region===s.region)break;s.region=a.dataset.region,
+u.set("ap.region",s.region),s.q="",s.lim={feed:n,maybe:n},r("city-q")&&(r("city-q").value=""),P(),R(),L();break;case"more-cities":s.lim[a.dataset.sec]=1/0,R();break;case"city":A(a.dataset.city,a.dataset.mode);break;case"open-maybe":
+A(s.city,"maybe");break;case"back":!function(){if(s.busy)return;const e=history.state&&history.state.ap?history.state.depth||1:0;e>0?history.go(-e):T()}();break;case"tick":B(y);break;case"preset":s.busy||j(a.dataset.p);break;case"pick-all":
+s.busy||j("all");break;case"clear":s.busy||j("none");break;case"more-cards":G();break;case"approve":!function(){const e=s.rows.filter((e=>s.picks.has(e.id))).map((e=>e.id))
+;e.length&&!s.busy&&(e.length<25?X(e):(se('<h3 id="sheet-t">Approve '+d(e.length,"shop","shops")+" in "+c(s.city)+'?</h3><p class="lead">They go straight into the trip planner. You can undo for ten seconds afterwards.</p><div class="row2"><button type="button" class="ap-btn quiet" data-act="sheet-close">Cancel</button><button type="button" class="ap-btn primary" data-act="confirm-approve">Approve '+l(e.length)+"</button></div>"),
+$=e))}();break;case"confirm-approve":{const e=$;re(),e&&X(e);break}case"detail":!function(e){const t=k(e);if(!t)return
+;const a=g(t.website),n=(e,t)=>t?'<div class="blk"><span class="eyebrow">'+e+"</span><p>"+c(t)+"</p></div>":"",o=Array.isArray(t.feed_flags)?t.feed_flags.filter((e=>"string"==typeof e&&e)):[],i=s.picks.has(e)
+;se('<h3 id="sheet-t">'+c(t.name||"Unnamed shop")+'</h3><div class="ap-tags" style="margin:6px 0 4px">'+w(t.priority||0)+(v(t.opening_hours)?'<span class="ap-tag warn">Tight hours</span>':"")+("online_only"===t.sales_channel?'<span class="ap-tag info">Online only</span>':"")+'</div><p class="lead">'+c([t.booth?"Booth "+t.booth:"",t.address,t.city,[t.region,t.postcode].filter(Boolean).join(" ")].filter(Boolean).join(", ")||"No street address on file")+"</p>"+("maybe"===s.mode?'<div class="ap-reason"><span class="eyebrow">Why it is parked</span><p>'+c(t.feed_reason||"No reason was written down for this one.")+"</p>"+(o.length?'<div class="ap-tags">'+o.map((e=>'<span class="ap-tag">'+c(m(e))+"</span>")).join("")+"</div>":"")+"</div>":"")+n("The opening angle",t.pitch_angle)+n("What we know",t.summary)+n("Good at",t.good_at)+n("Hours",t.opening_hours)+(t.phone?n("Phone",t.phone):"")+'<div class="ap-acts" style="margin-top:16px"><a class="ap-act" target="_blank" rel="noopener noreferrer" href="'+c(b(t))+'">'+h.pin+"Map</a>"+(a?'<a class="ap-act" target="_blank" rel="noopener noreferrer" href="'+c(a)+'">'+h.globe+"Website</a>":"")+(p(t.phone)?'<a class="ap-act" href="tel:'+c(p(t.phone))+'">'+h.phone+"Call</a>":"")+'</div><div class="row2"><button type="button" class="ap-btn quiet" data-act="detail-reject" data-id="'+c(e)+'">Not a fit</button>'+("maybe"===s.mode?'<button type="button" class="ap-btn quiet" data-act="detail-feed" data-id="'+c(e)+'">Move to feed</button>':"")+'<button type="button" class="ap-btn quiet" data-act="detail-pick" data-id="'+c(e)+'">'+(i?"Unpick":"Pick")+'</button><button type="button" class="ap-btn primary" data-act="detail-approve" data-id="'+c(e)+'">Approve this one</button></div>')
+}(y);break;case"reject":ae(y);break;case"do-reject":ne(a.dataset.id,+a.dataset.i);break;case"to-feed":oe(y);break;case"sheet-close":re();break;case"detail-reject":re(),ae(y);break;case"detail-feed":re(),oe(y);break;case"detail-pick":re(),
+B(y);break;case"detail-approve":re(),s.busy||X([y])}})),document.addEventListener("input",(e=>{"city-q"===e.target.id&&(s.q=e.target.value,s.lim={feed:n,maybe:n},R())})),window.addEventListener("online",ce),
+window.addEventListener("offline",ce),document.addEventListener("visibilitychange",(()=>{"visible"===document.visibilityState&&"list"===s.view&&Date.now()-s.loadedAt>12e4&&T({scrollTop:!1})})),window.addEventListener("beforeunload",(e=>{
+s.busy&&(e.preventDefault(),e.returnValue="")}));let le=!1;async function de(){let t=null;try{const a=await e.auth.getSession();t=a&&a.data?a.data.session:null}catch(e){}if(!t)return r("gate").hidden=!1,void(r("app").hidden=!0)
+;r("gate").hidden=!0,r("app").hidden=!1,ce(),history.replaceState(null,""),s.view="loading",I(),await T()}r("g-form").addEventListener("submit",(async function(t){if(t&&t.preventDefault(),le)return
+;const a=r("g-em").value.trim(),n=r("g-pw").value;if(a&&n){le=!0,r("g-go").disabled=!0,r("g-go").textContent="Signing in…",r("g-err").textContent="";try{const{error:t}=await e.auth.signInWithPassword({email:a,password:n});if(t)throw t
+;r("g-pw").value="",await de()}catch(e){r("g-err").textContent=y(e)}finally{le=!1,r("g-go").disabled=!1,r("g-go").textContent="Sign in"}}else r("g-err").textContent="Enter your email and password."})),de()}()</script> <script>
+"serviceWorker"in navigator&&navigator.serviceWorker.register("sw.js",{scope:"./"}).catch((()=>{}))</script> </body> </html> 

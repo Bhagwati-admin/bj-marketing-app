@@ -1,0 +1,221 @@
+/* =====================================================================
+   Aaryam design system for the US Lead Finder (/finder/ only).
+   Source: "Aaryam Brand Kit" v3 (4 Sep 2026) — navy and cream from the
+   printed card, Bodoni Moda (weight 600, optical sizing on) for headings,
+   Quicksand for body and interface. No gold, no red accents, no gradients.
+   Load AFTER ../styles.css: it re-maps that file's tokens, so every older
+   rule that says var(--maroon) now draws in Aaryam navy.
+   The India field app at the site root keeps the Bhagwati look — never
+   link this file from there.
+   ===================================================================== */
+@import url("https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500..800&family=Quicksand:wght@400;500;600;700&display=swap");
+
+:root {
+  /* brand inks */
+  --navy: #1A2641;
+  --navy-deep: #121B30;
+  --navy-bright: #26365C;
+  --navy-soft: #E8EBF1;
+  --cream: #F0F1EC;
+  --paper: #FBFBF8;
+  --surface: #F2F2EE;
+  --ink: #151A28;
+  --ink-2: #3A4152;
+  --muted: #646B7C;
+  --line: #DCDFE5;
+  --line-strong: #C5C9D2;
+
+  /* functional (status only — never decoration) */
+  --ok: #2C6E49;  --ok-soft: #E3EFE7;
+  --bad: #8C2F39; --bad-soft: #F5E4E6;
+  --warn: #8A5A0B; --warn-soft: #F7EEDB;
+  --info: #2D4F86; --info-soft: #E3EAF6;
+
+  /* type */
+  --display: "Bodoni Moda", "Didot", Georgia, serif;
+  --body: "Quicksand", "Helvetica Neue", Arial, sans-serif;
+
+  /* re-map the shared styles.css tokens */
+  --maroon: var(--navy);
+  --maroon-dark: var(--navy-deep);
+  --maroon-soft: var(--navy-soft);
+  --gold: var(--navy-bright);
+  --gold-soft: var(--surface);
+  --bg: var(--paper);
+  --card: #FFFFFF;
+  --green: var(--ok);
+  --red: var(--bad);
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(21, 26, 40, .06), 0 6px 18px rgba(21, 26, 40, .05);
+  --shadow-lift: 0 2px 6px rgba(21, 26, 40, .08), 0 14px 32px rgba(21, 26, 40, .10);
+  --focus: 0 0 0 3px rgba(38, 54, 92, .28);
+}
+
+html, body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input, select, textarea { font-family: var(--body); }
+b, strong { font-weight: 700; }
+
+/* Headings: Bodoni is a Didone — weight 600+, optical sizing ON, or the hairlines vanish on a phone. */
+h1, h2, h3, .display, .lf-name, .card h3, .modal h3, .auth-head h1, .client-head h2, #appbar .screen-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-optical-sizing: auto;
+  letter-spacing: -0.005em;
+}
+h4, h5 { font-family: var(--body); font-weight: 700; }
+
+.nums, .st-num, td.n { font-variant-numeric: tabular-nums; }
+
+/* Eyebrow label — the one sanctioned uppercase style */
+.eyebrow, .section-label {
+  font-family: var(--body); font-size: 11px; font-weight: 700; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* ---------- app bar: navy ground, cream ink (the card front) ---------- */
+#appbar, .lf-appbar {
+  background: var(--navy);
+  color: var(--cream);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .04), 0 6px 18px rgba(18, 27, 48, .18);
+}
+#appbar .mini-badge, .lf-appbar .mini-badge {
+  background: transparent; color: var(--cream); width: auto; height: auto; border-radius: 0;
+}
+#appbar .app-name, .lf-appbar .app-name {
+  font-family: var(--body); font-size: 10.5px; font-weight: 700; letter-spacing: .18em; opacity: .72;
+}
+#appbar .screen-name { font-size: 19px; color: var(--cream); }
+#appbar .back-btn { color: var(--cream); }
+
+/* The AARYAM wordmark (traced vector, never retyped). Use: <span class="aa-wordmark" aria-label="Aaryam"><svg …></span> */
+.aa-wordmark { display: inline-flex; align-items: center; color: currentColor; line-height: 0; }
+.aa-wordmark svg { height: 15px; width: auto; display: block; }
+.aa-lockup svg { width: 100%; height: auto; display: block; }
+
+/* ---------- surfaces ---------- */
+.card, .lf-card, .lf-pipe, .list-item, .timeline-item, .rem-item, .stat, .choice-btn {
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+.lf-card { transition: box-shadow .15s ease, border-color .15s ease, transform .05s ease; }
+@media (hover: hover) { .lf-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-lift); } }
+.lf-card:active { background: var(--surface); }
+
+/* ---------- buttons ---------- */
+.btn { font-family: var(--body); font-weight: 700; letter-spacing: .01em; border-radius: 999px; }
+.btn-primary { background: var(--navy); color: var(--cream); }
+.btn-primary:hover { background: var(--navy-deep); }
+.btn-secondary { background: var(--navy-soft); color: var(--navy); }
+.btn-ghost { color: var(--navy); }
+.btn-small { border-radius: 999px; }
+.btn-approve { background: var(--ok-soft); color: var(--ok); }
+.btn-reject  { background: var(--bad-soft); color: var(--bad); }
+.btn-research { background: var(--navy-soft); color: var(--navy); }
+.btn:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none; box-shadow: var(--focus);
+}
+
+/* ---------- chips ---------- */
+.chip { font-family: var(--body); font-weight: 700; letter-spacing: .02em; }
+.chip-pending  { background: var(--warn-soft); color: var(--warn); }
+.chip-approved { background: var(--ok-soft); color: var(--ok); }
+.chip-rejected { background: var(--bad-soft); color: var(--bad); }
+.chip-src, .chip-cat { background: var(--surface); color: var(--ink-2); }
+.chip-role { background: var(--navy-soft); color: var(--navy); }
+.chip-type { background: var(--surface); color: var(--ink-2); }
+
+/* ---------- inputs ---------- */
+.field input, .field select, .field textarea, .lf-searchbar input, .search-box input, .lf-controls select {
+  border-color: var(--line-strong); background: #fff; color: var(--ink);
+}
+.field input:focus, .field select:focus, .field textarea:focus, .lf-searchbar input:focus, .search-box input:focus {
+  border-color: var(--navy); box-shadow: var(--focus);
+}
+.search-box { background: var(--paper); }
+
+/* ---------- segmented / tabs ---------- */
+.seg button, .filter-chips button, .lf-viewtabs button, .brk-chip { color: var(--ink-2); border-color: var(--line-strong); }
+.seg button.on, .lf-viewtabs button.on { background: var(--navy); border-color: var(--navy); color: var(--cream); }
+.filter-chips button.on { background: var(--ink); border-color: var(--ink); color: var(--cream); }
+#tabbar { background: #fff; border-top: 1px solid var(--line); }
+#tabbar button { font-family: var(--body); font-weight: 600; }
+#tabbar button.active { color: var(--navy); }
+
+/* ---------- stats ---------- */
+.stat .st-num { font-family: var(--display); font-weight: 700; font-optical-sizing: auto; color: var(--navy); }
+.stat .st-label { font-weight: 600; }
+
+/* ---------- progress bars: one ink, no gradient ---------- */
+.lf-bar { background: var(--surface); }
+.lf-bar-fill { background: var(--navy); }
+
+/* ---------- notices / toasts / modals ---------- */
+.notice { background: var(--surface); color: var(--ink-2); border: 1px solid var(--line); }
+#toast { background: var(--ink); color: var(--cream); font-family: var(--body); font-weight: 600; }
+#toast.ok { background: var(--ok); } #toast.err { background: var(--bad); }
+.modal-overlay, .scan-overlay { background: rgba(18, 27, 48, .55); }
+.spinner { border-top-color: var(--cream); }
+.client-head { background: var(--navy); color: var(--cream); }
+
+/* ---------- footer (legal name) ---------- */
+.aa-foot { margin: 28px 0 8px; text-align: center; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; }
+.aa-foot b { color: var(--ink-2); font-weight: 700; }
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- shared page nav (all four Lead Finder pages) ----------
+   Markup:
+   <nav class="bjnav" aria-label="Lead Finder">
+     <a href="./">Leads</a><a href="approve.html">Approve</a><a href="trips.html">Trips</a><a href="visits.html">Visits</a>
+   </nav>
+   The current page gets class="on" and aria-current="page". No emoji in the nav. */
+.bjnav {
+  display: flex; justify-content: center; gap: 4px; padding: 6px 12px; background: var(--navy);
+  border-top: 1px solid rgba(240, 241, 236, .08);
+  overflow-x: auto; scrollbar-width: none; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 29;
+}
+.bjnav::-webkit-scrollbar { display: none; }
+.bjnav a {
+  flex: 1 1 0; max-width: 168px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center;
+  text-decoration: none; font-family: var(--body); font-size: 13.5px; font-weight: 700;
+  letter-spacing: .02em; color: rgba(240, 241, 236, .78); padding: 10px 14px; border-radius: 999px; white-space: nowrap;
+}
+.bjnav a:hover { color: var(--cream); background: rgba(240, 241, 236, .08); }
+.bjnav a.on { background: var(--cream); color: var(--navy); }
+
+/* Navy strip under the iOS status bar (Home Screen app, translucent status bar). */
+body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px);
+  background: var(--navy); z-index: 60; pointer-events: none; }
+
+/* ---------- brand bar (top of every page) ----------
+   <header class="aa-brandbar"><img src="aaryam-wordmark-cream.svg" alt="Aaryam" class="aa-wm">
+     <span class="aa-sub">Lead Finder</span><span class="aa-spacer"></span> …page actions… </header> */
+.aa-brandbar {
+  display: flex; align-items: center; gap: 12px; background: var(--navy); color: var(--cream);
+  padding: calc(12px + env(safe-area-inset-top)) 16px 10px;
+}
+.aa-brandbar .aa-wm { height: 15px; width: auto; display: block; }
+.aa-brandbar .aa-sub { font-size: 10.5px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; opacity: .7; }
+.aa-brandbar .aa-spacer { flex: 1; }
+.aa-brandbar button, .aa-brandbar a.aa-act {
+  background: rgba(240, 241, 236, .1); color: var(--cream); border: 0; border-radius: 999px; padding: 7px 12px;
+  font-family: var(--body); font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+
+/* ---------- skeleton loading ---------- */
+.aa-skel { background: linear-gradient(90deg, var(--surface) 0%, #fff 50%, var(--surface) 100%); background-size: 200% 100%;
+  animation: aa-shimmer 1.2s ease-in-out infinite; border-radius: 10px; min-height: 14px; }
+@keyframes aa-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ---------- empty state ---------- */
+.empty { color: var(--muted); }
+.empty .big { font-family: var(--display); font-weight: 600; font-optical-sizing: auto; font-size: 22px; color: var(--ink); }

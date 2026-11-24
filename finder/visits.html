@@ -258,7 +258,7 @@ const t=Array.isArray(e.asked_about)?e.asked_about:[],n=Array.isArray(e.objectio
 }))+'</span></div><div class="v-tabs" role="tablist" aria-label="Visits">'+e.map((([e,t])=>'<button type="button" role="tab" data-act="tab" data-t="'+e+'" aria-selected="'+(n.tab===e)+'"'+(n.tab===e?' aria-current="page"':"")+">"+t+"</button>")).join("")+"</div>"
 ;"today"===n.tab?a+=function(){let e=Qe()+function(){const e=dt()
 ;return e?'<div class="v-card info"><h3>Unfinished visit — '+o(e.place.name||"shop")+'</h3><p class="sub">Started '+o(j(e.form.visited_at))+'. Nothing has been saved or sent yet.</p><div class="v-btnrow"><button class="v-act pri" data-act="resume">Carry on</button><button class="v-act" data-act="discardDraft">Discard</button></div></div>':""
-}();const t=ce(),a=t?re().filter((e=>e.day_id===t.id)):[],i=new Set(n.queue.map((e=>e.payload&&e.payload.stop_id)).filter(Boolean));if(t){const r=a.filter((e=>"planned"===e.status&&!i.has(e.id))).length
+}();const t=ce(),a=t?re().filter((e=>e.day_id===t.id&&"skipped"!==e.status)):[],i=new Set(n.queue.map((e=>e.payload&&e.payload.stop_id)).filter(Boolean));if(t){const r=a.filter((e=>"planned"===e.status&&!i.has(e.id))).length
 ;e+=ze("On the road today",r?r+" to go":"")+'<p class="v-hint" style="margin:-4px 2px 10px">'+o(n.pack.trip&&n.pack.trip.name||"Trip")+" · Day "+o(t.day_index)+"</p>",
 a.length?r||(e+='<p class="v-hint" style="margin-top:0">Every stop on today\'s list is logged.</p>'):e+='<div class="empty">No stops planned for today.</div>',e+=a.map(((e,t)=>{const a=e.place||{},r="planned"!==e.status||i.has(e.id),c=Ie({
 place:a,stop_id:e.id,trip_id:n.pack.trip?n.pack.trip.id:"",day_id:e.day_id})
